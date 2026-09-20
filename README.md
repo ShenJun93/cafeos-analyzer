@@ -51,6 +51,20 @@ CafeOS follows three rules:
 
 See `AGENTS.md`, `docs/METRICS.md`, `docs/DATA_CONTRACT.md`, `docs/INSIGHTS.md` and `docs/PRIVACY.md`.
 
+## Help validate POS compatibility
+
+Real export shapes are valuable evidence, but **do not upload raw merchant CSV/XLSX files to GitHub**.
+
+Generate a schema-only compatibility profile locally:
+
+```bash
+npm run validation:profile -- path/to/export.xlsx > compatibility-profile.json
+```
+
+Review the JSON, then open the **POS compatibility report** issue form and share only schema/header/count metadata. See `docs/PUBLIC_VALIDATION.md` for the public/private boundary.
+
+Compatibility reports improve import coverage. They do not count as repeat-use or willingness-to-pay evidence by themselves.
+
 ## Data and privacy
 
 All files committed under `fixtures/` are synthetic test data. They are not merchant exports and contain no real customer identifiers. See `SYNTHETIC_DATA.md`.
