@@ -497,8 +497,7 @@ test("public pages disclose 4MB transient processing instead of local-only promi
 
 test("field-session draft keeps unanswered evidence nullable and cannot silently count as negative evidence", () => {
   const draft = buildInboundValidationDraft({ id: "D-1", source: "kiotviet", storeCount: 7, importSucceeded: true, acquisitionSource: "organic", privacyMode: "local-only" });
-  assert.equal(draft.status, "DRAFT_NOT_SCOREABLE");
-  assert.equal(draft.targetIcp, true);
+  assert.equal(draft.status, "DRAFT_NOT_SCOREABLE");  assert.equal(draft.targetIcp, true);
   assert.equal(draft.importSucceeded, true);
   assert.equal(draft.metricTrusted, null);
   assert.equal(draft.usefulNewInsight, null);
@@ -620,4 +619,10 @@ test("Vercel routing exposes only the three locked Wave 13 pull surfaces", async
   assert.equal(sources.has('/phan-tich-file-kiotviet-cafe'), true);
   assert.equal(sources.has('/phan-tich-file-sapo-fnb'), true);
   assert.equal(sources.has('/phan-tich-doanh-thu-quan-cafe-excel'), true);
+});
+
+test("Vercel deploy launcher uses committed-dist gate and never requires npm test", async () => {
+  const ps = await readFile(new URL("../scripts/deploy-vercel.ps1", import.meta.url), "utf8");
+  assert.match(ps, /npm run test:dist/);
+  assert.doesNotMatch(ps, /(^|\s)npm test(\s|$)/m);
 });
