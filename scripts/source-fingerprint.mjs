@@ -12,11 +12,16 @@ async function walk(dir) {
   return out;
 }
 
+export function normalizeFingerprintText(value) {
+  return value.replace(/\r\n?/g, '\n');
+}
+
 export async function sourceFingerprint() {
   const files = [...await walk('src'), 'tsconfig.json'].sort();
   const hash = createHash('sha256');
   for (const file of files) {
-    hash.update(file); hash.update('\0'); hash.update(await readFile(file)); hash.update('\0');
+    const content = normalizeFingerprintText(await readFile(file, 'utf8'));
+    hash.update(file); hash.update('\0'); hash.update(content, 'utf8'); hash.update('\0');
   }
   return { sha256: hash.digest('hex'), files };
 }
