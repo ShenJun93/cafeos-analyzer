@@ -159,8 +159,15 @@ Until evidence changes the decision:
 
 ## Immediate next batch
 
-1. realign canonical mission/docs;
-2. research/score Control Tower jobs against current café/POS landscape;
-3. define Control Tower PRD separately from Analyzer PRD;
-4. map existing code/data model to reusable foundation vs Analyzer-only pieces;
-5. build only the thinnest vertical slice that turns an existing Analyzer insight into a persistent HQ decision/action loop.
+Mission realignment, Control Tower PRD and reuse mapping are complete.
+
+Next:
+
+1. schema contract: Store/Customer/Attention/Action/Measurement;
+2. tenant/RLS/idempotency contract tests;
+3. authenticated product API boundary;
+4. Daily Brief + Store Health read path;
+5. Attention → Action → Measurement write/read path;
+6. real operator workflow validation before Phase 2.
+
+Implementation detail is locked in `docs/CONTROL_TOWER_IMPLEMENTATION_SLICE.md`.
