@@ -65,6 +65,24 @@ Review the JSON, then open the **POS compatibility report** issue form and share
 
 Compatibility reports improve import coverage. They do not count as repeat-use or willingness-to-pay evidence by themselves.
 
+## Deploy validation preview
+
+From a clean clone of canonical `main` on Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy-vercel.ps1
+```
+
+The launcher refuses to deploy a dirty tree or a local `main` that differs from `origin/main`, runs `npm test` and `npm run verify:deploy`, then deploys with pinned Vercel CLI and attempts to connect the project to the canonical GitHub remote for future Git-triggered deployments.
+
+First-time Vercel authentication may require the OAuth device/browser flow. Production deployment is explicit:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy-vercel.ps1 -Production
+```
+
+See `docs/DEPLOYMENT.md`.
+
 ## Data and privacy
 
 All files committed under `fixtures/` are synthetic test data. They are not merchant exports and contain no real customer identifiers. See `SYNTHETIC_DATA.md`.
