@@ -1,8 +1,21 @@
 # Current state
 
-Canonical authority: this repository's `main` branch, tests, CI, and technical specifications.
+Canonical authority: this repository's `main` branch, tests, CI, and technical specifications. Product-level mission authority is defined by `MISSION.md`.
 
-## Verified technical state
+## Product mission state
+
+CafeOS is now explicitly defined as the **operating and customer-intelligence layer for multi-location café brands**, sitting above existing POS/order/payment/loyalty systems where integration is preferable to replacement.
+
+CafeOS Analyzer is a module/wedge inside that product. It must not be treated as the whole CafeOS mission.
+
+See:
+
+- `MISSION.md`
+- `docs/PRODUCT_ARCHITECTURE.md`
+- `docs/ROADMAP.md`
+- `docs/research/WAVE_19_PRODUCT_MISSION_REALIGNMENT.md`
+
+## Verified Analyzer technical state
 
 - CSV/XLSX ingestion and workbook selection implemented.
 - Vietnamese and vendor-style header mapping with manual fallback implemented.
@@ -13,41 +26,33 @@ Canonical authority: this repository's `main` branch, tests, CI, and technical s
 - Postgres/Supabase RLS persistence contract present.
 - public Vercel request surface and local Windows validation kit present.
 - privacy-safe public compatibility intake is defined for schema-only POS export evidence.
-- public validation deployment is live at `https://cafeos-analyzer.vercel.app`.
-- current production deployment `dpl_DBRM2pVwmrsg7XUifnqFUcn8mk5e` is `READY`, sourced from canonical `main` commit `7b32355174a419627f7ab6a98140c780bf8f4e86`.
-- deterministic live verification passed on 2026-09-20:
-  - GET `/` → 200
-  - GET `/analyzer` → 200
-  - GET `/api/health` → 200 with `mode=public-validation`, `persistence=none`, `maxUploadBytes=4194304`
-  - POST known fixture → 97 orders, 4,850,000 VND net sales, 97 valid items
-  - request larger than 4 MiB → 413
-- post-verification Vercel runtime scan found no runtime error clusters.
+- public Analyzer is live at `https://cafeos-analyzer.vercel.app`.
+- deterministic live verification has passed GET/health/known-fixture POST/>4 MiB rejection.
 
 ## Product boundary
 
-CafeOS Analyzer is an intelligence overlay for existing café POS systems. It is not a POS replacement.
+Do not build a generic POS clone. Existing POS/order/payment/inventory/accounting systems should remain systems of execution where they are already strong.
 
-## Evidence boundary
-
-Public GitHub may collect schema/header/count metadata and compatibility profiles only. Raw merchant exports, PII, private field-validation records, willingness-to-pay notes and contact information must remain outside the public repository.
+CafeOS should own the cross-system canonical model, evidence, HQ/customer intelligence, action history and measurement loop.
 
 ## Technical gate
 
-The public validation deployment gate is CLOSED. Do not spend the next cycle on deployment plumbing or speculative product expansion unless new evidence exposes a concrete defect.
+Analyzer deployment plumbing is CLOSED. Do not spend the next cycle expanding Analyzer/SEO unless new evidence exposes a concrete blocker.
 
 ## Unverified product state
 
-Real-merchant repeat usage, continuous-sync intent, and willingness to pay remain field-validation questions. The live production validation surface does not establish product-market fit.
+- CafeOS Control Tower demand and workflow fit are not yet validated.
+- Real-merchant repeat usage, continuous-sync intent and willingness to pay remain unverified.
+- Analyzer evidence tests the data/intelligence wedge; it does not establish product-market fit for the full CafeOS roadmap.
 
 ## Next action
 
-Collect 10–20 permissioned, target-ICP field-validation sessions through pull/inbound distribution. Preserve the locked scorecard order:
+Move from Analyzer-centric work to **CafeOS Control Tower product discovery and thin-slice design**:
 
-1. import success;
-2. source reconciliation / metric trust;
-3. useful or new insight;
-4. repeat-use intent;
-5. continuous-sync intent;
-6. willingness to pay only after value is demonstrated.
+1. score the highest-leverage HQ/customer jobs against current café/POS capabilities;
+2. define a separate Control Tower PRD;
+3. map existing Analyzer/data code into reusable foundation vs module-only code;
+4. design the thinnest persistent loop: `ingest → Daily Brief/Store Health → decision/action → measured follow-up`;
+5. preserve real target-ICP field validation, but interpret it as evidence for the relevant product layer rather than as authority to shrink CafeOS back into an Excel tool.
 
-Do not use cold email, cold DM, cold calls, manual prospecting, founder-led enterprise sales, negotiated pilots, or recurring networking as the primary acquisition mechanism.
+Primary distribution remains pull/inbound; no dependency on cold outbound sales.
