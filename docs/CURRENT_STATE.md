@@ -12,10 +12,15 @@ Canonical authority: this repository's `main` branch, tests, CI, and technical s
 - privacy-preserving compatibility/profile tooling implemented.
 - Postgres/Supabase RLS persistence contract present.
 - public Vercel-shaped request surface and local Windows validation kit present.
+- privacy-safe public compatibility intake is defined for schema-only POS export evidence.
 
 ## Product boundary
 
 CafeOS Analyzer is an intelligence overlay for existing café POS systems. It is not a POS replacement.
+
+## Evidence boundary
+
+Public GitHub may collect schema/header/count metadata and compatibility profiles only. Raw merchant exports, PII, private field-validation records, willingness-to-pay notes and contact information must remain outside the public repository.
 
 ## Unverified product state
 
