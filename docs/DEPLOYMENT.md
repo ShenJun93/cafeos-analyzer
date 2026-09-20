@@ -32,9 +32,28 @@ Before preview deployment:
 4. Known fixture through `/api/analyze` reproduces 97 orders and 4,850,000 VND net sales.
 5. Public copy says 4 MB and transient/no persistence; it must not claim the local 20 MB limit.
 
-## Current external blocker
+## Canonical deployment path
 
-The connected Vercel account is readable, but the exposed deployment action was unavailable in the current connector runtime and there is no authenticated Vercel CLI in this container. Therefore this repository is deploy-ready but no live URL is claimed.
+The connected Vercel account is readable, but the current connector runtime advertises `deploy_to_vercel` while returning `Tool deploy_to_vercel not found` when invoked. Direct MCP deployment is therefore not considered reliable.
+
+Use the guarded Windows launcher from a clean clone of canonical `main`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy-vercel.ps1
+```
+
+The launcher:
+
+1. requires branch `main`;
+2. requires a clean working tree;
+3. fetches `origin/main` and refuses deployment if local HEAD differs;
+4. runs `npm test` and `npm run verify:deploy`;
+5. uses pinned Vercel CLI `59.20.0` to create/link a preview deployment in the configured Vercel team;
+6. attempts `vercel git connect` so future Git pushes can trigger Vercel deployments.
+
+First-time CLI authentication may require Vercel OAuth device/browser authorization. Until a deployment is observed via Vercel and passes the post-deploy checks below, no live URL may be claimed.
+
+Production requires the explicit `-Production` switch.
 
 ## Post-deploy checks
 
