@@ -26,9 +26,9 @@ try {
     throw "Local main ($localSha) does not match origin/main ($remoteSha). Run git pull --ff-only first."
   }
 
-  Write-Host "Running canonical test and deployment gates..." -ForegroundColor Cyan
-  npm test
-  if ($LASTEXITCODE -ne 0) { throw "npm test failed" }
+  Write-Host "Running canonical committed-dist and deployment gates..." -ForegroundColor Cyan
+  npm run test:dist
+  if ($LASTEXITCODE -ne 0) { throw "npm run test:dist failed" }
 
   npm run verify:deploy
   if ($LASTEXITCODE -ne 0) { throw "npm run verify:deploy failed" }
