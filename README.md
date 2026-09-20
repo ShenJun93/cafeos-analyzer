@@ -1,10 +1,12 @@
 # CafeOS Analyzer
 
-Privacy-first sales intelligence for multi-location cafés.
+**Analyzer module of CafeOS — the operating and customer-intelligence layer for multi-location cafés.**
+
+CafeOS product mission: see [`MISSION.md`](MISSION.md). Analyzer is the file-based acquisition/onboarding/data-validation wedge, not the whole product.
 
 CafeOS Analyzer turns POS CSV/XLSX exports into deterministic revenue, order, customer-coverage, store and daypart insights without replacing the merchant's POS. Numeric business metrics are computed by deterministic code; AI, when added, is an explanation layer only.
 
-## Current scope
+## Analyzer module scope
 
 - CSV and bounded XLSX ingestion
 - Vietnamese export-header mapping with explicit manual fallback
@@ -97,7 +99,7 @@ Never commit real merchant exports, customer PII, HMAC keys, credentials, valida
 
 ## Project status
 
-This repository is the canonical public authority for CafeOS Analyzer code, tests and technical product decisions. Current validation stage: technical vertical slice; real-merchant repeat-use and willingness-to-pay remain field-validation questions.
+This repository currently contains the CafeOS Analyzer module plus the canonical product mission/architecture/roadmap used to prevent Analyzer scope from redefining CafeOS. Analyzer is technically live; CafeOS Control Tower and the broader action/measurement loop remain product-discovery work.
 
 ## Security
 
