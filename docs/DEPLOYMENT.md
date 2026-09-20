@@ -20,7 +20,7 @@ Compatibility profile remains the preferred shareable evidence because it contai
 
 `public/` contains static pages. `api/` contains raw-body Vercel-shaped functions importing committed `dist/` output. `vercel.json` routes the static validation surface and uses `npm run verify:deploy` as the build gate.
 
-The validation preview intentionally deploys committed compiled output. `dist/.source-fingerprint.json` binds `dist/` to `src/**/*.ts` plus `tsconfig.json`; deployment verification fails if source changed without a local compile/stamp.
+The validation preview intentionally deploys committed compiled output. `dist/.source-fingerprint.json` binds `dist/` to `src/**/*.ts` plus `tsconfig.json`; deployment verification fails if source changed without a local compile/stamp. Preview deployment and committed-dist tests therefore do not require a globally installed TypeScript compiler.
 
 ## Release gates
 
@@ -47,7 +47,7 @@ The launcher:
 1. requires branch `main`;
 2. requires a clean working tree;
 3. fetches `origin/main` and refuses deployment if local HEAD differs;
-4. runs `npm test` and `npm run verify:deploy`;
+4. runs `npm run test:dist` and `npm run verify:deploy`;
 5. uses pinned Vercel CLI `59.20.0` to create/link a preview deployment in the configured Vercel team;
 6. attempts `vercel git connect` so future Git pushes can trigger Vercel deployments.
 
