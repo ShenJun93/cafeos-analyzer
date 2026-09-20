@@ -20,7 +20,7 @@ Compatibility profile remains the preferred shareable evidence because it contai
 
 `public/` contains static pages. `api/` contains raw-body Vercel-shaped functions importing committed `dist/` output. `vercel.json` routes the static validation surface and uses `npm run verify:deploy` as the build gate.
 
-The validation preview intentionally deploys committed compiled output. `dist/.source-fingerprint.json` binds `dist/` to `src/**/*.ts` plus `tsconfig.json`; deployment verification fails if source changed without a local compile/stamp. Preview deployment and committed-dist tests therefore do not require a globally installed TypeScript compiler.
+The validation preview intentionally deploys committed compiled output. `dist/.source-fingerprint.json` binds `dist/` to `src/**/*.ts` plus `tsconfig.json`; deployment verification fails if source changed without a local compile/stamp. Fingerprint text is normalized to LF before hashing so Windows CRLF checkouts and Linux LF checkouts produce the same hash. `.gitattributes` also pins fingerprint inputs to LF for future checkouts. Preview deployment and committed-dist tests therefore do not require a globally installed TypeScript compiler.
 
 ## Release gates
 
