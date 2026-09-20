@@ -1,0 +1,4 @@
+PurchaseDate,InvoiceCode,BranchName,ProductName,Quantity,LineNetAmount,ContactNumber
+2026-09-18T08:00:00+07:00,HD001,Nguyen Hue,Latte,1,55000,0001000001
+2026-09-19T08:10:00+07:00,HD002,Nguyen Hue,Matcha,2,120000,0001000001
+2026-09-20T09:00:00+07:00,HD003,Q7,Cold Brew,1,60000,

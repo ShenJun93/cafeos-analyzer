@@ -1,0 +1,24 @@
+{
+  "sha256": "e53cf6dc39df452612072d84b466fb3fc97a2e36a79fe6857de41a7778cdf1a3",
+  "files": [
+    "src/acquisition.ts",
+    "src/analyze.ts",
+    "src/batch.ts",
+    "src/csv.ts",
+    "src/file.ts",
+    "src/health.ts",
+    "src/imports.ts",
+    "src/insights.ts",
+    "src/mapping.ts",
+    "src/metrics.ts",
+    "src/node-shims.d.ts",
+    "src/normalize.ts",
+    "src/report.ts",
+    "src/types.ts",
+    "src/validation-gates.ts",
+    "src/validation-registry.ts",
+    "src/validation.ts",
+    "src/xlsx.ts",
+    "tsconfig.json"
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run verify:deploy",
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/analyzer",
+      "destination": "/analyzer.html"
+    },
+    {
+      "source": "/free-cafe-sales-analyzer",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/sample-report",
+      "destination": "/sample-report.html"
+    },
+    {
+      "source": "/feedback",
+      "destination": "/feedback.html"
+    },
+    {
+      "source": "/phan-tich-file-kiotviet-cafe",
+      "destination": "/phan-tich-file-kiotviet-cafe.html"
+    },
+    {
+      "source": "/phan-tich-file-sapo-fnb",
+      "destination": "/phan-tich-file-sapo-fnb.html"
+    },
+    {
+      "source": "/phan-tich-doanh-thu-quan-cafe-excel",
+      "destination": "/phan-tich-doanh-thu-quan-cafe-excel.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
+      ]
+    }
+  ]
+}

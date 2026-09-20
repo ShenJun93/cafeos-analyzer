@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.*
+.DS_Store
+
+# Generated/local validation artifacts
+release/
+field-sessions/
+field-validation-registry.json

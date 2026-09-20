@@ -1,0 +1,9 @@
+{
+  "events": [
+    {"id":"E1","at":"2026-09-20T01:00:00Z","event":"landing_view","anonymousSessionId":"S1","source":"google","medium":"organic","campaign":"free-analyzer"},
+    {"id":"E2","at":"2026-09-20T01:00:05Z","event":"analyzer_opened","anonymousSessionId":"S1","source":"google","medium":"organic","campaign":"free-analyzer"},
+    {"id":"E3","at":"2026-09-20T01:00:30Z","event":"upload_started","anonymousSessionId":"S1","source":"google","medium":"organic","campaign":"free-analyzer"},
+    {"id":"E4","at":"2026-09-20T01:00:35Z","event":"report_completed","anonymousSessionId":"S1","source":"google","medium":"organic","campaign":"free-analyzer"}
+  ],
+  "records": []
+}
