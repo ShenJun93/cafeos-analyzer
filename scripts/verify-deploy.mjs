@@ -15,7 +15,9 @@ const required = [
   'public/feedback.html',
   'public/phan-tich-file-kiotviet-cafe.html',
   'public/phan-tich-file-sapo-fnb.html',
-  'public/phan-tich-doanh-thu-quan-cafe-excel.html'
+  'public/phan-tich-doanh-thu-quan-cafe-excel.html',
+  'public/robots.txt',
+  'public/sitemap.xml'
 ];
 for (const path of required) await access(path);
 const expected = JSON.parse(await readFile('dist/.source-fingerprint.json', 'utf8'));
