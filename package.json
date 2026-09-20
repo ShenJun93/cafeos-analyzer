@@ -17,6 +17,7 @@
     "acquisition:scorecard": "npm run build && node scripts/acquisition-scorecard.mjs",
     "serve:vercel": "npm run build && node scripts/serve-vercel-preview.mjs",
     "verify:deploy": "node scripts/verify-deploy.mjs",
+    "verify:live": "node scripts/verify-live-deployment.mjs",
     "test:dist": "node scripts/verify-deploy.mjs && node --test tests/run.test.mjs tests/fingerprint.test.mjs tests/deploy-script.test.mjs",
     "field:session": "npm run build && node scripts/field-session.mjs",
     "field:finalize": "npm run build && node scripts/finalize-field-session.mjs",
