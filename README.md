@@ -51,6 +51,12 @@ CafeOS follows three rules:
 
 See `AGENTS.md`, `docs/METRICS.md`, `docs/DATA_CONTRACT.md`, `docs/INSIGHTS.md` and `docs/PRIVACY.md`.
 
+## Live validation surface
+
+Try the public validation build at: https://cafeos-analyzer.vercel.app
+
+The live surface processes CSV/XLSX transiently, does not persist uploads, and enforces a 4 MiB request limit. It is a validation build, not a production SaaS claim.
+
 ## Help validate POS compatibility
 
 Real export shapes are valuable evidence, but **do not upload raw merchant CSV/XLSX files to GitHub**.
@@ -65,7 +71,7 @@ Review the JSON, then open the **POS compatibility report** issue form and share
 
 Compatibility reports improve import coverage. They do not count as repeat-use or willingness-to-pay evidence by themselves.
 
-## Deploy validation preview
+## Deploy validation surface
 
 From a clean clone of canonical `main` on Windows:
 
