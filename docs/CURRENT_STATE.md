@@ -47,12 +47,16 @@ Analyzer deployment plumbing is CLOSED. Do not spend the next cycle expanding An
 
 ## Next action
 
-Move from Analyzer-centric work to **CafeOS Control Tower product discovery and thin-slice design**:
+Control Tower mission/PRD/reuse mapping/thin-slice design are now defined.
 
-1. score the highest-leverage HQ/customer jobs against current café/POS capabilities;
-2. define a separate Control Tower PRD;
-3. map existing Analyzer/data code into reusable foundation vs module-only code;
-4. design the thinnest persistent loop: `ingest → Daily Brief/Store Health → decision/action → measured follow-up`;
-5. preserve real target-ICP field validation, but interpret it as evidence for the relevant product layer rather than as authority to shrink CafeOS back into an Excel tool.
+Next code checkpoint is deliberately narrow:
+
+1. add `db/migrations/002_control_tower_core.sql` as a **schema contract only**;
+2. add contract tests for Store/Customer/Attention/Action/Measurement tables, RLS and status constraints;
+3. update `docs/DB_MODEL.md`;
+4. do **not** mutate a live Supabase project yet;
+5. after schema contract acceptance, build the authenticated `/api/app/*` and `/app` shell.
+
+See `docs/CONTROL_TOWER_IMPLEMENTATION_SLICE.md`.
 
 Primary distribution remains pull/inbound; no dependency on cold outbound sales.
