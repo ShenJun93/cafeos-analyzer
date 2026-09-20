@@ -56,34 +56,26 @@ First-time CLI authentication may require Vercel OAuth device/browser authorizat
 
 ## Verified live deployment
 
-Verified on 2026-09-20:
+Fully verified on 2026-09-20:
 
 - canonical URL: `https://cafeos-analyzer.vercel.app`
 - Vercel project: `cafeos-analyzer`
-- deployment ID: `dpl_FCQpJRX5CXBYFiMHA6yp1Hw4ttHV`
+- current production deployment: `dpl_DBRM2pVwmrsg7XUifnqFUcn8mk5e`
 - Vercel state: `READY`
 - Vercel target: `production`
 - Git source: `ShenJun93/cafeos-analyzer` / `main`
-- source commit: `5ba5ae133b6e6b99bedd6dfa0eeced1d6643ede5`
+- source commit: `7b32355174a419627f7ab6a98140c780bf8f4e86`
 - GET `/`: 200
 - GET `/analyzer`: 200
 - GET `/api/health`: 200 with `mode=public-validation`, `persistence=none`, `maxUploadBytes=4194304`
-- runtime error clusters during verification: none
+- POST known fixture to `/api/analyze?filename=known-anomaly.csv`: 200 with 97 orders, 4,850,000 VND net sales, 97 valid items
+- request larger than 4 MiB: 413
+- runtime error clusters after live verification: none
 
-## Remaining post-deploy checks
-
-Run the deterministic live verifier from a clean clone:
+The reproducible check is:
 
 ```bash
 npm run verify:live
 ```
 
-It verifies:
-
-- GET `/` → 200
-- GET `/analyzer` → 200
-- GET `/api/health` → 200 with the locked privacy/upload contract
-- POST the known fixture to `/api/analyze?filename=known-anomaly.csv` → 97 orders, 4,850,000 VND net sales, 97 valid items
-- request >4 MiB → 413
-
-After it passes, repeat the Vercel runtime-error scan. These checks are release verification, not product-market-fit evidence.
+The deployment gate is closed. Future work should return to field-validation evidence unless a live defect is found.
