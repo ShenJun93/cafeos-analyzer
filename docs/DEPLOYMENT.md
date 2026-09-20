@@ -72,8 +72,18 @@ Verified on 2026-09-20:
 
 ## Remaining post-deploy checks
 
-- POST known fixture to `/api/analyze?filename=known-anomaly.csv`
-- request >4 MiB must return 413
-- repeat runtime-error scan after the live POST smoke
+Run the deterministic live verifier from a clean clone:
 
-These remaining checks are release verification, not product-market-fit evidence.
+```bash
+npm run verify:live
+```
+
+It verifies:
+
+- GET `/` → 200
+- GET `/analyzer` → 200
+- GET `/api/health` → 200 with the locked privacy/upload contract
+- POST the known fixture to `/api/analyze?filename=known-anomaly.csv` → 97 orders, 4,850,000 VND net sales, 97 valid items
+- request >4 MiB → 413
+
+After it passes, repeat the Vercel runtime-error scan. These checks are release verification, not product-market-fit evidence.
