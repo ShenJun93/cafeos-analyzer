@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/stamp-dist.mjs",
-    "test": "npm run build && node --test tests/run.test.mjs tests/fingerprint.test.mjs",
+    "test": "npm run build && node --test tests/run.test.mjs tests/fingerprint.test.mjs tests/deploy-script.test.mjs",
     "analyze:fixture": "npm run build && node scripts/analyze-fixture.mjs fixtures/known-anomaly.csv",
     "analyze:file": "npm run build && node scripts/analyze-file.mjs",
     "serve": "npm run build && node scripts/serve.mjs",
@@ -17,7 +17,7 @@
     "acquisition:scorecard": "npm run build && node scripts/acquisition-scorecard.mjs",
     "serve:vercel": "npm run build && node scripts/serve-vercel-preview.mjs",
     "verify:deploy": "node scripts/verify-deploy.mjs",
-    "test:dist": "node scripts/verify-deploy.mjs && node --test tests/run.test.mjs tests/fingerprint.test.mjs",
+    "test:dist": "node scripts/verify-deploy.mjs && node --test tests/run.test.mjs tests/fingerprint.test.mjs tests/deploy-script.test.mjs",
     "field:session": "npm run build && node scripts/field-session.mjs",
     "field:finalize": "npm run build && node scripts/finalize-field-session.mjs",
     "field:registry:add": "npm run build && node scripts/field-registry.mjs add",
