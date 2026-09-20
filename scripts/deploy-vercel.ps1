@@ -34,20 +34,28 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "npm run verify:deploy failed" }
 
   $vercelArgs = @("--yes", "vercel@$cliVersion", "--yes", "--scope", $teamSlug)
+  $isLinked = Test-Path (Join-Path $repoRoot ".vercel\project.json")
   if ($Production) {
     $vercelArgs += "--prod"
     Write-Host "Deploying production from $localSha..." -ForegroundColor Yellow
-  } else {
+  } elseif ($isLinked) {
     Write-Host "Deploying preview from $localSha..." -ForegroundColor Green
+  } else {
+    Write-Host "Deploying initial Vercel release from $localSha (Vercel may assign the first deployment to production)..." -ForegroundColor Yellow
   }
 
   & npx @vercelArgs
   if ($LASTEXITCODE -ne 0) { throw "Vercel CLI deployment failed" }
 
   Write-Host "Connecting the Vercel project to the canonical GitHub remote..." -ForegroundColor Cyan
-  & npx --yes "vercel@$cliVersion" git connect --yes --scope $teamSlug
-  if ($LASTEXITCODE -ne 0) {
+  $gitConnectOutput = & npx --yes "vercel@$cliVersion" git connect --yes --scope $teamSlug 2>&1
+  $gitConnectExit = $LASTEXITCODE
+  $gitConnectOutput | Out-Host
+  $gitConnectText = $gitConnectOutput | Out-String
+  if ($gitConnectExit -ne 0 -and $gitConnectText -notmatch "already connected") {
     Write-Warning "Deployment succeeded, but Git auto-deploy connection was not confirmed. Run: npx --yes vercel@$cliVersion git connect --yes --scope $teamSlug"
+  } elseif ($gitConnectText -match "already connected") {
+    Write-Host "Git auto-deploy connection already exists." -ForegroundColor Green
   }
 }
 finally {
