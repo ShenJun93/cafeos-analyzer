@@ -24,8 +24,8 @@ Requirements: Node.js 20+.
 
 ```bash
 npm install
-npm test
-npm run analyze:fixture
+npm run test:dist
+node scripts/analyze-fixture.mjs fixtures/known-anomaly.csv
 ```
 
 Analyze one export:
@@ -73,7 +73,7 @@ From a clean clone of canonical `main` on Windows:
 powershell -ExecutionPolicy Bypass -File .\scripts\deploy-vercel.ps1
 ```
 
-The launcher refuses to deploy a dirty tree or a local `main` that differs from `origin/main`, runs `npm test` and `npm run verify:deploy`, then deploys with pinned Vercel CLI and attempts to connect the project to the canonical GitHub remote for future Git-triggered deployments.
+The launcher refuses to deploy a dirty tree or a local `main` that differs from `origin/main`, runs `npm run test:dist` and `npm run verify:deploy`, then deploys with pinned Vercel CLI and attempts to connect the project to the canonical GitHub remote for future Git-triggered deployments.
 
 First-time Vercel authentication may require the OAuth device/browser flow. Production deployment is explicit:
 
