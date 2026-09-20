@@ -1,0 +1,96 @@
+name: POS compatibility report
+description: Report a café POS export schema without sharing raw merchant data or PII.
+title: "[compatibility]: "
+labels:
+  - compatibility
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Privacy first:** do not upload or paste raw CSV/XLSX exports, customer names, phone numbers, emails, transaction rows, credentials, HMAC keys, or other merchant-sensitive data.
+
+        Prefer a schema-only compatibility profile generated locally with:
+
+        ```bash
+        npm run validation:profile -- path/to/export.xlsx > compatibility-profile.json
+        ```
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: POS / export source
+      options:
+        - KiotViet
+        - CUKCUK
+        - POS365
+        - Sapo FnB
+        - iPOS
+        - Other / unknown
+    validations:
+      required: true
+
+  - type: input
+    id: source_version
+    attributes:
+      label: Source version or export report name
+      description: Optional. Do not include merchant identity.
+      placeholder: "Example: invoice detail export / version unknown"
+
+  - type: dropdown
+    id: format
+    attributes:
+      label: Export format
+      options:
+        - CSV
+        - XLSX
+        - XLS
+        - Multiple split files
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: store_bucket
+    attributes:
+      label: Store-count bucket
+      description: Use a bucket only; do not identify the merchant.
+      options:
+        - 1-2
+        - 3-5
+        - 6-15
+        - 16+
+        - Unknown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: profile_result
+    attributes:
+      label: Did schema-only profiling succeed?
+      options:
+        - "Yes"
+        - "No"
+        - "Not attempted"
+    validations:
+      required: true
+
+  - type: textarea
+    id: profile
+    attributes:
+      label: Schema-only compatibility profile
+      description: Paste only the output of validation:profile, after checking that it contains no merchant-sensitive values.
+      render: json
+
+  - type: textarea
+    id: mapping_notes
+    attributes:
+      label: Mapping / import notes
+      description: Describe missing or ambiguous column mappings without pasting transaction rows.
+
+  - type: checkboxes
+    id: privacy_confirmation
+    attributes:
+      label: Privacy confirmation
+      options:
+        - label: I confirm this issue contains no raw merchant export, PII, credentials, private identifiers, or confidential commercial data.
+          required: true
