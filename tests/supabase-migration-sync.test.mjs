@@ -36,6 +36,18 @@ test("Daily Brief correctness migration stays text-equivalent to canonical contr
   assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
 });
 
+test("Daily Brief aggregate migration stays text-equivalent to canonical contract", async () => {
+  const source = await readFile(
+    new URL("../db/contracts/daily_brief_aggregate.sql", import.meta.url),
+    "utf8"
+  );
+  const migration = await readFile(
+    new URL("../supabase/migrations/20260921100900_daily_brief_aggregate.sql", import.meta.url),
+    "utf8"
+  );
+  assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
+});
+
 test("migration sync normalization ignores line-ending style only", () => {
   const lf = "select 1;\nselect 2;\n";
   const crlf = "select 1;\r\nselect 2;\r\n";
