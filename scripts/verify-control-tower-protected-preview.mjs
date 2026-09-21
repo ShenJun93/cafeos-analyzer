@@ -1,0 +1,191 @@
+import { spawnSync } from "node:child_process";
+
+const DEFAULTS = {
+  previewUrl: "https://cafeos-analyzer-nzb1i2njx-nvhoa1691993-6852s-projects.vercel.app",
+  supabaseUrl: "https://wjatnyvdygvblirggdcm.supabase.co",
+  email: "cafeos.synthetic.a@example.com",
+  allowedTenantId: "11111111-1111-4111-8111-111111111111",
+  forbiddenTenantId: "22222222-2222-4222-8222-222222222222",
+  teamSlug: "nvhoa1691993-6852s-projects",
+  projectId: "prj_HG27M5PTKPJCrHUA0LPUOmsCrYIe",
+  cliVersion: "59.20.0"
+};
+
+function fail(message) {
+  throw new Error(message);
+}
+
+function parseProtectedCurl(stdout) {
+  const marker = "__CAFEOS_STATUS__";
+  const index = stdout.lastIndexOf(marker);
+  if (index < 0) fail("Protected preview smoke could not read HTTP status from vercel curl");
+  const bodyText = stdout.slice(0, index).trim();
+  const statusText = stdout.slice(index + marker.length).trim().split(/\s+/)[0];
+  const status = Number(statusText);
+  if (!Number.isInteger(status)) fail("Protected preview smoke returned an invalid HTTP status");
+
+  let body = null;
+  if (bodyText) {
+    try { body = JSON.parse(bodyText); }
+    catch { fail("Protected preview smoke did not return JSON from CafeOS"); }
+  }
+  return { status, body };
+}
+
+function runVercelCurl(path, {
+  previewUrl,
+  teamSlug,
+  projectId,
+  cliVersion,
+  headers = {}
+}) {
+  const command = process.platform === "win32" ? "npx.cmd" : "npx";
+  const args = [
+    "--yes", `vercel@${cliVersion}`,
+    "curl", path,
+    "--deployment", previewUrl,
+    "--scope", teamSlug,
+    "--project", projectId,
+    "--",
+    "--silent",
+    "--show-error",
+    "--write-out", "\n__CAFEOS_STATUS__%{http_code}"
+  ];
+  for (const [name, value] of Object.entries(headers)) {
+    args.push("--header", `${name}: ${value}`);
+  }
+
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    maxBuffer: 1024 * 1024,
+    windowsHide: true
+  });
+
+  if (result.error) fail(`Could not start Vercel CLI: ${result.error.message}`);
+  if (result.status !== 0) {
+    const diagnostic = String(result.stderr || "").trim().split("\n").slice(-4).join("\n");
+    fail(`vercel curl failed with exit code ${result.status}${diagnostic ? `: ${diagnostic}` : ""}`);
+  }
+  return parseProtectedCurl(String(result.stdout || ""));
+}
+
+async function signInSyntheticUser({ supabaseUrl, publishableKey, email, password, fetchImpl }) {
+  const response = await fetchImpl(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: {
+      apikey: publishableKey,
+      accept: "application/json",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ email, password })
+  });
+
+  const text = await response.text();
+  let payload = null;
+  try { payload = text ? JSON.parse(text) : null; }
+  catch {}
+
+  if (!response.ok || !payload?.access_token) {
+    fail(`Synthetic Supabase Auth sign-in failed (HTTP ${response.status})`);
+  }
+  return payload.access_token;
+}
+
+function expect(result, status, code) {
+  if (result.status !== status) {
+    fail(`Expected HTTP ${status}, got ${result.status}`);
+  }
+  if (code && result.body?.error?.code !== code) {
+    fail(`Expected ${code}, got ${result.body?.error?.code ?? "no error code"}`);
+  }
+}
+
+export async function verifyProtectedPreview({
+  previewUrl = DEFAULTS.previewUrl,
+  supabaseUrl = DEFAULTS.supabaseUrl,
+  email = DEFAULTS.email,
+  allowedTenantId = DEFAULTS.allowedTenantId,
+  forbiddenTenantId = DEFAULTS.forbiddenTenantId,
+  publishableKey,
+  password,
+  fetchImpl = globalThis.fetch,
+  curlImpl = runVercelCurl,
+  log = console.log
+}) {
+  if (!publishableKey?.startsWith("sb_publishable_")) fail("SUPABASE_PUBLISHABLE_KEY is required");
+  if (!password) fail("Synthetic user password is required");
+  if (new URL(previewUrl).hostname === "cafeos-analyzer.vercel.app") {
+    fail("Authenticated smoke refuses the production alias");
+  }
+
+  const token = await signInSyntheticUser({
+    supabaseUrl, publishableKey, email, password, fetchImpl
+  });
+
+  const base = {
+    previewUrl,
+    teamSlug: DEFAULTS.teamSlug,
+    projectId: DEFAULTS.projectId,
+    cliVersion: DEFAULTS.cliVersion
+  };
+
+  const unauth = curlImpl("/api/app/session", base);
+  expect(unauth, 401, "AUTH_REQUIRED");
+  log("PASS unauthenticated session -> 401 AUTH_REQUIRED");
+
+  const authHeaders = { authorization: `Bearer ${token}` };
+  const session = curlImpl("/api/app/session", { ...base, headers: authHeaders });
+  expect(session, 200);
+  if (!Array.isArray(session.body?.memberships) ||
+      !session.body.memberships.some(x => x.tenantId === allowedTenantId)) {
+    fail("Expected Synthetic Tenant A membership was not returned");
+  }
+  if (session.body.memberships.some(x => x.tenantId === forbiddenTenantId)) {
+    fail("Synthetic user unexpectedly has Tenant B membership");
+  }
+  log("PASS authenticated session -> 200 with Tenant A only");
+
+  for (const path of ["/api/app/stores", "/api/app/attention", "/api/app/brief"]) {
+    const result = curlImpl(path, {
+      ...base,
+      headers: {
+        ...authHeaders,
+        "x-cafeos-tenant-id": allowedTenantId
+      }
+    });
+    expect(result, 200);
+    if (result.body?.tenant?.id !== allowedTenantId) {
+      fail(`${path} did not return Tenant A context`);
+    }
+    log(`PASS Tenant A ${path} -> 200`);
+  }
+
+  const forbidden = curlImpl("/api/app/stores", {
+    ...base,
+    headers: {
+      ...authHeaders,
+      "x-cafeos-tenant-id": forbiddenTenantId
+    }
+  });
+  expect(forbidden, 403, "TENANT_FORBIDDEN");
+  log("PASS Tenant B selection -> 403 TENANT_FORBIDDEN");
+
+  const invalid = curlImpl("/api/app/session", {
+    ...base,
+    headers: { authorization: "Bearer invalid.synthetic.jwt" }
+  });
+  expect(invalid, 401, "AUTH_INVALID");
+  log("PASS invalid JWT -> 401 AUTH_INVALID");
+
+  return { ok: true, previewUrl, allowedTenantId, forbiddenTenantId };
+}
+
+if (import.meta.url === new URL(`file://${process.argv[1].replaceAll("\\", "/")}`).href) {
+  const previewUrl = process.argv[2] || DEFAULTS.previewUrl;
+  const result = await verifyProtectedPreview({
+    previewUrl,
+    publishableKey: process.env.SUPABASE_PUBLISHABLE_KEY,
+    password: process.env.CAFEOS_TEST_USER_PASSWORD
+  });
+  console.log(`CONTROL TOWER AUTHENTICATED PREVIEW SMOKE PASS ${result.previewUrl}`);
+}
