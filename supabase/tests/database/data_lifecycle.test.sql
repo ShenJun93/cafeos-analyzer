@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(16);
+select plan(17);
 
 insert into public.tenants (id, name) values
   ('50000000-0000-0000-0000-000000000001', 'Delete A'),
@@ -237,10 +237,19 @@ set local role authenticated;
 set local request.jwt.claim.sub = 'f0000000-0000-0000-0000-000000000001';
 
 select results_eq(
-  $$select count(*) from public.stores
-    where tenant_id='60000000-0000-0000-0000-000000000002'::uuid$$,
+  $select count(*) from public.stores
+    where tenant_id='60000000-0000-0000-0000-000000000002'::uuid$,
   ARRAY[0::bigint],
   'Removing membership blocks a still-unexpired JWT through RLS'
+);
+
+select results_eq(
+  $select count(*) from public.actions
+    where tenant_id='60000000-0000-0000-0000-000000000002'::uuid
+      and id='66000000-0000-0000-0000-000000000002'::uuid
+      and owner_user_id is null$,
+  ARRAY[1::bigint],
+  'Membership deletion preserves action evidence and clears only the optional owner'
 );
 
 select results_eq(
