@@ -54,6 +54,13 @@ test("preview deploy launcher uses Vercel API upsert and keeps preview-only safe
   assert.match(ps, /ZeroFreeBSTR\(\$publishableKeyPtr\)/);
   assert.match(ps, /sb_publishable_/);
   assert.match(ps, /production alias will not be promoted/i);
+  assert.match(ps, /\[string\]\$ExpectedCommit = ""/);
+  assert.match(ps, /Non-main preview requires -ExpectedCommit with the exact 40-character merge-candidate SHA/);
+  assert.match(ps, /ExpectedCommit must be a full 40-character hexadecimal Git SHA/);
+  assert.match(ps, /Local HEAD \(\$localSha\) does not match ExpectedCommit \(\$expectedSha\)/);
+  assert.match(ps, /git branch -r --contains \$localSha/);
+  assert.match(ps, /is not present on any origin branch/);
+  assert.match(ps, /Local main \(\$localSha\) does not match origin\/main \(\$remoteSha\)/);
   assert.match(ps, /verify-control-tower-protected-preview\.mjs \$previewUrl --unauth-only/i);
   assert.match(ps, /cafeos-control-tower-preview-url\.txt/i);
   assert.match(ps, /Required Vercel preview variable is missing after API upsert/i);
