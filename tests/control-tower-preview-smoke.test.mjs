@@ -235,3 +235,11 @@ test("protected verifier uses deployment URL without forwarding project flags to
   assert.doesNotMatch(source, /"curl", path,[\s\S]*"--scope"/);
   assert.doesNotMatch(source, /"curl", path,[\s\S]*"--project"/);
 });
+test("protected verifier keeps curl write-out marker shell-safe", async () => {
+  const source = await readFile(
+    new URL("../scripts/verify-control-tower-protected-preview.mjs", import.meta.url),
+    "utf8"
+  );
+  assert.match(source, /"--write-out=__CAFEOS_STATUS__%\{http_code\}"/);
+  assert.doesNotMatch(source, /"--write-out",\s*"\\n__CAFEOS_STATUS__/);
+});
