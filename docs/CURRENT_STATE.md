@@ -96,14 +96,35 @@ See:
 - `docs/DAILY_BRIEF_READ_MODEL_DESIGN.md`
 - GitHub issue #21
 
+## Production data lifecycle gate
+
+Wave 28 defines the deletion/retention/recovery behavior required before real merchant data.
+
+Key locked boundaries:
+
+- public Analyzer upload bytes remain request-transient;
+- tenant access is revoked before tenant hard deletion;
+- Auth-user deletion is not sufficient by itself because already-issued JWTs may remain valid until expiry;
+- user offboarding must remove tenant memberships and terminate sessions before Auth-user deletion;
+- staging remains synthetic-only and does not justify paid PITR;
+- production must have at least one verified daily/off-site restore point;
+- initial design RPO is up to 24 hours with verified daily backups; RTO must be measured by restore drill;
+- PITR is optional and requires explicit cost approval;
+- no destructive production schema change without backup/recovery evidence.
+
+See:
+- `docs/DATA_LIFECYCLE_RECOVERY_DESIGN.md`
+- GitHub issue #23
+
 ## Next action
 
 1. run the Wave 26 guarded preview launcher from canonical local `main` when Vercel CLI access is available;
 2. create/use supported synthetic Supabase Auth identities;
 3. close issue #19 only after live authenticated 200/403/401 evidence;
-4. then fix issue #21 timestamp/order-identity correctness;
+4. fix issue #21 timestamp/order-identity correctness;
 5. implement a fixed RLS-safe Daily Brief aggregate read function;
-6. reuse the same read model for Store Health;
-7. only after read-path evidence, add bounded Attention → Action → Measurement writes.
+6. add issue #23 tenant-deletion/session-revocation DB tests before production persistence;
+7. perform a restore drill before authorizing the first merchant production tenant;
+8. only after read-path evidence, add bounded Attention → Action → Measurement writes.
 
 Primary distribution remains pull/inbound; no dependency on cold outbound sales.
