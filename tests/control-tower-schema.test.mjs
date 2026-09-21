@@ -47,7 +47,7 @@ test("existing line items keep every promoted relationship tenant-scoped", () =>
   has(/transaction_line_items_customer_fk[\s\S]*foreign key\s*\(tenant_id,\s*customer_id\)[\s\S]*references public\.customers\s*\(tenant_id,\s*id\)/i);
   has(/imports_tenant_id_id_key[\s\S]*unique\s*\(tenant_id,\s*id\)/i);
   has(/transaction_line_items_first_import_fk[\s\S]*foreign key\s*\(tenant_id,\s*first_import_id\)[\s\S]*references public\.imports\s*\(tenant_id,\s*id\)/i);
-  has(/drop constraint transaction_line_items_first_import_id_fkey/i);
+  has(/drop constraint(?: if exists)? transaction_line_items_first_import_id_fkey/i);
 });
 
 test("attention items are deterministic, evidence-backed, and tenant-idempotent", () => {
