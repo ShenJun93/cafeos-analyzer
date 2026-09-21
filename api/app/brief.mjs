@@ -4,22 +4,9 @@ import {
   appError,
   appJson,
   onlyGet,
+  requestedAsOfBusinessDate,
   supabaseJson
 } from '../_app-auth.mjs';
-
-function requestedAsOfBusinessDate(req) {
-  const url = new URL(req.url ?? '/', 'https://cafeos.local');
-  const raw = url.searchParams.get('asOfBusinessDate');
-  if (raw === null || raw === '') return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    throw new AppHttpError(400, 'AS_OF_DATE_INVALID', 'Invalid as-of business date');
-  }
-  const parsed = new Date(`${raw}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== raw) {
-    throw new AppHttpError(400, 'AS_OF_DATE_INVALID', 'Invalid as-of business date');
-  }
-  return raw;
-}
 
 function requireAggregate(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
