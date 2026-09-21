@@ -48,6 +48,18 @@ test("Daily Brief aggregate migration stays text-equivalent to canonical contrac
   assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
 });
 
+test("user-offboarding FK migration stays text-equivalent to canonical contract", async () => {
+  const source = await readFile(
+    new URL("../db/contracts/action_owner_offboarding.sql", import.meta.url),
+    "utf8"
+  );
+  const migration = await readFile(
+    new URL("../supabase/migrations/20260921170000_action_owner_offboarding.sql", import.meta.url),
+    "utf8"
+  );
+  assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
+});
+
 test("migration sync normalization ignores line-ending style only", () => {
   const lf = "select 1;\nselect 2;\n";
   const crlf = "select 1;\r\nselect 2;\r\n";
