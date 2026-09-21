@@ -205,6 +205,14 @@ export async function verifyProtectedPreview({
     if (result.body?.tenant?.id !== allowedTenantId) {
       fail(`${path} did not return Tenant A context`);
     }
+    if (path === "/api/app/brief") {
+      if (result.body?.capabilities?.deterministicTopMetrics !== true) {
+        fail("/api/app/brief did not enable deterministicTopMetrics");
+      }
+      if (!result.body?.metrics || !result.body?.coverage || !Object.hasOwn(result.body, "asOfBusinessDate")) {
+        fail("/api/app/brief did not return the deterministic Daily Brief contract");
+      }
+    }
     log(`PASS Tenant A ${path} -> 200`);
   }
 
