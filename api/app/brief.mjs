@@ -1,23 +1,42 @@
-import { appContext, appError, appJson, onlyGet, supabaseJson } from '../_app-auth.mjs';
+import {
+  AppHttpError,
+  appContext,
+  appError,
+  appJson,
+  onlyGet,
+  supabaseJson
+} from '../_app-auth.mjs';
+
+function requestedAsOfBusinessDate(req) {
+  const url = new URL(req.url ?? '/', 'https://cafeos.local');
+  const raw = url.searchParams.get('asOfBusinessDate');
+  if (raw === null || raw === '') return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    throw new AppHttpError(400, 'AS_OF_DATE_INVALID', 'Invalid as-of business date');
+  }
+  const parsed = new Date(`${raw}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== raw) {
+    throw new AppHttpError(400, 'AS_OF_DATE_INVALID', 'Invalid as-of business date');
+  }
+  return raw;
+}
+
+function requireAggregate(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new AppHttpError(502, 'SUPABASE_UPSTREAM', 'Control Tower data service returned an error');
+  }
+  if (!payload.metrics || !payload.coverage || !payload.freshness) {
+    throw new AppHttpError(502, 'SUPABASE_UPSTREAM', 'Control Tower data service returned an error');
+  }
+  return payload;
+}
 
 export async function handle(req, res, deps = {}) {
   if (!onlyGet(req, res)) return;
   try {
     const ctx = await appContext(req, deps);
-    const importParams = new URLSearchParams({
-      select: 'id,source_namespace,status,row_count,invalid_row_count,created_at,committed_at',
-      tenant_id: `eq.${ctx.tenant.id}`,
-      status: 'eq.committed',
-      order: 'committed_at.desc.nullslast,created_at.desc',
-      limit: '1'
-    });
-    const storeParams = new URLSearchParams({
-      select: 'id,name,timezone,active',
-      tenant_id: `eq.${ctx.tenant.id}`,
-      active: 'eq.true',
-      order: 'name.asc',
-      limit: '100'
-    });
+    const asOfBusinessDate = requestedAsOfBusinessDate(req);
+
     const attentionParams = new URLSearchParams({
       select: 'id,type,severity,metric,scope_type,scope_key,current_value,baseline_value,delta_value,coverage,confidence,evidence,detector_version,status,created_at',
       tenant_id: `eq.${ctx.tenant.id}`,
@@ -33,36 +52,37 @@ export async function handle(req, res, deps = {}) {
       limit: '20'
     });
 
-    const [imports, stores, attention, actions] = await Promise.all([
-      supabaseJson(`/rest/v1/imports?${importParams}`, { token: ctx.token, ...deps }),
-      supabaseJson(`/rest/v1/stores?${storeParams}`, { token: ctx.token, ...deps }),
+    const [aggregatePayload, attention, actions] = await Promise.all([
+      supabaseJson('/rest/v1/rpc/daily_brief_aggregate', {
+        token: ctx.token,
+        method: 'POST',
+        body: {
+          p_tenant_id: ctx.tenant.id,
+          p_as_of_business_date: asOfBusinessDate
+        },
+        ...deps
+      }),
       supabaseJson(`/rest/v1/attention_items?${attentionParams}`, { token: ctx.token, ...deps }),
       supabaseJson(`/rest/v1/actions?${actionParams}`, { token: ctx.token, ...deps })
     ]);
 
-    const latestImport = Array.isArray(imports) ? imports[0] ?? null : null;
-    const storeRows = Array.isArray(stores) ? stores : [];
+    const aggregate = requireAggregate(aggregatePayload);
     const attentionRows = Array.isArray(attention) ? attention : [];
     const actionRows = Array.isArray(actions) ? actions : [];
 
     return appJson(res, 200, {
-      kind: 'control-tower-read-shell',
+      kind: 'control-tower-daily-brief',
       tenant: ctx.tenant,
-      dataFreshness: latestImport ? {
-        importId: latestImport.id,
-        sourceNamespace: latestImport.source_namespace,
-        committedAt: latestImport.committed_at ?? latestImport.created_at,
-        rowCount: latestImport.row_count,
-        invalidRowCount: latestImport.invalid_row_count
-      } : null,
-      storeCount: storeRows.length,
-      stores: storeRows,
+      asOfBusinessDate: aggregate.asOfBusinessDate ?? null,
+      freshness: aggregate.freshness,
+      coverage: aggregate.coverage,
+      metrics: aggregate.metrics,
       attention: attentionRows,
       unresolvedActions: actionRows,
       capabilities: {
         persistedAttention: true,
         actionRead: true,
-        deterministicTopMetrics: false
+        deterministicTopMetrics: true
       }
     });
   } catch (error) {
