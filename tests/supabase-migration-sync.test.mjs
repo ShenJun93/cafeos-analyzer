@@ -60,6 +60,18 @@ test("user-offboarding FK migration stays text-equivalent to canonical contract"
   assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
 });
 
+test("Store Health read-model migration stays text-equivalent to canonical contract", async () => {
+  const source = await readFile(
+    new URL("../db/contracts/store_health_read_model.sql", import.meta.url),
+    "utf8"
+  );
+  const migration = await readFile(
+    new URL("../supabase/migrations/20260921132000_store_health_read_model.sql", import.meta.url),
+    "utf8"
+  );
+  assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
+});
+
 test("migration sync normalization ignores line-ending style only", () => {
   const lf = "select 1;\nselect 2;\n";
   const crlf = "select 1;\r\nselect 2;\r\n";
