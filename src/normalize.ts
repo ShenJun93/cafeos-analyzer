@@ -1,4 +1,10 @@
+import { assertIanaTimeZone, parseSourceTimestamp } from "./time.js";
 import type { CanonicalField, CanonicalLineItem } from "./types.js";
+
+export interface NormalizeOptions {
+  sourceTimezone: string;
+  sourceNamespace: string;
+}
 
 function numberFrom(value: string): number {
   const raw = value.trim().replace(/[₫đ\s]/gi, "");
@@ -8,26 +14,17 @@ function numberFrom(value: string): number {
   return Number(raw.replace(/,/g, ""));
 }
 
-function dateFrom(value: string): Date | null {
-  const raw = value.trim();
-  const vn = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2}|\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
-  if (vn) {
-    const [, dd, mm, yy, hh = "0", min = "0", ss = "0"] = vn;
-    const year = yy.length === 2 ? 2000 + Number(yy) : Number(yy);
-    const d = new Date(Date.UTC(year, Number(mm) - 1, Number(dd), Number(hh), Number(min), Number(ss)));
-    if (d.getUTCFullYear() === year && d.getUTCMonth() === Number(mm) - 1 && d.getUTCDate() === Number(dd)) return d;
-    return null;
-  }
-  const d = new Date(raw);
-  return Number.isNaN(d.valueOf()) ? null : d;
-}
-
 export function normalizeRows(
   rows: string[][],
-  mapping: Partial<Record<CanonicalField, number>>
+  mapping: Partial<Record<CanonicalField, number>>,
+  options: NormalizeOptions
 ): { valid: CanonicalLineItem[]; invalid: number } {
   const required: CanonicalField[] = ["transaction_id", "occurred_at", "store", "product", "quantity", "net_amount"];
   for (const field of required) if (mapping[field] === undefined) throw new Error(`Missing required mapping: ${field}`);
+
+  const sourceTimezone = assertIanaTimeZone(options.sourceTimezone);
+  const sourceNamespace = String(options.sourceNamespace ?? "").trim();
+  if (!sourceNamespace) throw new Error("sourceNamespace is required");
 
   const valid: CanonicalLineItem[] = [];
   let invalid = 0;
@@ -35,7 +32,7 @@ export function normalizeRows(
     const get = (field: CanonicalField) => row[mapping[field] as number]?.trim() ?? "";
     const quantity = numberFrom(get("quantity"));
     const netAmount = numberFrom(get("net_amount"));
-    const parsedDate = dateFrom(get("occurred_at"));
+    const parsedDate = parseSourceTimestamp(get("occurred_at"), sourceTimezone);
     const requiredStrings = [get("transaction_id"), get("store"), get("product")];
     if (requiredStrings.some(v => !v) || !Number.isFinite(quantity) || !Number.isFinite(netAmount) || !parsedDate) {
       invalid++; continue;
@@ -50,7 +47,8 @@ export function normalizeRows(
       product: get("product"),
       quantity,
       netAmount,
-      customerKey: customerKey || undefined
+      customerKey: customerKey || undefined,
+      sourceNamespace
     });
   }
   return { valid, invalid };
