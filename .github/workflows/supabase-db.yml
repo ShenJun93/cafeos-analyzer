@@ -1,0 +1,59 @@
+name: Supabase DB
+
+on:
+  push:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/tests/database/**"
+      - ".github/workflows/supabase-db.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/tests/database/**"
+      - ".github/workflows/supabase-db.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_USE_SLIM_IMAGES: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.117.0
+
+      - name: Initialize local Supabase config
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase --version
+          supabase init
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("supabase/config.toml")
+          s = p.read_text()
+          s = s.replace("# auto_expose_new_tables = true", "auto_expose_new_tables = false")
+          s = s.replace("[db.seed]\n# If enabled, seeds the database after migrations during a db reset.\nenabled = true",
+                        "[db.seed]\n# If enabled, seeds the database after migrations during a db reset.\nenabled = false")
+          p.write_text(s)
+          PY
+
+      - name: Start blank local Supabase stack and apply migrations
+        run: supabase start
+
+      - name: Run database tests
+        run: supabase test db
+
+      - name: Show migration state
+        if: always()
+        run: supabase migration list --local || true
+
+      - name: Stop local Supabase stack
+        if: always()
+        run: supabase stop --no-backup || true

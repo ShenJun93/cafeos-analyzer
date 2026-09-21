@@ -3,3 +3,8 @@ src/** text eol=lf
 tsconfig.json text eol=lf
 scripts/source-fingerprint.mjs text eol=lf
 dist/.source-fingerprint.json text eol=lf
+
+# Keep database contracts, migrations and pgTAP tests byte-stable across platforms.
+db/**/*.sql text eol=lf
+supabase/migrations/*.sql text eol=lf
+supabase/tests/**/*.sql text eol=lf
