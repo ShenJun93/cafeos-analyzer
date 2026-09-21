@@ -1,6 +1,6 @@
 # CafeOS Daily Brief read model — design gate
 
-Status: **DESIGN ONLY / NO BUILD until issue #19 authenticated preview E2E passes**
+Status: **CORRECTNESS GATE IMPLEMENTATION — issue #19 authenticated preview E2E is complete**
 
 ## User job
 
@@ -95,6 +95,8 @@ Minimum proposed metadata:
 - later, only if evidence requires it: timestamp-semantics version.
 
 For the Vietnam-first path the UI may prefill `Asia/Ho_Chi_Minh`, but the stored assumption must be explicit rather than hidden in parser code.
+
+The legacy standalone Analyzer keeps `UTC` as its compatibility default when no timezone option is supplied. That default is **not** valid authority for persisted Control Tower ingestion: any source that contains naive timestamps must provide an explicit `sourceTimezone` and persist it as `imports.source_timezone`.
 
 ### Business date
 
@@ -297,9 +299,9 @@ Do not add yet:
 
 ## Build gate
 
-Implementation remains blocked until GitHub issue #19 passes live authenticated preview E2E.
+GitHub issue #19 passed live authenticated preview E2E and is closed.
 
-Once #19 closes, first implementation PR should address correctness in this order:
+The first implementation sequence remains:
 
 1. timestamp/source-timezone semantics;
 2. source-scoped order identity;
