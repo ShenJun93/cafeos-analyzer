@@ -27,6 +27,9 @@ test("preview deploy launcher is preview-only and handles native npm stderr by e
   assert.match(ps, /SUPABASE_PUBLISHABLE_KEY/);
   assert.match(ps, /sb_publishable_/);
   assert.match(ps, /production alias will not be promoted/i);
+  assert.match(ps, /"curl", "\/api\/app\/session", "--deployment", \$previewUrl/i);
+  assert.match(ps, /AUTH_REQUIRED/);
+  assert.doesNotMatch(ps, /verify-control-tower-preview\.mjs \$previewUrl --unauth-only/i);
   assert.doesNotMatch(ps, /--prod\b/i);
   assert.doesNotMatch(ps, /sb_publishable_[A-Za-z0-9_-]{10,}/);
   assert.doesNotMatch(ps, /service_role/i);
