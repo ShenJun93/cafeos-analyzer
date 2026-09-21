@@ -258,9 +258,9 @@ set local role authenticated;
 set local request.jwt.claim.sub = 'f0000000-0000-0000-0000-000000000001';
 
 select results_eq(
-  $select private.has_tenant_access(
+  $q$select private.has_tenant_access(
       '60000000-0000-0000-0000-000000000002'::uuid
-    )$,
+    )$q$,
   ARRAY[false],
   'Membership removal immediately clears tenant authorization'
 );
