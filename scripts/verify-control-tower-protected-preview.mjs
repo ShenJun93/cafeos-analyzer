@@ -1,4 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const DEFAULTS = {
@@ -33,10 +36,18 @@ function parseProtectedCurl(stdout) {
   return { status, body };
 }
 
+function redactDiagnostic(text, headers = {}) {
+  let redacted = String(text || "");
+  for (const value of Object.values(headers)) {
+    if (!value) continue;
+    redacted = redacted.split(String(value)).join("[REDACTED]");
+  }
+  redacted = redacted.replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, "Bearer [REDACTED]");
+  return redacted;
+}
+
 function runVercelCurl(path, {
   previewUrl,
-  teamSlug,
-  projectId,
   cliVersion,
   headers = {}
 }) {
@@ -51,23 +62,44 @@ function runVercelCurl(path, {
     "--show-error",
     "--write-out=__CAFEOS_STATUS__%{http_code}"
   ];
-  for (const [name, value] of Object.entries(headers)) {
-    args.push("--header", `${name}: ${value}`);
-  }
 
-  const result = spawnSync(command, args, {
-    encoding: "utf8",
-    maxBuffer: 1024 * 1024,
-    windowsHide: true,
-    shell: useShell
-  });
+  let headerDir = null;
+  try {
+    if (Object.keys(headers).length > 0) {
+      headerDir = mkdtempSync(join(tmpdir(), "cafeos-vercel-curl-"));
+      const headerPath = join(headerDir, "headers.txt");
+      const headerText = Object.entries(headers)
+        .map(([name, value]) => `${name}: ${value}`)
+        .join("\r\n") + "\r\n";
+      writeFileSync(headerPath, headerText, { encoding: "utf8", mode: 0o600 });
+      args.push("--header", `@${headerPath}`);
+    }
 
-  if (result.error) fail(`Could not start Vercel CLI: ${result.error.message}`);
-  if (result.status !== 0) {
-    const diagnostic = String(result.stderr || "").trim().split("\n").slice(-4).join("\n");
-    fail(`vercel curl failed with exit code ${result.status}${diagnostic ? `: ${diagnostic}` : ""}`);
+    const result = spawnSync(command, args, {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+      shell: useShell
+    });
+
+    if (result.error) {
+      fail(`Could not start Vercel CLI: ${redactDiagnostic(result.error.message, headers)}`);
+    }
+    if (result.status !== 0) {
+      const diagnostic = redactDiagnostic(result.stderr, headers)
+        .trim()
+        .split("\n")
+        .slice(-4)
+        .join("\n");
+      fail(`vercel curl failed with exit code ${result.status}${diagnostic ? `: ${diagnostic}` : ""}`);
+    }
+    return parseProtectedCurl(String(result.stdout || ""));
   }
-  return parseProtectedCurl(String(result.stdout || ""));
+  finally {
+    if (headerDir) {
+      rmSync(headerDir, { recursive: true, force: true });
+    }
+  }
 }
 
 async function signInSyntheticUser({ supabaseUrl, publishableKey, email, password, fetchImpl }) {
@@ -125,8 +157,6 @@ export async function verifyProtectedPreview({
 
   const base = {
     previewUrl,
-    teamSlug: DEFAULTS.teamSlug,
-    projectId: DEFAULTS.projectId,
     cliVersion: DEFAULTS.cliVersion
   };
 
