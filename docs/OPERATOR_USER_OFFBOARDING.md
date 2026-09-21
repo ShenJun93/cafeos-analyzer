@@ -80,3 +80,35 @@ The command emits only:
 - whether an Auth user was deleted.
 
 It does not emit the raw user UUID, secret key, target JWT, tenant identifiers, email, or customer data.
+
+
+## Live synthetic acceptance
+
+Issue #45 is not complete until the supported Auth operations succeed against the CafeOS staging project with a disposable synthetic user.
+
+Run from a clean checkout of canonical `main`:
+
+```powershell
+npm run verify:operator-offboarding-live
+```
+
+The launcher is pinned to `cafeos-staging`. It securely prompts for:
+
+- the modern staging `sb_secret_...` key;
+- the modern staging `sb_publishable_...` key.
+
+Do not paste either key into chat, issue comments, screenshots, or shell history.
+
+The acceptance harness:
+
+1. creates a random email-confirmed Auth user used only for this test;
+2. adds only a `viewer` Tenant A membership;
+3. signs that user in and obtains a real user JWT;
+4. verifies the membership is caller-visible;
+5. executes the canonical membership-first `offboardUser()` workflow;
+6. verifies supported global logout and Auth hard-delete complete;
+7. verifies the old JWT either has no Tenant A membership through RLS or is rejected by Auth/API;
+8. emits only one-way user/tenant references and aggregate status;
+9. cleans up the disposable user/membership if an intermediate step fails.
+
+The established synthetic owner used by the Control Tower preview smoke is never targeted by this harness.
