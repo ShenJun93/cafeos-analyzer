@@ -8,6 +8,9 @@ export default async function handler(req, res) {
     const url = requestUrl(req);
     const filename = url.searchParams.get('filename') ?? 'upload.csv';
     const sheet = url.searchParams.get('sheet') ?? undefined;
+    const sourceTimezone = url.searchParams.get('sourceTimezone') ?? 'Asia/Ho_Chi_Minh';
+    const storeTimezone = url.searchParams.get('storeTimezone') ?? sourceTimezone;
+    const sourceNamespace = url.searchParams.get('sourceNamespace') ?? 'manual-upload';
     const mappingRaw = url.searchParams.get('mapping');
     let mapping;
     if (mappingRaw) {
@@ -19,7 +22,11 @@ export default async function handler(req, res) {
       const inspection = inspectXlsx(data);
       if (inspection.ambiguous) return json(res, 409, { code: 'AMBIGUOUS_SHEETS', workbook: inspection });
     }
-    const result = analyzeBytes(filename, data, sheet, mapping);
+    const result = analyzeBytes(filename, data, sheet, mapping, {
+      sourceTimezone,
+      defaultStoreTimezone: storeTimezone,
+      sourceNamespace
+    });
     const { items, ...safeResult } = result;
     return json(res, 200, { ...safeResult, itemCount: items.length });
   } catch (error) { return errorResponse(res, error); }
