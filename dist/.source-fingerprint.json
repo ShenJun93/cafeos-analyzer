@@ -1,5 +1,5 @@
 {
-  "sha256": "e53cf6dc39df452612072d84b466fb3fc97a2e36a79fe6857de41a7778cdf1a3",
+  "sha256": "c4d4376f862f1b6837bd37d66587cea1d253fa0b2e1a8640bdcb7a355d594ec1",
   "files": [
     "src/acquisition.ts",
     "src/analyze.ts",
@@ -14,6 +14,7 @@
     "src/node-shims.d.ts",
     "src/normalize.ts",
     "src/report.ts",
+    "src/time.ts",
     "src/types.ts",
     "src/validation-gates.ts",
     "src/validation-registry.ts",
