@@ -10,6 +10,7 @@ import {
 const SECRET = "sb_secret_operator_acceptance_test";
 const PUBLISHABLE = "sb_publishable_operator_acceptance_test";
 const USER_ID = "a3000000-0000-4000-8000-000000000001";
+const EXISTING_OWNER_ID = "987c2476-ea27-4485-a75b-f382bcf04dc7";
 const JWT = "eyJ.synthetic.acceptance.jwt";
 
 function jsonResponse(value, status = 200) {
@@ -76,11 +77,17 @@ function liveFixture({ failSignIn = false, staleJwtStatus = 200 } = {}) {
       if (isCaller && !membershipExists && staleJwtStatus !== 200) {
         return jsonResponse({ error_code: "session_not_found" }, staleJwtStatus);
       }
-      return jsonResponse(
-        membershipExists
+      const requestedUserId = u.searchParams.get("user_id");
+      const rows = [
+        { tenant_id: OPERATOR_ACCEPTANCE_TENANT_ID, user_id: EXISTING_OWNER_ID, role: "owner" },
+        ...(membershipExists
           ? [{ tenant_id: OPERATOR_ACCEPTANCE_TENANT_ID, user_id: USER_ID, role: "viewer" }]
-          : []
-      );
+          : [])
+      ];
+      if (requestedUserId === `eq.${USER_ID}`) {
+        return jsonResponse(rows.filter(row => row.user_id === USER_ID));
+      }
+      return jsonResponse(rows);
     }
 
     if (u.pathname === "/auth/v1/user" && method === "GET") {
@@ -130,6 +137,19 @@ test("live acceptance creates an ephemeral staging user and proves full offboard
   assert.equal(receipt.sessionRevocation, "global_signout_then_auth_user_hard_delete");
   assert.equal(receipt.authUserDeleted, true);
   assert.deepEqual(fixture.state(), { userExists: false, membershipExists: false });
+
+  const callerMembershipReads = fixture.calls.filter(
+    call =>
+      call.pathname === "/rest/v1/tenant_members" &&
+      call.method === "GET" &&
+      (call.headers.authorization ?? call.headers.Authorization) === "Bearer " + JWT
+  );
+  assert.ok(callerMembershipReads.length >= 2);
+  for (const call of callerMembershipReads) {
+    const params = new URLSearchParams(call.search);
+    assert.equal(params.get("tenant_id"), "eq." + OPERATOR_ACCEPTANCE_TENANT_ID);
+    assert.equal(params.get("user_id"), "eq." + USER_ID);
+  }
 
   const membershipDelete = fixture.calls.findIndex(
     call => call.pathname === "/rest/v1/tenant_members" && call.method === "DELETE"
