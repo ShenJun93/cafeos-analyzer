@@ -968,10 +968,10 @@ test("vercel rewrites preserve the four bounded workflow public URLs through one
 test("Control Tower server boundary never references secret or service-role credentials", async () => {
   const source = await readFile(new URL("../api/_app-auth.mjs", import.meta.url), "utf8");
   const endpoints = await Promise.all([
-    "session.mjs",
-    "stores.mjs",
-    "attention.mjs",
-    "brief.mjs",
+    "../api/app/session.mjs",
+    "../api/app/stores.mjs",
+    "../api/app/attention.mjs",
+    "../api/app/brief.mjs",
     "../api/app/store-health.mjs",
     "../api/app/workflow.mjs",
     "../server/app/actions.mjs",
