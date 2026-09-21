@@ -449,6 +449,28 @@ test("split-period batch merges multiple exports without double-counting overlap
   assert.equal(result.metrics.identifiedCustomers, 2);
 });
 
+test("batch preserves source-scoped order identity across colliding transaction IDs", () => {
+  const a = new TextEncoder().encode([
+    "occurred_at,transaction_id,store,product,quantity,net_amount",
+    "2026-09-21T08:00:00Z,SAME-ORDER,Q1,Latte,1,50000"
+  ].join("\n"));
+  const b = new TextEncoder().encode([
+    "occurred_at,transaction_id,store,product,quantity,net_amount",
+    "2026-09-21T08:05:00Z,SAME-ORDER,Q1,Tea,1,70000"
+  ].join("\n"));
+
+  const result = analyzeFileBatch([
+    { filename: "pos-a.csv", data: a, sourceNamespace: "pos-a" },
+    { filename: "pos-b.csv", data: b, sourceNamespace: "pos-b" }
+  ]);
+
+  assert.equal(result.metrics.orders, 2);
+  assert.equal(result.metrics.netSales, 120000);
+  assert.equal(result.metrics.aov, 60000);
+  assert.equal(result.items[0].sourceNamespace, "pos-a");
+  assert.equal(result.items[1].sourceNamespace, "pos-b");
+});
+
 test("batch supports independently mapped vendor-style files", async () => {
   const kiot = new Uint8Array(await readFile(new URL("../fixtures/vendor/kiotviet-style.csv", import.meta.url)));
   const cuk = new Uint8Array(await readFile(new URL("../fixtures/vendor/cukcuk-style.csv", import.meta.url)));
