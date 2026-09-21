@@ -49,14 +49,19 @@ Analyzer deployment plumbing is CLOSED. Do not spend the next cycle expanding An
 
 Control Tower mission/PRD/reuse mapping/thin-slice design are now defined.
 
-Next code checkpoint is deliberately narrow:
+Control Tower schema **contract** is now under CI at `db/contracts/control_tower_core.sql`.
 
-1. add `db/migrations/002_control_tower_core.sql` as a **schema contract only**;
-2. add contract tests for Store/Customer/Attention/Action/Measurement tables, RLS and status constraints;
-3. update `docs/DB_MODEL.md`;
-4. do **not** mutate a live Supabase project yet;
-5. after schema contract acceptance, build the authenticated `/api/app/*` and `/app` shell.
+It is intentionally not yet a migration because migration history must be created through the Supabase CLI workflow and validated against a disposable/local/staging database.
 
-See `docs/CONTROL_TOWER_IMPLEMENTATION_SLICE.md`.
+Next checkpoint:
+
+1. promote the reviewed contract with `supabase migration new control_tower_core` in an environment with a working CLI;
+2. add real DB/RLS negative tests for two tenants and role boundaries;
+3. run Supabase security + performance advisors;
+4. commit the generated migration only after those checks pass;
+5. do **not** mutate production or ingest real merchant data yet;
+6. after schema migration acceptance, build the authenticated `/api/app/*` and `/app` shell.
+
+See `docs/CONTROL_TOWER_IMPLEMENTATION_SLICE.md`, `docs/DB_MODEL.md` and `docs/SUPABASE_PROMOTION.md`.
 
 Primary distribution remains pull/inbound; no dependency on cold outbound sales.
