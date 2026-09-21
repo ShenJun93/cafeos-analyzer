@@ -136,12 +136,14 @@ async function callerMemberships({
   publishableKey,
   jwt,
   tenantId,
+  userId,
   fetchImpl,
   expectedStatuses = [200]
 }) {
   const params = new URLSearchParams({
-    select: "tenant_id,role",
-    tenant_id: `eq.${tenantId}`
+    select: "tenant_id,user_id,role",
+    tenant_id: `eq.${tenantId}`,
+    user_id: `eq.${userId}`
   });
   const result = await expectResponse(
     fetchImpl,
@@ -224,6 +226,7 @@ export async function verifyOperatorUserOffboardingLive({
       publishableKey: publishable,
       jwt,
       tenantId,
+      userId,
       fetchImpl
     });
     if (before.status !== 200 || before.rows.length !== 1) {
@@ -248,6 +251,7 @@ export async function verifyOperatorUserOffboardingLive({
       publishableKey: publishable,
       jwt,
       tenantId,
+      userId,
       fetchImpl,
       expectedStatuses: [200, 401, 403]
     });
