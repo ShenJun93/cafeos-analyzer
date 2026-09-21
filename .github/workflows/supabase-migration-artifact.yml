@@ -63,6 +63,7 @@ jobs:
         with:
           name: cafeos-supabase-migrations
           path: |
+            supabase/config.toml
             ${{ env.ANALYZER_MIGRATION }}
             ${{ env.CONTROL_TOWER_MIGRATION }}
             migration_paths.txt
