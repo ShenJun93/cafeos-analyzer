@@ -243,6 +243,8 @@ select results_eq(
   'Removing membership blocks a still-unexpired JWT through RLS'
 );
 
+reset role;
+
 select results_eq(
   $q$select count(*) from public.actions
     where tenant_id='60000000-0000-0000-0000-000000000002'::uuid
@@ -252,10 +254,13 @@ select results_eq(
   'Membership deletion preserves action evidence and clears only the optional owner'
 );
 
+set local role authenticated;
+set local request.jwt.claim.sub = 'f0000000-0000-0000-0000-000000000001';
+
 select results_eq(
-  $$select private.has_tenant_access(
+  $select private.has_tenant_access(
       '60000000-0000-0000-0000-000000000002'::uuid
-    )$$,
+    )$,
   ARRAY[false],
   'Membership removal immediately clears tenant authorization'
 );
