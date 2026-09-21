@@ -25,11 +25,12 @@ test("preview deploy launcher is preview-only and handles native npm stderr by e
   assert.match(ps, /\$ErrorActionPreference = "Continue"/);
   assert.match(ps, /\$exitCode = \$LASTEXITCODE/);
   assert.match(ps, /\$ErrorActionPreference = \$previousErrorActionPreference/);
-  assert.match(ps, /"env", "rm", \$Name, "preview", "--yes",[\s\S]*?"--scope", \$teamSlug, "--project", \$projectId/i);
-  assert.match(ps, /"env", "add", \$Name, "preview",[\s\S]*?"--scope", \$teamSlug, "--project", \$projectId/i);
-  assert.match(ps, /"env", "ls", "preview",[\s\S]*?"--scope", \$teamSlug, "--project", \$projectId/i);
+  assert.match(ps, /"env", "rm", \$Name, "preview", "--yes",[\s\S]*?"--scope", \$teamSlug/i);
+  assert.match(ps, /"env", "add", \$Name, "preview",[\s\S]*?"--scope", \$teamSlug/i);
+  assert.match(ps, /"env", "ls", "preview",[\s\S]*?"--format", "json",[\s\S]*?"--scope", \$teamSlug/i);
   assert.match(ps, /"deploy", "--yes",[\s\S]*?"--scope", \$teamSlug, "--project", \$projectId/i);
-  assert.doesNotMatch(ps, /"--scope", \$teamSlug, "--project", \$projectId,[\r\n\s]*"env", "(?:rm|add|ls)"/i);
+  assert.doesNotMatch(ps, /"env", "(?:rm|add|ls)"[\s\S]{0,180}"--project"/i);
+  assert.match(ps, /"key"\\s\*:\\s\*"/i);
   assert.match(ps, /-HasInput/);
   assert.match(ps, /SUPABASE_PUBLISHABLE_KEY/);
   assert.match(ps, /sb_publishable_/);
