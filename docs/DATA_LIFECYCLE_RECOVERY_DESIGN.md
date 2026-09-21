@@ -56,11 +56,22 @@ Retention while tenant is active:
 
 Tenant offboarding:
 
-- access is revoked first;
-- export/legal-hold requirements are checked;
-- tenant-owned data is then hard-deleted through a controlled server/admin workflow.
+- access and ingestion are revoked immediately;
+- the default **contractual CafeOS offboarding grace period is 14 calendar days**;
+- during grace, tenant data is recovery/export-only and must not return to ordinary interactive processing;
+- the merchant may request hard deletion earlier;
+- a valid personal-data deletion request or other applicable deletion duty may shorten the grace period;
+- documented legal/statutory hold or an explicitly agreed lawful retention obligation may delay deletion;
+- after grace/hold resolution, tenant-owned data is hard-deleted through a controlled server/admin workflow.
 
-An exact contractual grace-period duration is a business/privacy-policy decision and must be explicitly set before the first merchant production tenant. Engineering must not invent a legal retention period.
+The 14-day grace period is a **CafeOS product/contract default, not a claimed statutory minimum**. It was selected to provide a bounded export/recovery window while minimizing unnecessary post-termination retention.
+
+Vietnam's Personal Data Protection Law 91/2025/QH15 has been effective since 2026-01-01. Decree 356/2025/NĐ-CP requires organizations to maintain clear retention/deletion policy and, for a valid data-subject deletion request, currently requires a response within 2 working days and completion within 20 days; coordination with processors/third parties may take up to 30 days, with one justified extension of up to 20 days. Those statutory request-handling timelines override any longer internal convenience window.
+
+Official references:
+
+- https://vanban.chinhphu.vn/?classid=1&docid=214590&pageid=27160
+- https://vbpl.vn/bocongan/Pages/vbpq-toanvan.aspx?ItemID=187276
 
 ### C. Customer matching identifiers
 
@@ -96,13 +107,14 @@ A tenant deletion must be a bounded administrative operation, not a browser-side
 Required order:
 
 1. mark the tenant as pending offboarding in the control plane or operator workflow;
-2. remove/revoke interactive tenant memberships;
-3. stop/suspend ingestion for that tenant;
-4. confirm no legal/contractual hold;
-5. produce an export only if required/requested;
-6. hard-delete the tenant graph transactionally;
-7. verify zero tenant-owned rows remain;
-8. record a PII-minimized deletion receipt outside the deleted tenant graph.
+2. immediately remove/revoke interactive tenant memberships;
+3. immediately stop/suspend ingestion for that tenant;
+4. record the offboarding request time and default 14-calendar-day grace deadline;
+5. confirm whether a valid deletion request, legal/statutory hold, or explicitly agreed retention obligation changes that deadline;
+6. produce an export only if required/requested;
+7. hard-delete the tenant graph transactionally at the earlier valid deletion deadline or when grace expires;
+8. verify zero tenant-owned rows remain;
+9. record a PII-minimized deletion receipt outside the deleted tenant graph.
 
 Do not expose direct tenant DELETE to ordinary authenticated users in v0.1.
 
@@ -169,32 +181,36 @@ Minimum requirement:
 
 ### Production minimum
 
-Before real merchant persistence, choose a production project/plan with a documented backup path.
+**Selected initial production tier: Supabase Pro or stronger.**
 
-Supabase currently documents:
+As of 2026-09-21, Supabase publishes Pro at **$25/month** and includes automatic daily database backups with **7-day retention**. Paid-plan compute credits currently cover one default Micro instance. This is a commercial product choice, not a claim that Pro alone satisfies every future compliance requirement.
 
-- Pro: daily backups, last 7 days;
-- Team: daily backups, last 14 days;
-- Enterprise: up to 30 days;
-- Free: regularly create off-site logical backups using `supabase db dump`.
+Official references:
 
-Reference:
-https://supabase.com/docs/guides/platform/backups
+- https://supabase.com/pricing
+- https://supabase.com/docs/guides/platform/backups
 
 CafeOS initial production policy:
 
-- no real merchant data on a recovery model weaker than one verified daily/off-site restore point;
-- take an explicit logical backup before destructive/high-risk data migrations even when platform backups exist;
-- store operational backups outside the database being protected.
+- Free-tier database persistence is not authorized for real merchant Control Tower data;
+- first production merchant project must be Pro or stronger before persistence is enabled;
+- automatic daily backup is the initial ordinary recovery point, giving a design RPO of up to 24 hours;
+- PITR remains disabled by default;
+- take an explicit logical `supabase db dump` recovery bundle before every destructive/high-risk production migration;
+- operational logical backups must be stored outside the database/project being protected when they are required;
+- before the first merchant is admitted, perform one isolated **production-tier** restore acceptance against a real production-like restore point; the synthetic localhost drill is necessary evidence but does not replace this final gate.
+
+The current synthetic drill has already proven the CafeOS logical procedure itself: roles/schema/data dump, reset, restore, deterministic metric verification, tenant A/B isolation, and post-restore pgTAP.
 
 ## Initial recovery objective
 
 Before PITR:
 
 - design target RPO: **up to 24 hours**, assuming verified daily backups;
-- RTO: **measured by restore drill, not promised in advance**.
+- synthetic logical-drill RTO evidence on 2026-09-21: **25.637 seconds** for reset + restore + deterministic verification on the ephemeral local fixture;
+- production RTO remains **uncommitted until the production-tier restore drill is measured**.
 
-Do not advertise an RTO until a real restore drill records it.
+The synthetic measurement is an engineering regression benchmark, not a customer-facing production RTO.
 
 If observed business requirements need RPO materially below 24 hours, evaluate PITR.
 
@@ -270,16 +286,36 @@ Canonical migrations remain forward history. Do not rewrite already-applied prod
 
 ## Recovery drill gate
 
+### Synthetic procedure gate — COMPLETE
+
+PR #42 / issue #41 established a repeatable localhost-only logical restore drill.
+
+Measured evidence from Supabase DB run `35592673247`:
+
+- recovered point: `2026-09-21T10:00:00Z`;
+- logical dump: 4207 ms;
+- data restore SQL: 68 ms;
+- reset + restore + deterministic verification: 25637 ms;
+- recovered 2 synthetic tenants / 11 transaction rows;
+- deterministic Daily Brief verified;
+- Tenant A/B RLS isolation verified;
+- full 45-test pgTAP suite passed after restore;
+- temporary dump bundle removed at exit and never uploaded.
+
+### Production-tier gate — STILL REQUIRED
+
 Before first production merchant tenant:
 
-1. create a production-like disposable/restore target;
-2. restore a known backup/dump;
-3. apply canonical migrations if required;
-4. run DB pgTAP suite;
-5. run known Analyzer golden fixture;
-6. verify tenant A/B isolation;
-7. record measured restore time and data point recovered;
-8. document any manual reconfiguration.
+1. provision the approved Pro-or-stronger production project;
+2. obtain a real platform daily backup or approved external logical restore point;
+3. restore into an isolated production-like target;
+4. apply/verify canonical migration state;
+5. run DB pgTAP suite;
+6. run known deterministic fixtures;
+7. verify tenant A/B isolation;
+8. record measured restore duration and recovered point;
+9. document manual reconfiguration and secret/key rotation requirements;
+10. delete the isolated recovery target or sanitize it according to the same retention policy.
 
 Repeat after material persistence-model changes.
 
@@ -298,14 +334,21 @@ Do not copy deleted transaction/customer payloads into the audit record.
 
 ## Hard production gates remaining
 
-Before real merchant data:
+Already completed:
 
-- issue #19 authenticated preview E2E must pass;
-- issue #21 Daily Brief time/order identity correctness must pass;
-- exact commercial/privacy retention grace period must be explicitly selected;
-- tenant deletion cascade must have DB tests;
-- user offboarding must revoke memberships/sessions safely;
-- at least one restore drill must be measured;
-- production backup tier/strategy must be explicitly approved.
+- issue #19 authenticated preview E2E;
+- issue #21 Daily Brief time/order identity correctness;
+- 14-calendar-day contractual offboarding grace selected;
+- tenant deletion cascade DB tests;
+- membership-first stale-JWT authorization revocation;
+- synthetic restore drill measured;
+- initial production backup tier selected: Supabase Pro or stronger, daily backups, no default PITR.
+
+Still required before real merchant data:
+
+- supported Supabase Auth session-revocation operational acceptance;
+- final controlled user/tenant offboarding operator workflow;
+- final production-tier isolated restore acceptance against an actual Pro-or-stronger recovery point;
+- confirmation that the merchant contract/privacy notice reflects the 14-day default grace and any lawful exceptions.
 
 No production database is authorized merely because schema CI is green.
