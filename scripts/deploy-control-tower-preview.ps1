@@ -12,6 +12,8 @@ $productionAlias = "https://cafeos-analyzer.vercel.app"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $previewStatePath = Join-Path $repoRoot ".vercel\cafeos-control-tower-preview-url.txt"
+$securePublishableKey = $null
+$publishableKeyPtr = [IntPtr]::Zero
 Push-Location $repoRoot
 try {
   $branch = (git branch --show-current).Trim()
@@ -37,7 +39,9 @@ try {
 
   $publishableKey = $env:SUPABASE_PUBLISHABLE_KEY
   if ([string]::IsNullOrWhiteSpace($publishableKey)) {
-    throw "Set SUPABASE_PUBLISHABLE_KEY in the current PowerShell session before running this launcher."
+    $securePublishableKey = Read-Host "Staging SUPABASE_PUBLISHABLE_KEY (sb_publishable_...)" -AsSecureString
+    $publishableKeyPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePublishableKey)
+    $publishableKey = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($publishableKeyPtr)
   }
   if ($publishableKey -notmatch '^sb_publishable_') {
     throw "Wave 26 requires a modern sb_publishable_ key, not a secret/service-role key."
@@ -185,5 +189,9 @@ try {
   Write-Host "Run npm run verify:control-tower-auth-smoke for the authenticated Tenant A/B gate." -ForegroundColor Cyan
 }
 finally {
+  if ($publishableKeyPtr -ne [IntPtr]::Zero) {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($publishableKeyPtr)
+  }
+  $securePublishableKey = $null
   Pop-Location
 }

@@ -18,15 +18,25 @@ if ($PreviewUrl -eq "https://cafeos-analyzer.vercel.app") {
   throw "Authenticated smoke refuses the production alias."
 }
 
-if ([string]::IsNullOrWhiteSpace($env:SUPABASE_PUBLISHABLE_KEY)) {
-  throw "SUPABASE_PUBLISHABLE_KEY is not set in this PowerShell session."
-}
-
+$createdPublishableKeyEnv = $false
+$securePublishableKey = $null
+$publishableKeyPtr = [IntPtr]::Zero
 $createdPasswordEnv = $false
 $securePassword = $null
 $passwordPtr = [IntPtr]::Zero
 
 try {
+  if ([string]::IsNullOrWhiteSpace($env:SUPABASE_PUBLISHABLE_KEY)) {
+    $securePublishableKey = Read-Host "Staging SUPABASE_PUBLISHABLE_KEY (sb_publishable_...)" -AsSecureString
+    $publishableKeyPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePublishableKey)
+    $env:SUPABASE_PUBLISHABLE_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($publishableKeyPtr)
+    $createdPublishableKeyEnv = $true
+  }
+
+  if ($env:SUPABASE_PUBLISHABLE_KEY -notmatch '^sb_publishable_') {
+    throw "Authenticated smoke requires a modern sb_publishable_ key."
+  }
+
   if ([string]::IsNullOrWhiteSpace($env:CAFEOS_TEST_USER_PASSWORD)) {
     $securePassword = Read-Host "Synthetic CafeOS test-user password" -AsSecureString
     $passwordPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
@@ -43,8 +53,15 @@ finally {
   if ($createdPasswordEnv) {
     Remove-Item Env:CAFEOS_TEST_USER_PASSWORD -ErrorAction SilentlyContinue
   }
+  if ($createdPublishableKeyEnv) {
+    Remove-Item Env:SUPABASE_PUBLISHABLE_KEY -ErrorAction SilentlyContinue
+  }
   if ($passwordPtr -ne [IntPtr]::Zero) {
     [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPtr)
   }
+  if ($publishableKeyPtr -ne [IntPtr]::Zero) {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($publishableKeyPtr)
+  }
   $securePassword = $null
+  $securePublishableKey = $null
 }

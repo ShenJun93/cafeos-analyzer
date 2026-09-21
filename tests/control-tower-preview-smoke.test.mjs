@@ -42,6 +42,9 @@ test("preview deploy launcher uses Vercel API upsert and keeps preview-only safe
   assert.doesNotMatch(ps, /VERCEL_PROJECT_ID/i);
   assert.match(ps, /-HasInput/);
   assert.match(ps, /SUPABASE_PUBLISHABLE_KEY/);
+  assert.match(ps, /Read-Host "Staging SUPABASE_PUBLISHABLE_KEY \(sb_publishable_\.\.\.\)" -AsSecureString/);
+  assert.match(ps, /SecureStringToBSTR\(\$securePublishableKey\)/);
+  assert.match(ps, /ZeroFreeBSTR\(\$publishableKeyPtr\)/);
   assert.match(ps, /sb_publishable_/);
   assert.match(ps, /production alias will not be promoted/i);
   assert.match(ps, /verify-control-tower-protected-preview\.mjs \$previewUrl --unauth-only/i);
@@ -289,6 +292,21 @@ test("protected unauth verifier accepts only app-level AUTH_REQUIRED on a previe
 
   assert.equal(result.ok, true);
   assert.match(logs.join("\n"), /401 AUTH_REQUIRED/);
+});
+
+test("auth smoke securely prompts for publishable key when a new shell has no env var", async () => {
+  const wrapper = await readFile(
+    new URL("../scripts/run-control-tower-auth-smoke.ps1", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(wrapper, /Read-Host "Staging SUPABASE_PUBLISHABLE_KEY \(sb_publishable_\.\.\.\)" -AsSecureString/);
+  assert.match(wrapper, /SecureStringToBSTR\(\$securePublishableKey\)/);
+  assert.match(wrapper, /\$env:SUPABASE_PUBLISHABLE_KEY = \[Runtime\.InteropServices\.Marshal\]::PtrToStringBSTR\(\$publishableKeyPtr\)/);
+  assert.match(wrapper, /Authenticated smoke requires a modern sb_publishable_ key/);
+  assert.match(wrapper, /Remove-Item Env:SUPABASE_PUBLISHABLE_KEY/);
+  assert.match(wrapper, /ZeroFreeBSTR\(\$publishableKeyPtr\)/);
+  assert.doesNotMatch(wrapper, /SUPABASE_PUBLISHABLE_KEY is not set in this PowerShell session/);
 });
 
 test("auth smoke reads the fresh preview URL from ignored Vercel state and contains no stale deployment URL", async () => {
