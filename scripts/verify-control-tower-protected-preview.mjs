@@ -40,7 +40,8 @@ function runVercelCurl(path, {
   cliVersion,
   headers = {}
 }) {
-  const command = process.platform === "win32" ? "npx.cmd" : "npx";
+  const command = "npx";
+  const useShell = process.platform === "win32";
   const args = [
     "--yes", `vercel@${cliVersion}`,
     "curl", path,
@@ -59,7 +60,8 @@ function runVercelCurl(path, {
   const result = spawnSync(command, args, {
     encoding: "utf8",
     maxBuffer: 1024 * 1024,
-    windowsHide: true
+    windowsHide: true,
+    shell: useShell
   });
 
   if (result.error) fail(`Could not start Vercel CLI: ${result.error.message}`);
