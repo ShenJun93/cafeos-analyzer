@@ -45,21 +45,59 @@ try {
   npm run test:dist
   if ($LASTEXITCODE -ne 0) { throw "npm run test:dist failed" }
 
+  function Invoke-VercelCli {
+    param(
+      [string[]]$Arguments,
+      [AllowNull()][string]$InputText = $null,
+      [switch]$HasInput
+    )
+
+    # Windows PowerShell can surface a native process stderr line as NativeCommandError
+    # when ErrorActionPreference=Stop, even when the process exit code is 0.
+    # Vercel/npx may write informational npm notices to stderr, so capture native output
+    # with Continue and make the actual pass/fail decision from LASTEXITCODE.
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = "Continue"
+      if ($HasInput) {
+        $output = $InputText | & npx --yes "vercel@$cliVersion" @Arguments 2>&1
+      }
+      else {
+        $output = & npx --yes "vercel@$cliVersion" @Arguments 2>&1
+      }
+      $exitCode = $LASTEXITCODE
+    }
+    finally {
+      $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    return [pscustomobject]@{
+      ExitCode = $exitCode
+      Output = @($output)
+      Text = ($output | Out-String)
+    }
+  }
+
   function Set-PreviewEnv([string]$Name, [string]$Value) {
     Write-Host "Refreshing preview-only Vercel variable: $Name" -ForegroundColor Cyan
 
-    $removeOutput = & npx --yes "vercel@$cliVersion" env rm $Name preview --yes --scope $teamSlug --project $projectId 2>&1
-    $removeExit = $LASTEXITCODE
-    $removeText = $removeOutput | Out-String
-    if ($removeExit -ne 0 -and $removeText -notmatch '(not found|does not exist|no environment variable)') {
-      $removeOutput | Out-Host
+    $remove = Invoke-VercelCli -Arguments @(
+      "env", "rm", $Name, "preview", "--yes", "--scope", $teamSlug, "--project", $projectId
+    )
+    if ($remove.ExitCode -ne 0 -and $remove.Text -notmatch '(not found|does not exist|no environment variable)') {
+      $remove.Output | Out-Host
       throw "Could not safely refresh preview variable $Name"
     }
 
-    $Value | & npx --yes "vercel@$cliVersion" env add $Name preview --scope $teamSlug --project $projectId
-    if ($LASTEXITCODE -ne 0) {
+    $add = Invoke-VercelCli -Arguments @(
+      "env", "add", $Name, "preview", "--scope", $teamSlug, "--project", $projectId
+    ) -InputText $Value -HasInput
+    if ($add.ExitCode -ne 0) {
+      $add.Output | Out-Host
       throw "Failed to add preview variable $Name"
     }
+
+    Write-Host "Preview variable configured: $Name" -ForegroundColor Green
   }
 
   Set-PreviewEnv "SUPABASE_URL" $SupabaseUrl.TrimEnd("/")
@@ -71,12 +109,13 @@ try {
   }
 
   Write-Host "Deploying a PREVIEW target only; production alias will not be promoted." -ForegroundColor Green
-  $deployOutput = & npx --yes "vercel@$cliVersion" --yes --scope $teamSlug --project $projectId 2>&1
-  $deployExit = $LASTEXITCODE
-  $deployOutput | Out-Host
-  if ($deployExit -ne 0) { throw "Vercel preview deployment failed" }
+  $deploy = Invoke-VercelCli -Arguments @(
+    "--yes", "--scope", $teamSlug, "--project", $projectId
+  )
+  $deploy.Output | Out-Host
+  if ($deploy.ExitCode -ne 0) { throw "Vercel preview deployment failed" }
 
-  $deployText = $deployOutput | Out-String
+  $deployText = $deploy.Text
   $matches = [regex]::Matches($deployText, 'https://[^\s]+\.vercel\.app')
   if ($matches.Count -eq 0) {
     throw "Preview deployed but its URL could not be parsed from Vercel CLI output."
