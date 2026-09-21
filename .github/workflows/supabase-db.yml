@@ -5,11 +5,15 @@ on:
     paths:
       - "supabase/migrations/**"
       - "supabase/tests/database/**"
+      - "supabase/restore-fixtures/**"
+      - "scripts/run-supabase-restore-drill.sh"
       - ".github/workflows/supabase-db.yml"
   pull_request:
     paths:
       - "supabase/migrations/**"
       - "supabase/tests/database/**"
+      - "supabase/restore-fixtures/**"
+      - "scripts/run-supabase-restore-drill.sh"
       - ".github/workflows/supabase-db.yml"
 
 permissions:
@@ -48,6 +52,12 @@ jobs:
         run: supabase start
 
       - name: Run database tests
+        run: supabase test db
+
+      - name: Run isolated synthetic restore drill
+        run: bash scripts/run-supabase-restore-drill.sh
+
+      - name: Re-run database tests after restore
         run: supabase test db
 
       - name: Show migration state
