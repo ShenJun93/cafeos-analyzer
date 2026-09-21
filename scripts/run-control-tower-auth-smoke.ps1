@@ -1,8 +1,22 @@
 param(
-  [string]$PreviewUrl = "https://cafeos-analyzer-nzb1i2njx-nvhoa1691993-6852s-projects.vercel.app"
+  [string]$PreviewUrl = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+$previewStatePath = Join-Path $repoRoot ".vercel\cafeos-control-tower-preview-url.txt"
+
+if ([string]::IsNullOrWhiteSpace($PreviewUrl)) {
+  if (-not (Test-Path $previewStatePath)) {
+    throw "No fresh Control Tower preview URL is recorded. Run npm run deploy:control-tower-preview first."
+  }
+  $PreviewUrl = (Get-Content $previewStatePath -Raw).Trim()
+}
+
+if ($PreviewUrl -eq "https://cafeos-analyzer.vercel.app") {
+  throw "Authenticated smoke refuses the production alias."
+}
 
 if ([string]::IsNullOrWhiteSpace($env:SUPABASE_PUBLISHABLE_KEY)) {
   throw "SUPABASE_PUBLISHABLE_KEY is not set in this PowerShell session."
