@@ -13,9 +13,13 @@ import { handle as sessionHandle } from "../api/app/session.mjs";
 import { handle as storesHandle } from "../api/app/stores.mjs";
 import { handle as attentionHandle } from "../api/app/attention.mjs";
 import { handle as briefHandle } from "../api/app/brief.mjs";
+import { handle as storeHealthHandle } from "../api/app/store-health.mjs";
 
 const TENANT_A = "10000000-0000-4000-8000-000000000001";
 const USER_A = "a0000000-0000-4000-8000-000000000001";
+const STORE_A = "11000000-0000-4000-8000-000000000001";
+const STORE_B = "21000000-0000-4000-8000-000000000002";
+const ATTENTION_A = "12000000-0000-4000-8000-000000000001";
 const env = {
   SUPABASE_URL: "https://example.supabase.co",
   SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test"
@@ -364,13 +368,182 @@ test("brief fails closed when aggregate RPC returns a malformed payload", async 
   assert.equal(body.error.code, "SUPABASE_UPSTREAM");
 });
 
+test("Store Health uses caller-RLS preflight, shared aggregate RPC, and Store-scoped workflow reads", async () => {
+  const calls = [];
+  const aggregate = {
+    tenantId: TENANT_A,
+    store: { id: STORE_A, name: "Store A", timezone: "Asia/Ho_Chi_Minh", active: true },
+    asOfBusinessDate: "2026-09-21",
+    freshness: {
+      latestCommittedImportAt: "2026-09-21T00:00:00Z",
+      latestObservedTransactionAt: "2026-09-21T01:00:00Z"
+    },
+    coverage: {
+      currentHasData: true,
+      baselineSamples: []
+    },
+    metrics: {
+      netSales: { current: 80, baseline: 100, deltaPct: -0.2, baselineType: "same_weekday_4w", baselineDates: ["2026-08-24","2026-08-31","2026-09-07","2026-09-14"], baselineStatus: "ready" },
+      orders: { current: 2, baseline: 2, deltaPct: 0, baselineType: "same_weekday_4w", baselineDates: ["2026-08-24","2026-08-31","2026-09-07","2026-09-14"], baselineStatus: "ready" },
+      aov: { current: 40, baseline: 50, deltaPct: -0.2, baselineType: "same_weekday_4w", baselineDates: ["2026-08-24","2026-08-31","2026-09-07","2026-09-14"], baselineStatus: "ready" }
+    }
+  };
+
+  const fetchImpl = async (url, init = {}) => {
+    const u = new URL(url);
+    calls.push({ u, init });
+    if (u.pathname === "/auth/v1/user") return jsonResponse({ id: USER_A });
+    if (u.pathname === "/rest/v1/tenant_members") {
+      return jsonResponse([{ tenant_id: TENANT_A, role: "owner" }]);
+    }
+    if (u.pathname === "/rest/v1/stores") {
+      assert.equal(u.searchParams.get("tenant_id"), `eq.${TENANT_A}`);
+      assert.equal(u.searchParams.get("id"), `eq.${STORE_A}`);
+      assert.equal(u.searchParams.get("active"), "eq.true");
+      return jsonResponse([aggregate.store]);
+    }
+    if (u.pathname === "/rest/v1/rpc/store_health_aggregate") {
+      return jsonResponse(aggregate);
+    }
+    if (u.pathname === "/rest/v1/attention_items") {
+      assert.equal(u.searchParams.get("tenant_id"), `eq.${TENANT_A}`);
+      assert.equal(u.searchParams.get("scope_type"), "eq.store");
+      assert.equal(u.searchParams.get("scope_key"), `eq.${STORE_A}`);
+      return jsonResponse([{ id: ATTENTION_A, scope_type: "store", scope_key: STORE_A, status: "open" }]);
+    }
+    if (u.pathname === "/rest/v1/actions") {
+      assert.equal(u.searchParams.get("tenant_id"), `eq.${TENANT_A}`);
+      assert.equal(u.searchParams.get("attention_item_id"), `in.(${ATTENTION_A})`);
+      return jsonResponse([{ id: "action-1", attention_item_id: ATTENTION_A, status: "open" }]);
+    }
+    return jsonResponse({ error: "unexpected path" }, 500);
+  };
+
+  const response = res();
+  await storeHealthHandle(
+    req(
+      { authorization: "Bearer jwt", "x-cafeos-tenant-id": TENANT_A },
+      "GET",
+      `/api/app/store-health?storeId=${STORE_A}&asOfBusinessDate=2026-09-21`
+    ),
+    response,
+    { env, fetchImpl }
+  );
+
+  const body = parsed(response);
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.kind, "control-tower-store-health");
+  assert.equal(body.store.id, STORE_A);
+  assert.equal(body.asOfBusinessDate, "2026-09-21");
+  assert.deepEqual(body.metrics, aggregate.metrics);
+  assert.equal(body.attention.length, 1);
+  assert.equal(body.unresolvedActions.length, 1);
+  assert.equal(body.capabilities.deterministicMetrics, true);
+
+  const rpcCall = calls.find(call => call.u.pathname === "/rest/v1/rpc/store_health_aggregate");
+  assert.ok(rpcCall);
+  assert.equal(rpcCall.init.method, "POST");
+  assert.equal(rpcCall.init.headers.apikey, "sb_publishable_test");
+  assert.equal(rpcCall.init.headers.authorization, "Bearer jwt");
+  assert.deepEqual(JSON.parse(rpcCall.init.body), {
+    p_tenant_id: TENANT_A,
+    p_store_id: STORE_A,
+    p_as_of_business_date: "2026-09-21"
+  });
+});
+
+test("Store Health rejects invalid Store ids before Store data access", async () => {
+  let storeDataCalled = false;
+  const fetchImpl = async (url) => {
+    const u = new URL(url);
+    if (u.pathname === "/auth/v1/user") return jsonResponse({ id: USER_A });
+    if (u.pathname === "/rest/v1/tenant_members") return jsonResponse([{ tenant_id: TENANT_A, role: "owner" }]);
+    storeDataCalled = true;
+    return jsonResponse([]);
+  };
+
+  const response = res();
+  await storeHealthHandle(
+    req(
+      { authorization: "Bearer jwt", "x-cafeos-tenant-id": TENANT_A },
+      "GET",
+      "/api/app/store-health?storeId=not-a-uuid"
+    ),
+    response,
+    { env, fetchImpl }
+  );
+
+  const body = parsed(response);
+  assert.equal(response.statusCode, 400);
+  assert.equal(body.error.code, "STORE_INVALID");
+  assert.equal(storeDataCalled, false);
+});
+
+test("Store Health hides a Store outside the selected tenant before RPC", async () => {
+  let rpcCalled = false;
+  const fetchImpl = async (url) => {
+    const u = new URL(url);
+    if (u.pathname === "/auth/v1/user") return jsonResponse({ id: USER_A });
+    if (u.pathname === "/rest/v1/tenant_members") return jsonResponse([{ tenant_id: TENANT_A, role: "owner" }]);
+    if (u.pathname === "/rest/v1/stores") return jsonResponse([]);
+    if (u.pathname === "/rest/v1/rpc/store_health_aggregate") rpcCalled = true;
+    return jsonResponse([]);
+  };
+
+  const response = res();
+  await storeHealthHandle(
+    req(
+      { authorization: "Bearer jwt", "x-cafeos-tenant-id": TENANT_A },
+      "GET",
+      `/api/app/store-health?storeId=${STORE_B}`
+    ),
+    response,
+    { env, fetchImpl }
+  );
+
+  const body = parsed(response);
+  assert.equal(response.statusCode, 404);
+  assert.equal(body.error.code, "STORE_NOT_FOUND");
+  assert.equal(rpcCalled, false);
+});
+
+test("Store Health fails closed on malformed aggregate payload", async () => {
+  const fetchImpl = async (url) => {
+    const u = new URL(url);
+    if (u.pathname === "/auth/v1/user") return jsonResponse({ id: USER_A });
+    if (u.pathname === "/rest/v1/tenant_members") return jsonResponse([{ tenant_id: TENANT_A, role: "owner" }]);
+    if (u.pathname === "/rest/v1/stores") {
+      return jsonResponse([{ id: STORE_A, name: "Store A", timezone: "Asia/Ho_Chi_Minh", active: true }]);
+    }
+    if (u.pathname === "/rest/v1/rpc/store_health_aggregate") return jsonResponse({ store: { id: STORE_A } });
+    if (u.pathname === "/rest/v1/attention_items") return jsonResponse([]);
+    return jsonResponse([]);
+  };
+
+  const response = res();
+  await storeHealthHandle(
+    req(
+      { authorization: "Bearer jwt", "x-cafeos-tenant-id": TENANT_A },
+      "GET",
+      `/api/app/store-health?storeId=${STORE_A}`
+    ),
+    response,
+    { env, fetchImpl }
+  );
+
+  const body = parsed(response);
+  assert.equal(response.statusCode, 502);
+  assert.equal(body.error.code, "SUPABASE_UPSTREAM");
+});
+
 test("Control Tower server boundary never references secret or service-role credentials", async () => {
   const source = await readFile(new URL("../api/_app-auth.mjs", import.meta.url), "utf8");
   const endpoints = await Promise.all([
     "session.mjs",
     "stores.mjs",
     "attention.mjs",
-    "brief.mjs"
+    "brief.mjs",
+    "store-health.mjs"
   ].map(name => readFile(new URL(`../api/app/${name}`, import.meta.url), "utf8")));
   const combined = [source, ...endpoints].join("\n");
   assert.doesNotMatch(combined, /SUPABASE_SECRET/i);
@@ -383,10 +556,14 @@ test("Control Tower client boundary stays GET-only while brief uses fixed intern
     "../api/app/session.mjs",
     "../api/app/stores.mjs",
     "../api/app/attention.mjs",
-    "../api/app/brief.mjs"
+    "../api/app/brief.mjs",
+    "../api/app/store-health.mjs"
   ].map(path => readFile(new URL(path, import.meta.url), "utf8")));
   for (const source of files) assert.match(source, /onlyGet/);
-  const briefSource = files.at(-1);
+  const briefSource = files.at(-2);
+  const storeHealthSource = files.at(-1);
   assert.match(briefSource, /\/rest\/v1\/rpc\/daily_brief_aggregate/);
+  assert.match(storeHealthSource, /\/rest\/v1\/rpc\/store_health_aggregate/);
   assert.doesNotMatch(briefSource, /\/rest\/v1\/transaction_line_items/);
+  assert.doesNotMatch(storeHealthSource, /\/rest\/v1\/transaction_line_items/);
 });

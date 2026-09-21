@@ -193,7 +193,22 @@ export async function verifyProtectedPreview({
   }
   log("PASS authenticated session -> 200 with Tenant A only");
 
-  for (const path of ["/api/app/stores", "/api/app/attention", "/api/app/brief"]) {
+  const stores = curlImpl("/api/app/stores", {
+    ...base,
+    headers: {
+      ...authHeaders,
+      "x-cafeos-tenant-id": allowedTenantId
+    }
+  });
+  expect(stores, 200);
+  if (stores.body?.tenant?.id !== allowedTenantId || !Array.isArray(stores.body?.stores)) {
+    fail("/api/app/stores did not return Tenant A Store collection");
+  }
+  const storeId = stores.body.stores.find(store => store?.active !== false)?.id;
+  if (!storeId) fail("Tenant A synthetic Store was not returned");
+  log("PASS Tenant A /api/app/stores -> 200");
+
+  for (const path of ["/api/app/attention", "/api/app/brief"]) {
     const result = curlImpl(path, {
       ...base,
       headers: {
@@ -216,6 +231,25 @@ export async function verifyProtectedPreview({
     log(`PASS Tenant A ${path} -> 200`);
   }
 
+  const storeHealthPath = `/api/app/store-health?storeId=${encodeURIComponent(storeId)}`;
+  const storeHealth = curlImpl(storeHealthPath, {
+    ...base,
+    headers: {
+      ...authHeaders,
+      "x-cafeos-tenant-id": allowedTenantId
+    }
+  });
+  expect(storeHealth, 200);
+  if (storeHealth.body?.tenant?.id !== allowedTenantId ||
+      storeHealth.body?.store?.id !== storeId ||
+      storeHealth.body?.capabilities?.deterministicMetrics !== true ||
+      !storeHealth.body?.metrics ||
+      !storeHealth.body?.coverage ||
+      !Object.hasOwn(storeHealth.body, "asOfBusinessDate")) {
+    fail("/api/app/store-health did not return the deterministic Store Health contract");
+  }
+  log("PASS Tenant A /api/app/store-health -> 200");
+
   const forbidden = curlImpl("/api/app/stores", {
     ...base,
     headers: {
@@ -225,6 +259,16 @@ export async function verifyProtectedPreview({
   });
   expect(forbidden, 403, "TENANT_FORBIDDEN");
   log("PASS Tenant B selection -> 403 TENANT_FORBIDDEN");
+
+  const forbiddenStoreHealth = curlImpl(storeHealthPath, {
+    ...base,
+    headers: {
+      ...authHeaders,
+      "x-cafeos-tenant-id": forbiddenTenantId
+    }
+  });
+  expect(forbiddenStoreHealth, 403, "TENANT_FORBIDDEN");
+  log("PASS Tenant B Store Health selection -> 403 TENANT_FORBIDDEN");
 
   const invalid = curlImpl("/api/app/session", {
     ...base,

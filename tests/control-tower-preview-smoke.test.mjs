@@ -11,6 +11,7 @@ const PREVIEW = "https://cafeos-analyzer-wave26-example.vercel.app";
 const TENANT_A = "10000000-0000-4000-8000-000000000001";
 const TENANT_B = "20000000-0000-4000-8000-000000000002";
 const USER_A = "a0000000-0000-4000-8000-000000000001";
+const STORE_A = "11000000-0000-4000-8000-000000000001";
 const TOKEN = "synthetic-user-jwt";
 
 function jsonResponse(payload, status = 200) {
@@ -104,6 +105,12 @@ test("authenticated preview smoke proves own-tenant success and cross-tenant den
     if (tenant === TENANT_B) {
       return jsonResponse({ error: { code: "TENANT_FORBIDDEN" } }, 403);
     }
+    if (tenant === TENANT_A && u.pathname === "/api/app/stores") {
+      return jsonResponse({
+        tenant: { id: TENANT_A, role: "owner" },
+        stores: [{ id: STORE_A, name: "Store A", timezone: "Asia/Ho_Chi_Minh", active: true }]
+      });
+    }
     if (tenant === TENANT_A && u.pathname === "/api/app/brief") {
       return jsonResponse({
         tenant: { id: TENANT_A, role: "owner" },
@@ -113,7 +120,17 @@ test("authenticated preview smoke proves own-tenant success and cross-tenant den
         capabilities: { deterministicTopMetrics: true }
       });
     }
-    if (tenant === TENANT_A && ["/api/app/stores", "/api/app/attention"].includes(u.pathname)) {
+    if (tenant === TENANT_A && u.pathname === "/api/app/store-health") {
+      return jsonResponse({
+        tenant: { id: TENANT_A, role: "owner" },
+        store: { id: STORE_A, name: "Store A", timezone: "Asia/Ho_Chi_Minh", active: true },
+        asOfBusinessDate: "2026-09-21",
+        coverage: { currentHasData: true },
+        metrics: { netSales: {}, orders: {}, aov: {} },
+        capabilities: { deterministicMetrics: true }
+      });
+    }
+    if (tenant === TENANT_A && u.pathname === "/api/app/attention") {
       return jsonResponse({ tenant: { id: TENANT_A, role: "owner" } });
     }
     return jsonResponse({ error: { code: "UNEXPECTED" } }, 500);
@@ -130,6 +147,8 @@ test("authenticated preview smoke proves own-tenant success and cross-tenant den
 
   assert.equal(result.mode, "authenticated");
   assert.equal(seen.some(x => x.path === "/api/app/stores" && x.tenant === TENANT_A), true);
+  assert.equal(seen.some(x => x.path === "/api/app/store-health" && x.tenant === TENANT_A), true);
+  assert.equal(seen.some(x => x.path === "/api/app/store-health" && x.tenant === TENANT_B), true);
   assert.equal(seen.some(x => x.path === "/api/app/stores" && x.tenant === TENANT_B), true);
   assert.equal(seen.some(x => x.auth === "Bearer invalid.synthetic.jwt"), true);
 });
@@ -144,6 +163,12 @@ test("authenticated preview smoke rejects the legacy brief shell", async () => {
       return jsonResponse({
         user: { id: USER_A },
         memberships: [{ tenantId: TENANT_A, role: "owner", name: "Cafe A" }]
+      });
+    }
+    if (tenant === TENANT_A && u.pathname === "/api/app/stores") {
+      return jsonResponse({
+        tenant: { id: TENANT_A, role: "owner" },
+        stores: [{ id: STORE_A, name: "Store A", timezone: "Asia/Ho_Chi_Minh", active: true }]
       });
     }
     if (tenant === TENANT_A && u.pathname === "/api/app/brief") {
@@ -234,6 +259,15 @@ test("protected authenticated verifier obtains a user token without logging secr
     if (tenant === forbiddenTenantId) {
       return { status: 403, body: { error: { code: "TENANT_FORBIDDEN" } } };
     }
+    if (tenant === allowedTenantId && path === "/api/app/stores") {
+      return {
+        status: 200,
+        body: {
+          tenant: { id: allowedTenantId, role: "owner" },
+          stores: [{ id: STORE_A, name: "Store A", timezone: "Asia/Ho_Chi_Minh", active: true }]
+        }
+      };
+    }
     if (tenant === allowedTenantId && path === "/api/app/brief") {
       return {
         status: 200,
@@ -243,6 +277,19 @@ test("protected authenticated verifier obtains a user token without logging secr
           coverage: { activeStores: 1, storesRepresented: 1 },
           metrics: { netSales: {}, orders: {}, aov: {} },
           capabilities: { deterministicTopMetrics: true }
+        }
+      };
+    }
+    if (tenant === allowedTenantId && path.startsWith("/api/app/store-health?")) {
+      return {
+        status: 200,
+        body: {
+          tenant: { id: allowedTenantId, role: "owner" },
+          store: { id: STORE_A, name: "Store A", timezone: "Asia/Ho_Chi_Minh", active: true },
+          asOfBusinessDate: "2026-09-21",
+          coverage: { currentHasData: true },
+          metrics: { netSales: {}, orders: {}, aov: {} },
+          capabilities: { deterministicMetrics: true }
         }
       };
     }
