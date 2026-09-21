@@ -35,7 +35,7 @@ Each normalized line has deterministic `source_record_key`; uniqueness on `(tena
 - identifier rows are server-only in the first slice
 - line items gain nullable stable `customer_id`
 
-Composite foreign keys include `tenant_id` to reject cross-tenant references even when application code is wrong.
+Composite foreign keys include `tenant_id` to reject cross-tenant references even when application code is wrong. This includes Store, Customer, Attention, Action **and import lineage**: `transaction_line_items (tenant_id, first_import_id)` references `imports (tenant_id, id)`. Staging behavioral testing caught and closed the legacy single-column `first_import_id → imports(id)` tenant-integrity gap.
 
 ## Attention → Action → Measurement
 
@@ -51,6 +51,8 @@ This records before/after measured change without claiming causality.
 Grants and RLS are separate controls. The schema revokes anonymous product-table access, explicitly grants minimum authenticated operations, enables RLS on all new public tables, and keeps matching identifiers/trusted metric writes server-owned.
 
 ## Production gate
+
+Staging verification also requires Supabase Security Advisor to be clean and no unindexed-foreign-key lint for the Control Tower schema. `unused_index` INFO on a synthetic/near-empty staging database is not grounds for deleting an index without workload evidence.
 
 Migration/RLS reproducibility is not authorization for production merchant data. Before real merchant data: define retention/deletion, rollback/recovery, verify authenticated request context, re-run advisors after DDL changes, and make an explicit production release decision.
 
