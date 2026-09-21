@@ -188,12 +188,14 @@ function parseDateStyleIndexes(stylesXml) {
     }
     return dateStyles;
 }
-function excelSerialToIso(serial, date1904) {
+function excelSerialToNaiveIso(serial, date1904) {
     const dayMs = 86_400_000;
-    if (date1904)
-        return new Date(Date.UTC(1904, 0, 1) + serial * dayMs).toISOString();
-    const adjusted = serial >= 60 ? serial - 1 : serial;
-    return new Date(Date.UTC(1899, 11, 31) + adjusted * dayMs).toISOString();
+    const ms = date1904
+        ? Date.UTC(1904, 0, 1) + serial * dayMs
+        : Date.UTC(1899, 11, 31) + (serial >= 60 ? serial - 1 : serial) * dayMs;
+    // Excel serial dates are wall-clock values with no timezone. Keep them naive
+    // so normalizeRows can apply the explicit source IANA timezone.
+    return new Date(ms).toISOString().slice(0, 19);
 }
 function columnIndex(ref) {
     const letters = ref.match(/^[A-Z]+/i)?.[0]?.toUpperCase();
@@ -221,7 +223,7 @@ function cellValue(xml, attrs, shared, dateStyles, date1904) {
     const style = Number(attrs.s ?? -1);
     const number = Number(value);
     if (value && Number.isFinite(number) && dateStyles.has(style))
-        return excelSerialToIso(number, date1904);
+        return excelSerialToNaiveIso(number, date1904);
     return value;
 }
 function parseWorksheet(xml, shared, dateStyles, date1904) {
@@ -309,7 +311,7 @@ export function inspectXlsx(data) {
     const ambiguous = Boolean(suggestedSheet && second && second.mappedRequired === REQUIRED_FIELDS.length && Math.abs(top.candidateScore - second.candidateScore) < 0.0001);
     return { sheets, suggestedSheet, ambiguous };
 }
-export function analyzeXlsx(data, sheetName, mappingOverride) {
+export function analyzeXlsx(data, sheetName, mappingOverride, options = {}) {
     const workbook = parseWorkbook(data);
     const inspectionSheets = workbook.sheets.map(s => inspectRows(s.name, s.rows));
     const ranked = [...inspectionSheets].sort((a, b) => b.candidateScore - a.candidateScore || b.rowCount - a.rowCount);
@@ -323,7 +325,7 @@ export function analyzeXlsx(data, sheetName, mappingOverride) {
     const selected = workbook.sheets.find(s => s.name === selectedName);
     if (!selected)
         throw new Error(`Worksheet not found: ${selectedName}`);
-    const analysis = analyzeTable(selected.rows, mappingOverride);
+    const analysis = analyzeTable(selected.rows, mappingOverride, options);
     return {
         ...analysis,
         workbook: {
