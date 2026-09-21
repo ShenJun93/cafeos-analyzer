@@ -1,16 +1,22 @@
 import type { CanonicalLineItem, CoreMetrics } from "./types.js";
 
+export function sourceScopedOrderIdentity(item: CanonicalLineItem): string {
+  const sourceNamespace = String(item.sourceNamespace ?? "legacy").trim() || "legacy";
+  return `${sourceNamespace}\u001f${item.transactionId}`;
+}
+
 export function computeCoreMetrics(items: CanonicalLineItem[]): CoreMetrics {
   const orders = new Map<string, { customer?: string }>();
   const customerOrders = new Map<string, Set<string>>();
   let netSales = 0;
   for (const item of items) {
     netSales += item.netAmount;
-    const prior = orders.get(item.transactionId);
-    orders.set(item.transactionId, { customer: prior?.customer ?? item.customerKey });
+    const orderId = sourceScopedOrderIdentity(item);
+    const prior = orders.get(orderId);
+    orders.set(orderId, { customer: prior?.customer ?? item.customerKey });
     if (item.customerKey) {
       const set = customerOrders.get(item.customerKey) ?? new Set<string>();
-      set.add(item.transactionId); customerOrders.set(item.customerKey, set);
+      set.add(orderId); customerOrders.set(item.customerKey, set);
     }
   }
   const orderCount = orders.size;

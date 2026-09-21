@@ -7,6 +7,7 @@ export interface CanonicalLineItem {
     quantity: number;
     netAmount: number;
     customerKey?: string;
+    sourceNamespace?: string;
 }
 export interface DataHealth {
     rows: number;
@@ -37,10 +38,15 @@ export interface Insight {
     orderDeltaPct: number;
     evidenceDates: string[];
 }
+export interface AnalysisTimeAssumptions {
+    sourceTimezone: string;
+    defaultStoreTimezone: string;
+}
 export interface AnalysisResult {
     mapping: Partial<Record<CanonicalField, number>>;
     health: DataHealth;
     metrics: CoreMetrics;
+    timeAssumptions: AnalysisTimeAssumptions;
     capabilities: {
         salesAnalytics: boolean;
         customerRetention: boolean;

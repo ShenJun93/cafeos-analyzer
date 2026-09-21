@@ -1,6 +1,6 @@
 # CafeOS Daily Brief read model — design gate
 
-Status: **DESIGN ONLY / NO BUILD until issue #19 authenticated preview E2E passes**
+Status: **IMPLEMENTATION UNBLOCKED — issue #19 authenticated preview E2E passed; issue #21 correctness contract is being implemented before authoritative Daily Brief aggregates.**
 
 ## User job
 
@@ -297,9 +297,7 @@ Do not add yet:
 
 ## Build gate
 
-Implementation remains blocked until GitHub issue #19 passes live authenticated preview E2E.
-
-Once #19 closes, first implementation PR should address correctness in this order:
+GitHub issue #19 passed live authenticated preview E2E on 2026-09-21. The implementation sequence is now:
 
 1. timestamp/source-timezone semantics;
 2. source-scoped order identity;

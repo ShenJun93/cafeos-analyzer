@@ -6,10 +6,24 @@ const sql = await readFile(
   new URL("../db/contracts/control_tower_core.sql", import.meta.url),
   "utf8"
 );
+const correctnessSql = await readFile(
+  new URL("../db/contracts/daily_brief_correctness.sql", import.meta.url),
+  "utf8"
+);
 
 function has(pattern, message) {
   assert.match(sql, pattern, message);
 }
+
+
+test("Daily Brief correctness contract persists and validates IANA timezone assumptions", () => {
+  assert.match(correctnessSql, /alter table public\.imports[\s\S]*add column if not exists source_timezone text/i);
+  assert.match(correctnessSql, /create or replace function private\.is_valid_iana_timezone\(candidate text\)/i);
+  assert.match(correctnessSql, /pg_catalog\.pg_timezone_names/i);
+  assert.match(correctnessSql, /imports_source_timezone_iana_check[\s\S]*source_timezone is null[\s\S]*is_valid_iana_timezone\(source_timezone\)/i);
+  assert.match(correctnessSql, /stores_timezone_iana_check[\s\S]*is_valid_iana_timezone\(timezone\)/i);
+  assert.match(correctnessSql, /grant execute on function private\.is_valid_iana_timezone\(text\) to authenticated, service_role/i);
+});
 
 test("Control Tower contract creates only the locked thin-slice tables", () => {
   for (const table of [
