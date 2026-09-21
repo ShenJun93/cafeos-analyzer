@@ -14,6 +14,7 @@ const required = [
   'api/app/stores.mjs',
   'api/app/attention.mjs',
   'api/app/brief.mjs',
+  'api/app/store-health.mjs',
   'public/index.html',
   'public/analyzer.html',
   'public/sample-report.html',
