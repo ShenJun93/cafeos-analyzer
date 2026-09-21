@@ -10,6 +10,7 @@ import {
 const PREVIEW = "https://cafeos-analyzer-wave26-example.vercel.app";
 const TENANT_A = "10000000-0000-4000-8000-000000000001";
 const TENANT_B = "20000000-0000-4000-8000-000000000002";
+const USER_A = "a0000000-0000-4000-8000-000000000001";
 const TOKEN = "synthetic-user-jwt";
 
 function jsonResponse(payload, status = 200) {
@@ -103,7 +104,16 @@ test("authenticated preview smoke proves own-tenant success and cross-tenant den
     if (tenant === TENANT_B) {
       return jsonResponse({ error: { code: "TENANT_FORBIDDEN" } }, 403);
     }
-    if (tenant === TENANT_A && ["/api/app/stores", "/api/app/attention", "/api/app/brief"].includes(u.pathname)) {
+    if (tenant === TENANT_A && u.pathname === "/api/app/brief") {
+      return jsonResponse({
+        tenant: { id: TENANT_A, role: "owner" },
+        asOfBusinessDate: "2026-09-21",
+        coverage: { activeStores: 1, storesRepresented: 1 },
+        metrics: { netSales: {}, orders: {}, aov: {} },
+        capabilities: { deterministicTopMetrics: true }
+      });
+    }
+    if (tenant === TENANT_A && ["/api/app/stores", "/api/app/attention"].includes(u.pathname)) {
       return jsonResponse({ tenant: { id: TENANT_A, role: "owner" } });
     }
     return jsonResponse({ error: { code: "UNEXPECTED" } }, 500);
@@ -122,6 +132,41 @@ test("authenticated preview smoke proves own-tenant success and cross-tenant den
   assert.equal(seen.some(x => x.path === "/api/app/stores" && x.tenant === TENANT_A), true);
   assert.equal(seen.some(x => x.path === "/api/app/stores" && x.tenant === TENANT_B), true);
   assert.equal(seen.some(x => x.auth === "Bearer invalid.synthetic.jwt"), true);
+});
+
+test("authenticated preview smoke rejects the legacy brief shell", async () => {
+  const fetchImpl = async (url, options = {}) => {
+    const u = new URL(url);
+    const auth = options.headers?.authorization;
+    const tenant = options.headers?.["x-cafeos-tenant-id"];
+    if (u.pathname === "/api/app/session" && !auth) return jsonResponse({ error: { code: "AUTH_REQUIRED" } }, 401);
+    if (u.pathname === "/api/app/session" && auth === `Bearer ${TOKEN}`) {
+      return jsonResponse({
+        user: { id: USER_A },
+        memberships: [{ tenantId: TENANT_A, role: "owner", name: "Cafe A" }]
+      });
+    }
+    if (tenant === TENANT_A && u.pathname === "/api/app/brief") {
+      return jsonResponse({
+        tenant: { id: TENANT_A, role: "owner" },
+        capabilities: { deterministicTopMetrics: false }
+      });
+    }
+    if (tenant === TENANT_A) return jsonResponse({ tenant: { id: TENANT_A, role: "owner" } });
+    return jsonResponse({ error: { code: "TENANT_FORBIDDEN" } }, 403);
+  };
+
+  await assert.rejects(
+    verifyControlTowerPreview({
+      baseUrl: PREVIEW,
+      token: TOKEN,
+      tenantId: TENANT_A,
+      forbiddenTenantId: TENANT_B,
+      fetchImpl,
+      log: () => {}
+    }),
+    /deterministicTopMetrics/
+  );
 });
 
 test("authenticated smoke refuses the production alias", async () => {
@@ -188,6 +233,18 @@ test("protected authenticated verifier obtains a user token without logging secr
     }
     if (tenant === forbiddenTenantId) {
       return { status: 403, body: { error: { code: "TENANT_FORBIDDEN" } } };
+    }
+    if (tenant === allowedTenantId && path === "/api/app/brief") {
+      return {
+        status: 200,
+        body: {
+          tenant: { id: allowedTenantId, role: "owner" },
+          asOfBusinessDate: "2026-09-21",
+          coverage: { activeStores: 1, storesRepresented: 1 },
+          metrics: { netSales: {}, orders: {}, aov: {} },
+          capabilities: { deterministicTopMetrics: true }
+        }
+      };
     }
     if (tenant === allowedTenantId) {
       return { status: 200, body: { tenant: { id: allowedTenantId, role: "owner" } } };
