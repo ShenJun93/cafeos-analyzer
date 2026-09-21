@@ -1,12 +1,13 @@
 import { parseCsv } from "./csv.js";
 import { mapHeaders } from "./mapping.js";
-import { normalizeRows } from "./normalize.js";
+import { normalizeRows, type NormalizeOptions } from "./normalize.js";
 import { computeDataHealth } from "./health.js";
 import { computeCoreMetrics } from "./metrics.js";
 import { detectStoreDaypartDeclines } from "./insights.js";
 import type { AnalysisResult, CanonicalField, CanonicalLineItem } from "./types.js";
 
 export type MappingOverride = Partial<Record<CanonicalField, number>>;
+export type AnalysisOptions = NormalizeOptions;
 
 function validatedMapping(headers: string[], override?: MappingOverride): Partial<Record<CanonicalField, number>> {
   const mapping = { ...mapHeaders(headers), ...(override ?? {}) };
@@ -42,13 +43,21 @@ export function analyzeCanonicalItems(
   };
 }
 
-export function analyzeTable(rows: string[][], override?: MappingOverride): AnalysisResult {
+export function analyzeTable(
+  rows: string[][],
+  override?: MappingOverride,
+  options?: AnalysisOptions
+): AnalysisResult {
   if (rows.length < 2) throw new Error("Input must include a header and at least one data row");
   const mapping = validatedMapping(rows[0], override);
-  const normalized = normalizeRows(rows.slice(1), mapping);
+  const normalized = normalizeRows(rows.slice(1), mapping, options);
   return analyzeCanonicalItems(normalized.valid, normalized.invalid, mapping);
 }
 
-export function analyzeCsv(text: string, override?: MappingOverride): AnalysisResult {
-  return analyzeTable(parseCsv(text), override);
+export function analyzeCsv(
+  text: string,
+  override?: MappingOverride,
+  options?: AnalysisOptions
+): AnalysisResult {
+  return analyzeTable(parseCsv(text), override, options);
 }
