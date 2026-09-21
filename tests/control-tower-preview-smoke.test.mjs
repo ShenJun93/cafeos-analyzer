@@ -44,6 +44,9 @@ test("preview deploy launcher uses Vercel API upsert and keeps preview-only safe
   assert.match(ps, /SUPABASE_PUBLISHABLE_KEY/);
   assert.match(ps, /Read-Host "Staging SUPABASE_PUBLISHABLE_KEY \(sb_publishable_\.\.\.\)" -AsSecureString/);
   assert.match(ps, /SecureStringToBSTR\(\$securePublishableKey\)/);
+  assert.match(ps, /\$publishableKey = \$publishableKey\.Trim\(\)/);
+  assert.match(ps, /Substring\(1, \$publishableKey\.Length - 2\)\.Trim\(\)/);
+  assert.match(ps, /Invalid publishable key format after normalization \(length=\$enteredLength\)/);
   assert.match(ps, /ZeroFreeBSTR\(\$publishableKeyPtr\)/);
   assert.match(ps, /sb_publishable_/);
   assert.match(ps, /production alias will not be promoted/i);
@@ -303,7 +306,9 @@ test("auth smoke securely prompts for publishable key when a new shell has no en
   assert.match(wrapper, /Read-Host "Staging SUPABASE_PUBLISHABLE_KEY \(sb_publishable_\.\.\.\)" -AsSecureString/);
   assert.match(wrapper, /SecureStringToBSTR\(\$securePublishableKey\)/);
   assert.match(wrapper, /\$env:SUPABASE_PUBLISHABLE_KEY = \[Runtime\.InteropServices\.Marshal\]::PtrToStringBSTR\(\$publishableKeyPtr\)/);
-  assert.match(wrapper, /Authenticated smoke requires a modern sb_publishable_ key/);
+  assert.match(wrapper, /\$normalizedPublishableKey = \$env:SUPABASE_PUBLISHABLE_KEY\.Trim\(\)/);
+  assert.match(wrapper, /Substring\(1, \$normalizedPublishableKey\.Length - 2\)\.Trim\(\)/);
+  assert.match(wrapper, /Invalid publishable key format after normalization \(length=\$enteredLength\)/);
   assert.match(wrapper, /Remove-Item Env:SUPABASE_PUBLISHABLE_KEY/);
   assert.match(wrapper, /ZeroFreeBSTR\(\$publishableKeyPtr\)/);
   assert.doesNotMatch(wrapper, /SUPABASE_PUBLISHABLE_KEY is not set in this PowerShell session/);

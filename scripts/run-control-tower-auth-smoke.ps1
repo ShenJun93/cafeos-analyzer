@@ -33,8 +33,19 @@ try {
     $createdPublishableKeyEnv = $true
   }
 
+  $normalizedPublishableKey = $env:SUPABASE_PUBLISHABLE_KEY.Trim()
+  if (
+    ($normalizedPublishableKey.StartsWith('"') -and $normalizedPublishableKey.EndsWith('"')) -or
+    ($normalizedPublishableKey.StartsWith("'") -and $normalizedPublishableKey.EndsWith("'")) -or
+    ($normalizedPublishableKey.StartsWith('`') -and $normalizedPublishableKey.EndsWith('`'))
+  ) {
+    $normalizedPublishableKey = $normalizedPublishableKey.Substring(1, $normalizedPublishableKey.Length - 2).Trim()
+  }
+  $env:SUPABASE_PUBLISHABLE_KEY = $normalizedPublishableKey
+
   if ($env:SUPABASE_PUBLISHABLE_KEY -notmatch '^sb_publishable_') {
-    throw "Authenticated smoke requires a modern sb_publishable_ key."
+    $enteredLength = $env:SUPABASE_PUBLISHABLE_KEY.Length
+    throw "Invalid publishable key format after normalization (length=$enteredLength). Paste the full staging sb_publishable_ key."
   }
 
   if ([string]::IsNullOrWhiteSpace($env:CAFEOS_TEST_USER_PASSWORD)) {

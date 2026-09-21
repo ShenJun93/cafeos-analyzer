@@ -43,8 +43,19 @@ try {
     $publishableKeyPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePublishableKey)
     $publishableKey = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($publishableKeyPtr)
   }
+
+  $publishableKey = $publishableKey.Trim()
+  if (
+    ($publishableKey.StartsWith('"') -and $publishableKey.EndsWith('"')) -or
+    ($publishableKey.StartsWith("'") -and $publishableKey.EndsWith("'")) -or
+    ($publishableKey.StartsWith('`') -and $publishableKey.EndsWith('`'))
+  ) {
+    $publishableKey = $publishableKey.Substring(1, $publishableKey.Length - 2).Trim()
+  }
+
   if ($publishableKey -notmatch '^sb_publishable_') {
-    throw "Wave 26 requires a modern sb_publishable_ key, not a secret/service-role key."
+    $enteredLength = $publishableKey.Length
+    throw "Invalid publishable key format after normalization (length=$enteredLength). Paste the full staging sb_publishable_ key, not masked stars, quotes, or a secret/service-role key."
   }
 
   Write-Host "Running canonical committed-dist gates before preview mutation..." -ForegroundColor Cyan
