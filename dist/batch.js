@@ -1,7 +1,7 @@
 import { analyzeCanonicalItems } from "./analyze.js";
 import { analyzeBytes } from "./file.js";
 import { InMemoryImportLedger } from "./imports.js";
-export function analyzeFileBatch(files, sourceNamespace = "manual-export-batch") {
+export function analyzeFileBatch(files, sourceNamespace = "manual-export-batch", options = {}) {
     if (!files.length)
         throw new Error("Batch must contain at least one file");
     const ledger = new InMemoryImportLedger();
@@ -12,7 +12,7 @@ export function analyzeFileBatch(files, sourceNamespace = "manual-export-batch")
     let sourceValidRows = 0;
     let overlapRows = 0;
     for (const file of files) {
-        const result = analyzeBytes(file.filename, file.data, file.sheetName, file.mappingOverride);
+        const result = analyzeBytes(file.filename, file.data, file.sheetName, file.mappingOverride, { ...options, sourceNamespace });
         sourceValidRows += result.items.length;
         invalidRows += result.health.invalidRows;
         const plan = ledger.ingest(tenantId, sourceNamespace, result.items);
@@ -26,7 +26,7 @@ export function analyzeFileBatch(files, sourceNamespace = "manual-export-batch")
             overlapRows: plan.alreadyKnown
         });
     }
-    const merged = analyzeCanonicalItems(uniqueItems, invalidRows);
+    const merged = analyzeCanonicalItems(uniqueItems, invalidRows, {}, { ...options, sourceNamespace });
     return {
         ...merged,
         batch: {
