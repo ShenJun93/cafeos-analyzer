@@ -126,10 +126,32 @@ try {
     throw "Safety stop: CLI returned the production alias instead of a preview URL."
   }
 
-  Write-Host "Running unauthenticated preview smoke against $previewUrl ..." -ForegroundColor Cyan
-  node scripts/verify-control-tower-preview.mjs $previewUrl --unauth-only
-  if ($LASTEXITCODE -ne 0) { throw "Unauthenticated Control Tower preview smoke failed" }
+  Write-Host "Running unauthenticated preview smoke through Vercel-authenticated curl against $previewUrl ..." -ForegroundColor Cyan
+  $smoke = Invoke-VercelCli -Arguments @(
+    "curl", "/api/app/session", "--deployment", $previewUrl,
+    "--scope", $teamSlug, "--project", $projectId
+  )
+  if ($smoke.ExitCode -ne 0) {
+    $smoke.Output | Out-Host
+    throw "Vercel-authenticated preview smoke request failed"
+  }
 
+  $smokeText = $smoke.Text.Trim()
+  $smokePayload = $null
+  try {
+    $smokePayload = $smokeText | ConvertFrom-Json
+  }
+  catch {
+    $smoke.Output | Out-Host
+    throw "Preview smoke did not return JSON from the CafeOS app"
+  }
+
+  if ($smokePayload.error.code -ne "AUTH_REQUIRED") {
+    $smoke.Output | Out-Host
+    throw "Unauthenticated Control Tower preview smoke expected AUTH_REQUIRED"
+  }
+
+  Write-Host "PASS protected-preview /api/app/session -> AUTH_REQUIRED" -ForegroundColor Green
   Write-Host "PREVIEW READY: $previewUrl" -ForegroundColor Green
   Write-Host "For full authenticated smoke, set CAFEOS_TEST_USER_JWT, CAFEOS_TEST_TENANT_ID and CAFEOS_FORBIDDEN_TENANT_ID, then run:" -ForegroundColor Cyan
   Write-Host "npm run verify:control-tower-preview -- $previewUrl" -ForegroundColor Cyan
