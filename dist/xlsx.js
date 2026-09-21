@@ -309,7 +309,7 @@ export function inspectXlsx(data) {
     const ambiguous = Boolean(suggestedSheet && second && second.mappedRequired === REQUIRED_FIELDS.length && Math.abs(top.candidateScore - second.candidateScore) < 0.0001);
     return { sheets, suggestedSheet, ambiguous };
 }
-export function analyzeXlsx(data, sheetName, mappingOverride) {
+export function analyzeXlsx(data, sheetName, mappingOverride, options) {
     const workbook = parseWorkbook(data);
     const inspectionSheets = workbook.sheets.map(s => inspectRows(s.name, s.rows));
     const ranked = [...inspectionSheets].sort((a, b) => b.candidateScore - a.candidateScore || b.rowCount - a.rowCount);
@@ -323,7 +323,7 @@ export function analyzeXlsx(data, sheetName, mappingOverride) {
     const selected = workbook.sheets.find(s => s.name === selectedName);
     if (!selected)
         throw new Error(`Worksheet not found: ${selectedName}`);
-    const analysis = analyzeTable(selected.rows, mappingOverride);
+    const analysis = analyzeTable(selected.rows, mappingOverride, options);
     return {
         ...analysis,
         workbook: {

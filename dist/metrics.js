@@ -1,14 +1,19 @@
+export function orderIdentity(item) {
+    const namespace = item.sourceNamespace?.trim() || "analyzer-single-source";
+    return `${namespace}\u001f${item.transactionId}`;
+}
 export function computeCoreMetrics(items) {
     const orders = new Map();
     const customerOrders = new Map();
     let netSales = 0;
     for (const item of items) {
         netSales += item.netAmount;
-        const prior = orders.get(item.transactionId);
-        orders.set(item.transactionId, { customer: prior?.customer ?? item.customerKey });
+        const orderKey = orderIdentity(item);
+        const prior = orders.get(orderKey);
+        orders.set(orderKey, { customer: prior?.customer ?? item.customerKey });
         if (item.customerKey) {
             const set = customerOrders.get(item.customerKey) ?? new Set();
-            set.add(item.transactionId);
+            set.add(orderKey);
             customerOrders.set(item.customerKey, set);
         }
     }

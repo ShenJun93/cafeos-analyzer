@@ -23,11 +23,11 @@ export function inspectBytes(filename, data) {
         return { kind: "xlsx", workbook: inspectXlsx(data) };
     throw new Error("Unsupported file type. CafeOS v0.1 accepts .csv and .xlsx");
 }
-export function analyzeBytes(filename, data, sheetName, mappingOverride) {
+export function analyzeBytes(filename, data, sheetName, mappingOverride, options) {
     const lower = filename.toLowerCase();
     if (lower.endsWith(".csv"))
-        return analyzeCsv(decodeCsv(data), mappingOverride);
+        return analyzeCsv(decodeCsv(data), mappingOverride, options);
     if (lower.endsWith(".xlsx"))
-        return analyzeXlsx(data, sheetName, mappingOverride);
+        return analyzeXlsx(data, sheetName, mappingOverride, options);
     throw new Error("Unsupported file type. CafeOS v0.1 accepts .csv and .xlsx");
 }

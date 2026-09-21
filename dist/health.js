@@ -1,9 +1,9 @@
-import { computeCoreMetrics } from "./metrics.js";
+import { computeCoreMetrics, orderIdentity } from "./metrics.js";
 export function computeDataHealth(items, invalidRows) {
     const seen = new Set();
     let duplicates = 0;
     for (const x of items) {
-        const key = `${x.transactionId}|${x.product}|${x.quantity}|${x.netAmount}`;
+        const key = `${orderIdentity(x)}|${x.product}|${x.quantity}|${x.netAmount}`;
         if (seen.has(key))
             duplicates++;
         else

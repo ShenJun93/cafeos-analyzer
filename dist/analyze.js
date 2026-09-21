@@ -35,13 +35,13 @@ export function analyzeCanonicalItems(items, invalidRows = 0, mapping = {}) {
         items
     };
 }
-export function analyzeTable(rows, override) {
+export function analyzeTable(rows, override, options) {
     if (rows.length < 2)
         throw new Error("Input must include a header and at least one data row");
     const mapping = validatedMapping(rows[0], override);
-    const normalized = normalizeRows(rows.slice(1), mapping);
+    const normalized = normalizeRows(rows.slice(1), mapping, options);
     return analyzeCanonicalItems(normalized.valid, normalized.invalid, mapping);
 }
-export function analyzeCsv(text, override) {
-    return analyzeTable(parseCsv(text), override);
+export function analyzeCsv(text, override, options) {
+    return analyzeTable(parseCsv(text), override, options);
 }

@@ -2,6 +2,9 @@ export type CanonicalField = "transaction_id" | "occurred_at" | "store" | "produ
 export interface CanonicalLineItem {
     transactionId: string;
     occurredAt: string;
+    sourceNamespace?: string;
+    sourceTimezone?: string;
+    storeTimezone?: string;
     store: string;
     product: string;
     quantity: number;

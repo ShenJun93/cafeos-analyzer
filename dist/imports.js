@@ -32,7 +32,8 @@ export function fingerprintImport(tenantId, sourceNamespace, keyedItems) {
     return sha256([tenantId, sourceNamespace, ...keys].join("\n"));
 }
 export function planImport(tenantId, sourceNamespace, items, existingRecordKeys = new Set()) {
-    const keyedItems = keyCanonicalItems(items);
+    const scopedItems = items.map(item => ({ ...item, sourceNamespace }));
+    const keyedItems = keyCanonicalItems(scopedItems);
     const newItems = keyedItems.filter(x => !existingRecordKeys.has(x.sourceRecordKey));
     return {
         importFingerprint: fingerprintImport(tenantId, sourceNamespace, keyedItems),

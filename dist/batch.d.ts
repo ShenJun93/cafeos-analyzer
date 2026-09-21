@@ -1,10 +1,12 @@
-import { type MappingOverride } from "./analyze.js";
+import { type AnalysisOptions, type MappingOverride } from "./analyze.js";
 import type { AnalysisResult } from "./types.js";
 export interface BatchFileInput {
     filename: string;
     data: Uint8Array;
     sheetName?: string;
     mappingOverride?: MappingOverride;
+    sourceNamespace?: string;
+    analysisOptions?: Omit<AnalysisOptions, "sourceNamespace">;
 }
 export interface BatchFileSummary {
     filename: string;
