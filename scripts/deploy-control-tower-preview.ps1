@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$teamSlug = "nvhoa1691993-6852s-projects"
+$teamId = "team_kVjgE7Q1dpEiDcANdPZqYEaS"
 $projectId = "prj_HG27M5PTKPJCrHUA0LPUOmsCrYIe"
 $cliVersion = "59.20.0"
 $productionAlias = "https://cafeos-analyzer.vercel.app"
@@ -58,8 +58,17 @@ try {
     # Vercel/npx may write informational npm notices to stderr, so capture native output
     # with Continue and make the actual pass/fail decision from LASTEXITCODE.
     $previousErrorActionPreference = $ErrorActionPreference
+    $previousOrgId = $env:VERCEL_ORG_ID
+    $previousProjectId = $env:VERCEL_PROJECT_ID
     try {
       $ErrorActionPreference = "Continue"
+
+      # Pin every Vercel CLI subprocess to the canonical CafeOS project using
+      # Vercel's documented environment-variable targeting. This avoids
+      # depending on stale/missing local .vercel project-link state.
+      $env:VERCEL_ORG_ID = $teamId
+      $env:VERCEL_PROJECT_ID = $projectId
+
       if ($HasInput) {
         $output = $InputText | & npx --yes "vercel@$cliVersion" @Arguments 2>&1
       }
@@ -70,6 +79,18 @@ try {
     }
     finally {
       $ErrorActionPreference = $previousErrorActionPreference
+      if ([string]::IsNullOrEmpty($previousOrgId)) {
+        Remove-Item Env:VERCEL_ORG_ID -ErrorAction SilentlyContinue
+      }
+      else {
+        $env:VERCEL_ORG_ID = $previousOrgId
+      }
+      if ([string]::IsNullOrEmpty($previousProjectId)) {
+        Remove-Item Env:VERCEL_PROJECT_ID -ErrorAction SilentlyContinue
+      }
+      else {
+        $env:VERCEL_PROJECT_ID = $previousProjectId
+      }
     }
 
     return [pscustomobject]@{
@@ -83,8 +104,7 @@ try {
     Write-Host "Refreshing preview-only Vercel variable: $Name" -ForegroundColor Cyan
 
     $remove = Invoke-VercelCli -Arguments @(
-      "env", "rm", $Name, "preview", "--yes",
-      "--scope", $teamSlug
+      "env", "rm", $Name, "preview", "--yes"
     )
     if ($remove.ExitCode -ne 0 -and $remove.Text -notmatch '(not found|does not exist|no environment variable)') {
       $remove.Output | Out-Host
@@ -92,8 +112,7 @@ try {
     }
 
     $add = Invoke-VercelCli -Arguments @(
-      "env", "add", $Name, "preview",
-      "--scope", $teamSlug
+      "env", "add", $Name, "preview"
     ) -InputText $Value -HasInput
     if ($add.ExitCode -ne 0) {
       $add.Output | Out-Host
@@ -109,8 +128,7 @@ try {
   Write-Host "Verifying required Preview environment variable names..." -ForegroundColor Cyan
   $envList = Invoke-VercelCli -Arguments @(
     "env", "ls", "preview",
-    "--format", "json",
-    "--scope", $teamSlug
+    "--format", "json"
   )
   if ($envList.ExitCode -ne 0) {
     $envList.Output | Out-Host
@@ -132,8 +150,7 @@ try {
 
   Write-Host "Deploying a PREVIEW target only; production alias will not be promoted." -ForegroundColor Green
   $deploy = Invoke-VercelCli -Arguments @(
-    "deploy", "--yes",
-    "--scope", $teamSlug, "--project", $projectId
+    "deploy", "--yes"
   )
   $deploy.Output | Out-Host
   if ($deploy.ExitCode -ne 0) { throw "Vercel preview deployment failed" }
