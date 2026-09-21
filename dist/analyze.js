@@ -4,6 +4,21 @@ import { normalizeRows } from "./normalize.js";
 import { computeDataHealth } from "./health.js";
 import { computeCoreMetrics } from "./metrics.js";
 import { detectStoreDaypartDeclines } from "./insights.js";
+import { assertIanaTimeZone } from "./time.js";
+export const DEFAULT_SOURCE_TIMEZONE = "Asia/Ho_Chi_Minh";
+export const DEFAULT_SOURCE_NAMESPACE = "manual-upload";
+function resolvedAnalysisOptions(options = {}) {
+    const sourceTimezone = assertIanaTimeZone(options.sourceTimezone ?? DEFAULT_SOURCE_TIMEZONE);
+    const defaultStoreTimezone = assertIanaTimeZone(options.defaultStoreTimezone ?? sourceTimezone);
+    const sourceNamespace = String(options.sourceNamespace ?? DEFAULT_SOURCE_NAMESPACE).trim();
+    if (!sourceNamespace)
+        throw new Error("sourceNamespace is required");
+    if (options.storeTimezones) {
+        for (const zone of Object.values(options.storeTimezones))
+            assertIanaTimeZone(zone);
+    }
+    return { sourceTimezone, sourceNamespace, defaultStoreTimezone, storeTimezones: options.storeTimezones };
+}
 function validatedMapping(headers, override) {
     const mapping = { ...mapHeaders(headers), ...(override ?? {}) };
     const used = new Map();
@@ -19,29 +34,41 @@ function validatedMapping(headers, override) {
     }
     return mapping;
 }
-export function analyzeCanonicalItems(items, invalidRows = 0, mapping = {}) {
+export function analyzeCanonicalItems(items, invalidRows = 0, mapping = {}, options = {}) {
+    const resolved = resolvedAnalysisOptions(options);
     const health = computeDataHealth(items, invalidRows);
     const metrics = computeCoreMetrics(items);
     return {
         mapping,
         health,
         metrics,
+        timeAssumptions: {
+            sourceTimezone: resolved.sourceTimezone,
+            defaultStoreTimezone: resolved.defaultStoreTimezone
+        },
         capabilities: {
             salesAnalytics: items.length > 0,
             customerRetention: metrics.identifiedCustomerCoverage >= 0.2,
             marginAnalytics: false
         },
-        insights: detectStoreDaypartDeclines(items),
+        insights: detectStoreDaypartDeclines(items, -0.2, {
+            defaultStoreTimezone: resolved.defaultStoreTimezone,
+            storeTimezones: resolved.storeTimezones
+        }),
         items
     };
 }
-export function analyzeTable(rows, override) {
+export function analyzeTable(rows, override, options = {}) {
     if (rows.length < 2)
         throw new Error("Input must include a header and at least one data row");
     const mapping = validatedMapping(rows[0], override);
-    const normalized = normalizeRows(rows.slice(1), mapping);
-    return analyzeCanonicalItems(normalized.valid, normalized.invalid, mapping);
+    const resolved = resolvedAnalysisOptions(options);
+    const normalized = normalizeRows(rows.slice(1), mapping, {
+        sourceTimezone: resolved.sourceTimezone,
+        sourceNamespace: resolved.sourceNamespace
+    });
+    return analyzeCanonicalItems(normalized.valid, normalized.invalid, mapping, resolved);
 }
-export function analyzeCsv(text, override) {
-    return analyzeTable(parseCsv(text), override);
+export function analyzeCsv(text, override, options = {}) {
+    return analyzeTable(parseCsv(text), override, options);
 }
