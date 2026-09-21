@@ -243,3 +243,16 @@ test("protected verifier keeps curl write-out marker shell-safe", async () => {
   assert.match(source, /"--write-out=__CAFEOS_STATUS__%\{http_code\}"/);
   assert.doesNotMatch(source, /"--write-out",\s*"\\n__CAFEOS_STATUS__/);
 });
+
+test("protected verifier keeps authorization headers off process arguments and cleans temporary files", async () => {
+  const source = await readFile(
+    new URL("../scripts/verify-control-tower-protected-preview.mjs", import.meta.url),
+    "utf8"
+  );
+  assert.match(source, /mkdtempSync\(join\(tmpdir\(\), "cafeos-vercel-curl-"\)\)/);
+  assert.match(source, /writeFileSync\(headerPath, headerText, \{ encoding: "utf8", mode: 0o600 \}\)/);
+  assert.match(source, /args\.push\("--header", `@\$\{headerPath\}`\)/);
+  assert.match(source, /finally \{[\s\S]*rmSync\(headerDir, \{ recursive: true, force: true \}\)/);
+  assert.doesNotMatch(source, /args\.push\("--header", `\$\{name\}: \$\{value\}`\)/);
+  assert.match(source, /Bearer \[REDACTED\]/);
+});
