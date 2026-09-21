@@ -8,7 +8,7 @@ command -v supabase >/dev/null
 command -v psql >/dev/null
 
 dump_help="$(supabase db dump --help)"
-for flag in --db-url --data-only --role-only --use-copy; do
+for flag in --db-url --data-only --role-only --use-copy --schema; do
   if ! grep -q -- "$flag" <<<"$dump_help"; then
     echo "Required Supabase CLI dump flag is unavailable: $flag" >&2
     exit 1
@@ -28,7 +28,7 @@ dump_started="$(date +%s)"
 echo "Creating Supabase logical recovery bundle..."
 supabase db dump --db-url "$DB_URL" -f "$bundle_dir/roles.sql" --role-only
 supabase db dump --db-url "$DB_URL" -f "$bundle_dir/schema.sql"
-supabase db dump --db-url "$DB_URL" -f "$bundle_dir/data.sql" --use-copy --data-only
+supabase db dump --db-url "$DB_URL" -f "$bundle_dir/data.sql" --use-copy --data-only --schema public
 dump_seconds="$(( $(date +%s) - dump_started ))"
 
 for file in roles.sql schema.sql data.sql; do
