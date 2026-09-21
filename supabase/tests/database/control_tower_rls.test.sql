@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(10);
+select plan(12);
 
 insert into public.tenants (id, name) values
   ('10000000-0000-0000-0000-000000000001', 'Cafe A'),
@@ -26,6 +26,16 @@ insert into public.stores (
     '20000000-0000-0000-0000-000000000002',
     'test', 'b-store', 'B Store', 'Asia/Ho_Chi_Minh'
   );
+
+insert into public.imports (
+  id, tenant_id, source_namespace, source_filename, fingerprint, status, row_count
+) values
+  ('12000000-0000-0000-0000-000000000001',
+   '10000000-0000-0000-0000-000000000001',
+   'test','a.csv',repeat('c',64),'committed',1),
+  ('22000000-0000-0000-0000-000000000003',
+   '20000000-0000-0000-0000-000000000002',
+   'test','b.csv',repeat('d',64),'committed',1);
 
 insert into public.attention_items (
   id, tenant_id, attention_key, type, severity, metric,
@@ -75,6 +85,34 @@ select lives_ok(
       'investigate', 'Investigate revenue decline', 'open'
     )$$,
   'Tenant A owner can create a bounded action'
+);
+
+select lives_ok(
+  $q$insert into public.transaction_line_items (
+      tenant_id, first_import_id, source_namespace, source_record_key,
+      transaction_id, occurred_at, store, product, quantity, net_amount
+    ) values (
+      '10000000-0000-0000-0000-000000000001'::uuid,
+      '12000000-0000-0000-0000-000000000001'::uuid,
+      'test', repeat('e',64), 'same-tenant', '2026-09-01T00:00:00Z',
+      'A Store', 'Coffee', 1, 50000
+    )$q$,
+  'Same-tenant import lineage is allowed'
+);
+
+select throws_ok(
+  $q$insert into public.transaction_line_items (
+      tenant_id, first_import_id, source_namespace, source_record_key,
+      transaction_id, occurred_at, store, product, quantity, net_amount
+    ) values (
+      '10000000-0000-0000-0000-000000000001'::uuid,
+      '22000000-0000-0000-0000-000000000003'::uuid,
+      'test', repeat('f',64), 'cross-tenant', '2026-09-01T00:00:00Z',
+      'A Store', 'Coffee', 1, 50000
+    )$q$,
+  '23503',
+  'insert or update on table "transaction_line_items" violates foreign key constraint "transaction_line_items_first_import_fk"',
+  'Cross-tenant import lineage is rejected'
 );
 
 select results_eq(

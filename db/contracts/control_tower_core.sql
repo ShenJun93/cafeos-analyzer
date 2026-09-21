@@ -52,6 +52,21 @@ grant select, insert, update, delete on table public.tenant_members to service_r
 grant select, insert, update, delete on table public.imports to service_role;
 grant select, insert, update, delete on table public.transaction_line_items to service_role;
 
+-- Preserve import lineage inside the same tenant. The Analyzer v0.1 FK referenced
+-- imports(id) only, which allowed a Tenant A line item to point at a Tenant B import.
+-- This migration is ordered after the Analyzer baseline and targets that known state.
+alter table public.imports
+  add constraint imports_tenant_id_id_key unique (tenant_id, id);
+
+alter table public.transaction_line_items
+  drop constraint if exists transaction_line_items_first_import_id_fkey;
+
+alter table public.transaction_line_items
+  add constraint transaction_line_items_first_import_fk
+  foreign key (tenant_id, first_import_id)
+  references public.imports(tenant_id, id)
+  on delete restrict;
+
 create table if not exists public.stores (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete cascade,
@@ -280,8 +295,9 @@ create index if not exists actions_tenant_attention_idx
   on public.actions (tenant_id, attention_item_id)
   where attention_item_id is not null;
 
-create index if not exists transaction_line_items_first_import_id_idx
-  on public.transaction_line_items (first_import_id);
+drop index if exists public.transaction_line_items_first_import_id_idx;
+create index if not exists transaction_line_items_tenant_first_import_idx
+  on public.transaction_line_items (tenant_id, first_import_id);
 
 create index if not exists action_status_history_tenant_action_created_idx
   on public.action_status_history (tenant_id, action_id, created_at);

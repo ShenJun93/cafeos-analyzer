@@ -41,10 +41,13 @@ test("stable Store and Customer identities are tenant-scoped", () => {
   has(/matching_hmac char\(64\)[\s\S]*\^\[0-9a-f\]\{64\}\$/i);
 });
 
-test("existing line items bridge to stable Store and Customer with composite tenant foreign keys", () => {
+test("existing line items keep every promoted relationship tenant-scoped", () => {
   has(/alter table public\.transaction_line_items[\s\S]*add column if not exists store_id uuid[\s\S]*add column if not exists customer_id uuid/i);
   has(/transaction_line_items_store_fk[\s\S]*foreign key\s*\(tenant_id,\s*store_id\)[\s\S]*references public\.stores\s*\(tenant_id,\s*id\)/i);
   has(/transaction_line_items_customer_fk[\s\S]*foreign key\s*\(tenant_id,\s*customer_id\)[\s\S]*references public\.customers\s*\(tenant_id,\s*id\)/i);
+  has(/imports_tenant_id_id_key[\s\S]*unique\s*\(tenant_id,\s*id\)/i);
+  has(/transaction_line_items_first_import_fk[\s\S]*foreign key\s*\(tenant_id,\s*first_import_id\)[\s\S]*references public\.imports\s*\(tenant_id,\s*id\)/i);
+  has(/drop constraint(?: if exists)? transaction_line_items_first_import_id_fkey/i);
 });
 
 test("attention items are deterministic, evidence-backed, and tenant-idempotent", () => {
@@ -151,5 +154,5 @@ test("server-only customer identifiers have an explicit deny policy", () => {
 
 test("foreign-key hot paths have covering indexes found by staging advisors", () => {
   has(/create index if not exists actions_tenant_attention_idx[\s\S]*on public\.actions \(tenant_id, attention_item_id\)/i);
-  has(/create index if not exists transaction_line_items_first_import_id_idx[\s\S]*on public\.transaction_line_items \(first_import_id\)/i);
+  has(/create index if not exists transaction_line_items_tenant_first_import_idx[\s\S]*on public\.transaction_line_items \(tenant_id, first_import_id\)/i);
 });
