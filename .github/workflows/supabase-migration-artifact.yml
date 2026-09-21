@@ -1,0 +1,54 @@
+name: Supabase Migration Artifact
+
+on:
+  push:
+    branches:
+      - wave23-cli-migration-artifact
+    paths:
+      - ".github/workflows/supabase-migration-artifact.yml"
+      - "db/contracts/control_tower_core.sql"
+      - "supabase/tests/database/control_tower_rls.test.sql"
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.117.0
+
+      - name: Inspect CLI surface
+        run: |
+          supabase --version
+          supabase --help
+          supabase init --help
+          supabase migration new --help
+
+      - name: Generate migration with Supabase CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase init
+          supabase migration new control_tower_core
+          migration_path="$(find supabase/migrations -maxdepth 1 -type f -name '*_control_tower_core.sql' | sort | tail -n 1)"
+          test -n "$migration_path"
+          cp db/contracts/control_tower_core.sql "$migration_path"
+          printf '%s\n' "$migration_path" | tee migration_path.txt
+          sha256sum "$migration_path" | tee migration_sha256.txt
+          echo "MIGRATION_PATH=$migration_path" >> "$GITHUB_ENV"
+
+      - name: Upload generated migration artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cafeos-control-tower-migration
+          path: |
+            ${{ env.MIGRATION_PATH }}
+            migration_path.txt
+            migration_sha256.txt
+          if-no-files-found: error
+          retention-days: 7
