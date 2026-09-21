@@ -64,6 +64,13 @@ test("preview deploy launcher uses Vercel API upsert and keeps preview-only safe
   assert.doesNotMatch(ps, /SUPABASE_SECRET/i);
 });
 
+test("Vercel Git auto-deploy is disabled so guarded manual preview is authoritative", async () => {
+  const config = JSON.parse(
+    await readFile(new URL("../vercel.json", import.meta.url), "utf8")
+  );
+  assert.equal(config.git?.deploymentEnabled, false);
+});
+
 test("unauthenticated preview smoke requires AUTH_REQUIRED", async () => {
   const calls = [];
   const fetchImpl = async (url, options) => {
