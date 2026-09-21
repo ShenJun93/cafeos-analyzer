@@ -62,39 +62,44 @@ Wave 25 introduces an **authenticated read-only Control Tower API shell against 
 
 The shell uses only Supabase URL + publishable key plus the caller's user JWT. It verifies selected-tenant membership and leaves RLS as the final database authorization boundary. No secret/service-role credential is used for user reads.
 
-The brief read shell does not yet claim persisted deterministic top metrics; that capability remains explicitly false until implemented.
+The Daily Brief read path now uses the fixed caller-RLS Postgres aggregate for deterministic net sales, orders and AOV. It exposes business-date freshness, coverage, exact same-weekday baseline dates/status, persisted Attention, and unresolved Actions without transferring raw tenant transaction history to Vercel.
 
 See `docs/CONTROL_TOWER_AUTH_SHELL.md`.
 
 ## Current external gate
 
-Wave 25 read-shell code is merged, main CI is green, production auto-deploy is READY, and unauthenticated live `/api/app/session` returns `401 AUTH_REQUIRED`.
+Issue #19 authenticated preview E2E is closed. Synthetic staging proved:
 
-Issue #19 remains open because full authenticated preview evidence still requires:
+- unauthenticated session → `401 AUTH_REQUIRED`;
+- authenticated synthetic Tenant A reads → `200`;
+- Tenant A selecting Tenant B → `403 TENANT_FORBIDDEN`;
+- invalid JWT → `401 AUTH_INVALID`;
+- no service-role/secret credential in the user-facing read path.
 
-- Vercel preview-only `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY`;
-- a synthetic Supabase Auth user;
-- synthetic allowed/forbidden tenant memberships;
-- live proof of authenticated 200 / cross-tenant 403 / invalid-JWT 401.
+Issue #36 is also closed: the fixed `public.daily_brief_aggregate(uuid,date)` function passed repository CI, blank-database pgTAP, staging migration verification, live caller-RLS Tenant A access, and Tenant B denial.
 
-Wave 26 adds a guarded preview-only launcher and repeatable smoke verifier. It does not itself count as E2E evidence.
+The current external gate is issue #38: deploy the deterministic `/api/app/brief` wiring to a fresh Vercel preview and re-run the authenticated synthetic smoke with the stronger requirement that the brief returns `deterministicTopMetrics=true`, metrics, and coverage.
 
 See `docs/CONTROL_TOWER_PREVIEW_SMOKE.md`.
 
-## Daily Brief design gate
+## Daily Brief correctness and aggregate state
 
-Wave 27 design review is allowed to proceed while issue #19 remains externally blocked, but implementation remains blocked.
+Issue #21 is closed. The Analyzer/persistent read contract now:
 
-The review found two correctness prerequisites before persisted Daily Brief / Store Health metrics can be authoritative:
+1. distinguishes explicit-offset instants from naive source-local wall clocks;
+2. records/validates IANA timezone assumptions;
+3. derives business date/daypart in Store timezone;
+4. scopes order identity by `(source_namespace, transaction_id)`;
+5. uses the exact same weekday over the previous four weeks;
+6. emits no authoritative delta when history/coverage is insufficient.
 
-1. timestamp semantics must distinguish real instants from naive source-local wall clocks and derive business date/daypart in Store timezone;
-2. order identity must be source-scoped, not `transaction_id` alone.
+Issue #36 is closed. The first fixed Daily Brief aggregate is `SECURITY INVOKER`, authenticated-only, RLS-preserving, deterministic, and staging-verified.
 
-The initial Daily Brief baseline is designed as the selected business date versus the same weekday over the previous four weeks, with exact baseline dates and insufficient-history status exposed.
+Issue #38 wires that aggregate into `GET /api/app/brief`.
 
 See:
 - `docs/DAILY_BRIEF_READ_MODEL_DESIGN.md`
-- GitHub issue #21
+- GitHub issues #21, #36, #38
 
 ## Production data lifecycle gate
 
@@ -118,13 +123,10 @@ See:
 
 ## Next action
 
-1. run the Wave 26 guarded preview launcher from canonical local `main` when Vercel CLI access is available;
-2. create/use supported synthetic Supabase Auth identities;
-3. close issue #19 only after live authenticated 200/403/401 evidence;
-4. fix issue #21 timestamp/order-identity correctness;
-5. implement a fixed RLS-safe Daily Brief aggregate read function;
-6. add issue #23 tenant-deletion/session-revocation DB tests before production persistence;
-7. perform a restore drill before authorizing the first merchant production tenant;
-8. only after read-path evidence, add bounded Attention → Action → Measurement writes.
+1. finish issue #38 repository/preview acceptance for deterministic `GET /api/app/brief`;
+2. reuse the same aggregate contract for Store Health rather than creating a second metric definition;
+3. add issue #23 tenant-deletion/session-revocation DB tests before production persistence;
+4. perform a restore drill before authorizing the first merchant production tenant;
+5. only after read-path evidence, add bounded Attention → Action → Measurement writes.
 
 Primary distribution remains pull/inbound; no dependency on cold outbound sales.
