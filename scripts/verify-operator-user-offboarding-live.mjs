@@ -131,7 +131,14 @@ async function signInSyntheticUser({ base, publishableKey, email, password, fetc
   return jwt;
 }
 
-async function callerMemberships({ base, publishableKey, jwt, tenantId, fetchImpl }) {
+async function callerMemberships({
+  base,
+  publishableKey,
+  jwt,
+  tenantId,
+  fetchImpl,
+  expectedStatuses = [200]
+}) {
   const params = new URLSearchParams({
     select: "tenant_id,role",
     tenant_id: `eq.${tenantId}`
@@ -140,10 +147,11 @@ async function callerMemberships({ base, publishableKey, jwt, tenantId, fetchImp
     fetchImpl,
     `${base}/rest/v1/tenant_members?${params}`,
     { headers: callerHeaders(publishableKey, jwt) },
-    [200]
+    expectedStatuses
   );
+  if (result.status !== 200) return { status: result.status, rows: [] };
   if (!Array.isArray(result.body)) throw new Error("Caller membership verification returned malformed payload");
-  return result.body;
+  return { status: 200, rows: result.body };
 }
 
 async function cleanupSynthetic({ base, secretKey, userId, fetchImpl }) {
@@ -218,7 +226,7 @@ export async function verifyOperatorUserOffboardingLive({
       tenantId,
       fetchImpl
     });
-    if (before.length !== 1) {
+    if (before.status !== 200 || before.rows.length !== 1) {
       throw new Error("Synthetic user did not receive exactly one Tenant A membership");
     }
 
@@ -235,14 +243,15 @@ export async function verifyOperatorUserOffboardingLive({
     });
     offboardingCompleted = true;
 
-    const staleJwtRows = await callerMemberships({
+    const after = await callerMemberships({
       base,
       publishableKey: publishable,
       jwt,
       tenantId,
-      fetchImpl
+      fetchImpl,
+      expectedStatuses: [200, 401, 403]
     });
-    if (staleJwtRows.length !== 0) {
+    if (after.status === 200 && after.rows.length !== 0) {
       throw new Error("Stale JWT retained Tenant A membership after offboarding");
     }
 
@@ -251,8 +260,9 @@ export async function verifyOperatorUserOffboardingLive({
       result: "pass",
       userRef: opaqueRef(userId),
       tenantRef: opaqueRef(tenantId),
-      membershipBefore: before.length,
-      staleJwtMembershipRows: staleJwtRows.length,
+      membershipBefore: before.rows.length,
+      staleJwtMembershipRows: after.rows.length,
+      staleJwtOutcome: after.status === 200 ? "rls_denied" : "session_rejected",
       sessionRevocation: operatorReceipt.sessionRevocation,
       authUserDeleted: operatorReceipt.authUserDeleted,
       completedAt: now().toISOString()
@@ -263,8 +273,6 @@ export async function verifyOperatorUserOffboardingLive({
     if (!offboardingCompleted && userId) {
       await cleanupSynthetic({ base, secretKey: secret, userId, fetchImpl });
     }
-    email.replace(/./g, "");
-    password.replace(/./g, "");
     jwt = null;
   }
 }
