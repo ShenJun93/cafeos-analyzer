@@ -45,17 +45,34 @@ Do not build a generic POS clone. CafeOS owns the cross-system canonical model, 
 
 Before production merchant data, retention/deletion behavior and rollback/recovery must be defined and verified.
 
+## Closed database gate
+
+Wave 24 closed schema/migration reproducibility and tenant-integrity verification.
+
+A staging behavioral test found a legacy cross-tenant import-lineage gap that static review had missed. It is now fixed with a composite `(tenant_id, first_import_id) → imports(tenant_id, id)` foreign key and covering index. Staging targeted tests, Security Advisor, repository CI and blank-database Supabase pgTAP CI all pass.
+
+## Current implementation checkpoint
+
+Wave 25 introduces an **authenticated read-only Control Tower API shell against staging/synthetic data only**:
+
+- `GET /api/app/session`
+- `GET /api/app/stores`
+- `GET /api/app/attention`
+- `GET /api/app/brief`
+
+The shell uses only Supabase URL + publishable key plus the caller's user JWT. It verifies selected-tenant membership and leaves RLS as the final database authorization boundary. No secret/service-role credential is used for user reads.
+
+The brief read shell does not yet claim persisted deterministic top metrics; that capability remains explicitly false until implemented.
+
+See `docs/CONTROL_TOWER_AUTH_SHELL.md`.
+
 ## Next action
 
-Once Wave 23 merges with normal CI + Supabase DB checks green, the schema/migration reproducibility gate is closed.
-
-Next thin-slice work is an **authenticated Control Tower app/API shell against staging/synthetic data only**:
-
-1. verify current Supabase Auth/server-client guidance;
-2. define tenant-safe authenticated request context;
-3. build separate `/api/app/*` boundary without changing public Analyzer APIs;
-4. implement Daily Brief / Store Health read path first;
-5. then implement Attention → Action → Measurement workflow;
-6. preserve RLS as the final database authorization boundary.
+1. pass normal CI + Supabase DB CI for the read shell;
+2. configure staging-safe Vercel env vars only;
+3. verify unauthenticated live shell returns 401;
+4. use synthetic Auth users to verify authenticated tenant isolation end-to-end;
+5. then implement deterministic Daily Brief/Store Health metrics;
+6. only after read-path evidence, add bounded Attention → Action → Measurement writes.
 
 Primary distribution remains pull/inbound; no dependency on cold outbound sales.
