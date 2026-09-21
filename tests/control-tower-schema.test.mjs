@@ -156,3 +156,16 @@ test("foreign-key hot paths have covering indexes found by staging advisors", ()
   has(/create index if not exists actions_tenant_attention_idx[\s\S]*on public\.actions \(tenant_id, attention_item_id\)/i);
   has(/create index if not exists transaction_line_items_tenant_first_import_idx[\s\S]*on public\.transaction_line_items \(tenant_id, first_import_id\)/i);
 });
+
+test("Daily Brief correctness contract records and validates IANA timezone assumptions", async () => {
+  const daily = await readFile(
+    new URL("../db/contracts/daily_brief_correctness.sql", import.meta.url),
+    "utf8"
+  );
+  assert.match(daily, /add column if not exists source_timezone text/i);
+  assert.match(daily, /private\.is_valid_timezone\(source_timezone\)/i);
+  assert.match(daily, /stores_timezone_valid_check/i);
+  assert.match(daily, /private\.is_valid_timezone\(timezone\)/i);
+  assert.match(daily, /pg_timezone_names\(\)/i);
+  assert.match(daily, /NULL is allowed only for legacy imports or sources whose timestamps are already absolute instants/i);
+});
