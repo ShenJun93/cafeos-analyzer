@@ -316,8 +316,9 @@ create index if not exists actions_tenant_attention_idx
   on public.actions (tenant_id, attention_item_id)
   where attention_item_id is not null;
 
-create index if not exists transaction_line_items_first_import_id_idx
-  on public.transaction_line_items (first_import_id);
+drop index if exists public.transaction_line_items_first_import_id_idx;
+create index if not exists transaction_line_items_tenant_first_import_idx
+  on public.transaction_line_items (tenant_id, first_import_id);
 
 create index if not exists action_status_history_tenant_action_created_idx
   on public.action_status_history (tenant_id, action_id, created_at);
