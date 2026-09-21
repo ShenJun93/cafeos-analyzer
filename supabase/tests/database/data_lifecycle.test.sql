@@ -237,17 +237,17 @@ set local role authenticated;
 set local request.jwt.claim.sub = 'f0000000-0000-0000-0000-000000000001';
 
 select results_eq(
-  $select count(*) from public.stores
-    where tenant_id='60000000-0000-0000-0000-000000000002'::uuid$,
+  $q$select count(*) from public.stores
+    where tenant_id='60000000-0000-0000-0000-000000000002'::uuid$q$,
   ARRAY[0::bigint],
   'Removing membership blocks a still-unexpired JWT through RLS'
 );
 
 select results_eq(
-  $select count(*) from public.actions
+  $q$select count(*) from public.actions
     where tenant_id='60000000-0000-0000-0000-000000000002'::uuid
       and id='66000000-0000-0000-0000-000000000002'::uuid
-      and owner_user_id is null$,
+      and owner_user_id is null$q$,
   ARRAY[1::bigint],
   'Membership deletion preserves action evidence and clears only the optional owner'
 );
