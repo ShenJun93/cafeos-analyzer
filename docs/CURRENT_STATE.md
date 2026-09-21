@@ -81,13 +81,29 @@ Wave 26 adds a guarded preview-only launcher and repeatable smoke verifier. It d
 
 See `docs/CONTROL_TOWER_PREVIEW_SMOKE.md`.
 
+## Daily Brief design gate
+
+Wave 27 design review is allowed to proceed while issue #19 remains externally blocked, but implementation remains blocked.
+
+The review found two correctness prerequisites before persisted Daily Brief / Store Health metrics can be authoritative:
+
+1. timestamp semantics must distinguish real instants from naive source-local wall clocks and derive business date/daypart in Store timezone;
+2. order identity must be source-scoped, not `transaction_id` alone.
+
+The initial Daily Brief baseline is designed as the selected business date versus the same weekday over the previous four weeks, with exact baseline dates and insufficient-history status exposed.
+
+See:
+- `docs/DAILY_BRIEF_READ_MODEL_DESIGN.md`
+- GitHub issue #21
+
 ## Next action
 
-1. merge Wave 26 after normal CI passes;
-2. run the guarded preview launcher from canonical local `main`;
-3. create/use supported synthetic Supabase Auth identities;
-4. close issue #19 only after live authenticated 200/403/401 evidence;
-5. then implement persistent deterministic Daily Brief / Store Health metric reads;
-6. only after read-path evidence, add bounded Attention → Action → Measurement writes.
+1. run the Wave 26 guarded preview launcher from canonical local `main` when Vercel CLI access is available;
+2. create/use supported synthetic Supabase Auth identities;
+3. close issue #19 only after live authenticated 200/403/401 evidence;
+4. then fix issue #21 timestamp/order-identity correctness;
+5. implement a fixed RLS-safe Daily Brief aggregate read function;
+6. reuse the same read model for Store Health;
+7. only after read-path evidence, add bounded Attention → Action → Measurement writes.
 
 Primary distribution remains pull/inbound; no dependency on cold outbound sales.
