@@ -5,14 +5,14 @@ on:
     paths:
       - "supabase/migrations/**"
       - "supabase/tests/database/**"
-      - "supabase/tests/restore/**"
+      - "supabase/restore-fixtures/**"
       - "scripts/run-supabase-restore-drill.sh"
       - ".github/workflows/supabase-db.yml"
   pull_request:
     paths:
       - "supabase/migrations/**"
       - "supabase/tests/database/**"
-      - "supabase/tests/restore/**"
+      - "supabase/restore-fixtures/**"
       - "scripts/run-supabase-restore-drill.sh"
       - ".github/workflows/supabase-db.yml"
 
