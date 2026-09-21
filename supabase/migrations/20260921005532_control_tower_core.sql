@@ -54,39 +54,18 @@ grant select, insert, update, delete on table public.transaction_line_items to s
 
 -- Preserve import lineage inside the same tenant. The Analyzer v0.1 FK referenced
 -- imports(id) only, which allowed a Tenant A line item to point at a Tenant B import.
-do $
-begin
-  if not exists (
-    select 1 from pg_constraint
-    where conname = 'imports_tenant_id_id_key'
-      and conrelid = 'public.imports'::regclass
-  ) then
-    alter table public.imports
-      add constraint imports_tenant_id_id_key unique (tenant_id, id);
-  end if;
+-- This migration is ordered after the Analyzer baseline and targets that known state.
+alter table public.imports
+  add constraint imports_tenant_id_id_key unique (tenant_id, id);
 
-  if exists (
-    select 1 from pg_constraint
-    where conname = 'transaction_line_items_first_import_id_fkey'
-      and conrelid = 'public.transaction_line_items'::regclass
-  ) then
-    alter table public.transaction_line_items
-      drop constraint transaction_line_items_first_import_id_fkey;
-  end if;
+alter table public.transaction_line_items
+  drop constraint if exists transaction_line_items_first_import_id_fkey;
 
-  if not exists (
-    select 1 from pg_constraint
-    where conname = 'transaction_line_items_first_import_fk'
-      and conrelid = 'public.transaction_line_items'::regclass
-  ) then
-    alter table public.transaction_line_items
-      add constraint transaction_line_items_first_import_fk
-      foreign key (tenant_id, first_import_id)
-      references public.imports(tenant_id, id)
-      on delete restrict;
-  end if;
-end
-$;
+alter table public.transaction_line_items
+  add constraint transaction_line_items_first_import_fk
+  foreign key (tenant_id, first_import_id)
+  references public.imports(tenant_id, id)
+  on delete restrict;
 
 create table if not exists public.stores (
   id uuid primary key default gen_random_uuid(),
