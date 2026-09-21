@@ -58,6 +58,18 @@ test("Q7 decline uses store-local daypart and same-weekday four-week evidence", 
 });
 
 
+test("same-weekday detector emits no authoritative decline when one required week is missing", () => {
+  const rows = [
+    "occurred_at,transaction_id,store,product,quantity,net_amount",
+    "25/08/2026 18:00,B-1,Q7,Latte,1,100",
+    "01/09/2026 18:00,B-2,Q7,Latte,1,100",
+    "08/09/2026 18:00,B-3,Q7,Latte,1,100",
+    "15/09/2026 18:00,C-1,Q7,Latte,1,50"
+  ];
+  const result = analyzeCsv(rows.join("\n"));
+  assert.equal(result.insights.length, 0);
+});
+
 test("Vietnamese date and currency formats normalize deterministically", () => {
   const csv = [
     "Ngày Bán,Mã HĐ,Chi Nhánh,Sản Phẩm,SL,Thành Tiền,SĐT Khách",
