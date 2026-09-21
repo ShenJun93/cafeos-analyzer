@@ -62,7 +62,15 @@ export async function supabaseJson(path, {
   }
 
   if (!response.ok) {
-    if (response.status === 401) {
+    const authErrorCode = String(payload?.error_code ?? payload?.code ?? '');
+    const authRejected =
+      response.status === 401 ||
+      (
+        response.status === 403 &&
+        ['bad_jwt', 'unexpected_audience'].includes(authErrorCode)
+      );
+
+    if (authRejected) {
       throw new AppHttpError(401, 'AUTH_INVALID', 'Session is invalid or expired');
     }
     throw new AppHttpError(502, 'SUPABASE_UPSTREAM', 'Control Tower data service returned an error');
