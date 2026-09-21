@@ -22,7 +22,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Seeding synthetic recovery fixture..."
-psql "$DB_URL" --variable ON_ERROR_STOP=1 --file supabase/tests/restore/seed.sql
+psql "$DB_URL" --variable ON_ERROR_STOP=1 --file supabase/restore-fixtures/seed.sql
 
 dump_started="$(date +%s)"
 echo "Creating Supabase logical recovery bundle..."
@@ -54,7 +54,7 @@ psql \
 restore_sql_seconds="$(( $(date +%s) - restore_started ))"
 
 echo "Verifying recovered point, metrics and tenant isolation..."
-psql "$DB_URL" --variable ON_ERROR_STOP=1 --file supabase/tests/restore/verify.sql
+psql "$DB_URL" --variable ON_ERROR_STOP=1 --file supabase/restore-fixtures/verify.sql
 recovery_seconds="$(( $(date +%s) - recovery_started ))"
 
 echo "RESTORE_DRILL_PASS recovered_point=$RECOVERED_POINT dump_seconds=$dump_seconds restore_sql_seconds=$restore_sql_seconds recovery_seconds=$recovery_seconds"
