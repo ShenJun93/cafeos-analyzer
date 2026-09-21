@@ -76,7 +76,20 @@ export async function verifyControlTowerPreview({
   }
   log("PASS authenticated /api/app/session -> 200 with expected membership");
 
-  for (const path of ["/api/app/stores", "/api/app/attention", "/api/app/brief"]) {
+  const stores = await expectJson(
+    fetchImpl,
+    `${base}/api/app/stores`,
+    { headers: { ...authHeaders, "x-cafeos-tenant-id": tenantId } },
+    200
+  );
+  if (stores?.tenant?.id !== tenantId || !Array.isArray(stores?.stores)) {
+    fail("/api/app/stores did not return the selected tenant Store collection");
+  }
+  const storeId = stores.stores.find(store => store?.active !== false)?.id;
+  if (!storeId) fail("Synthetic Store was not returned");
+  log("PASS own-tenant /api/app/stores -> 200");
+
+  for (const path of ["/api/app/attention", "/api/app/brief"]) {
     const payload = await expectJson(
       fetchImpl,
       `${base}${path}`,
@@ -97,6 +110,23 @@ export async function verifyControlTowerPreview({
     log(`PASS own-tenant ${path} -> 200`);
   }
 
+  const storeHealthPath = `/api/app/store-health?storeId=${encodeURIComponent(storeId)}`;
+  const storeHealth = await expectJson(
+    fetchImpl,
+    `${base}${storeHealthPath}`,
+    { headers: { ...authHeaders, "x-cafeos-tenant-id": tenantId } },
+    200
+  );
+  if (storeHealth?.tenant?.id !== tenantId ||
+      storeHealth?.store?.id !== storeId ||
+      storeHealth?.capabilities?.deterministicMetrics !== true ||
+      !storeHealth?.metrics ||
+      !storeHealth?.coverage ||
+      !Object.hasOwn(storeHealth, "asOfBusinessDate")) {
+    fail("/api/app/store-health did not return the deterministic Store Health contract");
+  }
+  log("PASS own-tenant /api/app/store-health -> 200");
+
   await expectJson(
     fetchImpl,
     `${base}/api/app/stores`,
@@ -105,6 +135,15 @@ export async function verifyControlTowerPreview({
     "TENANT_FORBIDDEN"
   );
   log("PASS cross-tenant selection -> 403 TENANT_FORBIDDEN");
+
+  await expectJson(
+    fetchImpl,
+    `${base}${storeHealthPath}`,
+    { headers: { ...authHeaders, "x-cafeos-tenant-id": forbiddenTenantId } },
+    403,
+    "TENANT_FORBIDDEN"
+  );
+  log("PASS cross-tenant Store Health -> 403 TENANT_FORBIDDEN");
 
   await expectJson(
     fetchImpl,
