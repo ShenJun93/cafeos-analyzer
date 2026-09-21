@@ -154,5 +154,5 @@ test("server-only customer identifiers have an explicit deny policy", () => {
 
 test("foreign-key hot paths have covering indexes found by staging advisors", () => {
   has(/create index if not exists actions_tenant_attention_idx[\s\S]*on public\.actions \(tenant_id, attention_item_id\)/i);
-  has(/create index if not exists transaction_line_items_first_import_id_idx[\s\S]*on public\.transaction_line_items \(first_import_id\)/i);
+  has(/create index if not exists transaction_line_items_tenant_first_import_idx[\s\S]*on public\.transaction_line_items \(tenant_id, first_import_id\)/i);
 });
