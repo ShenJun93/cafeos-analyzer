@@ -84,7 +84,7 @@ try {
 
     $remove = Invoke-VercelCli -Arguments @(
       "env", "rm", $Name, "preview", "--yes",
-      "--scope", $teamSlug, "--project", $projectId
+      "--scope", $teamSlug
     )
     if ($remove.ExitCode -ne 0 -and $remove.Text -notmatch '(not found|does not exist|no environment variable)') {
       $remove.Output | Out-Host
@@ -93,7 +93,7 @@ try {
 
     $add = Invoke-VercelCli -Arguments @(
       "env", "add", $Name, "preview",
-      "--scope", $teamSlug, "--project", $projectId
+      "--scope", $teamSlug
     ) -InputText $Value -HasInput
     if ($add.ExitCode -ne 0) {
       $add.Output | Out-Host
@@ -109,14 +109,17 @@ try {
   Write-Host "Verifying required Preview environment variable names..." -ForegroundColor Cyan
   $envList = Invoke-VercelCli -Arguments @(
     "env", "ls", "preview",
-    "--scope", $teamSlug, "--project", $projectId
+    "--format", "json",
+    "--scope", $teamSlug
   )
   if ($envList.ExitCode -ne 0) {
     $envList.Output | Out-Host
     throw "Could not list Vercel preview environment variables"
   }
   foreach ($requiredName in @("SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY")) {
-    if ($envList.Text -notmatch ("(?m)\b" + [regex]::Escape($requiredName) + "\b")) {
+    $jsonKeyPattern = '"key"\s*:\s*"' + [regex]::Escape($requiredName) + '"'
+    if ($envList.Text -notmatch $jsonKeyPattern) {
+      $envList.Output | Out-Host
       throw "Required Vercel preview variable is missing after refresh: $requiredName"
     }
   }
