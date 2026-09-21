@@ -32,6 +32,7 @@ function liveFixture({ failSignIn = false, staleJwtStatus = 200 } = {}) {
     const u = new URL(url);
     const method = options.method ?? "GET";
     const headers = options.headers ?? {};
+    const authorization = headers.authorization ?? headers.Authorization;
     calls.push({
       method,
       pathname: u.pathname,
@@ -71,7 +72,7 @@ function liveFixture({ failSignIn = false, staleJwtStatus = 200 } = {}) {
     }
 
     if (u.pathname === "/rest/v1/tenant_members" && method === "GET") {
-      const isCaller = headers.authorization === "Bearer " + JWT;
+      const isCaller = authorization === "Bearer " + JWT;
       if (isCaller && !membershipExists && staleJwtStatus !== 200) {
         return jsonResponse({ error_code: "session_not_found" }, staleJwtStatus);
       }
@@ -83,12 +84,12 @@ function liveFixture({ failSignIn = false, staleJwtStatus = 200 } = {}) {
     }
 
     if (u.pathname === "/auth/v1/user" && method === "GET") {
-      assert.equal(headers.authorization, "Bearer " + JWT);
+      assert.equal(authorization, "Bearer " + JWT);
       return jsonResponse({ id: USER_ID });
     }
 
     if (u.pathname === "/auth/v1/logout" && method === "POST") {
-      assert.equal(headers.authorization, "Bearer " + JWT);
+      assert.equal(authorization, "Bearer " + JWT);
       return noContent();
     }
 
