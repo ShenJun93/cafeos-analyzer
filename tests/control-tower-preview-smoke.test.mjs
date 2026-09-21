@@ -10,6 +10,7 @@ import {
 const PREVIEW = "https://cafeos-analyzer-wave26-example.vercel.app";
 const TENANT_A = "10000000-0000-4000-8000-000000000001";
 const TENANT_B = "20000000-0000-4000-8000-000000000002";
+const USER_A = "a0000000-0000-4000-8000-000000000001";
 const TOKEN = "synthetic-user-jwt";
 
 function jsonResponse(payload, status = 200) {
