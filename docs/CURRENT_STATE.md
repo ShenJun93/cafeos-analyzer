@@ -66,13 +66,28 @@ The brief read shell does not yet claim persisted deterministic top metrics; tha
 
 See `docs/CONTROL_TOWER_AUTH_SHELL.md`.
 
+## Current external gate
+
+Wave 25 read-shell code is merged, main CI is green, production auto-deploy is READY, and unauthenticated live `/api/app/session` returns `401 AUTH_REQUIRED`.
+
+Issue #19 remains open because full authenticated preview evidence still requires:
+
+- Vercel preview-only `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY`;
+- a synthetic Supabase Auth user;
+- synthetic allowed/forbidden tenant memberships;
+- live proof of authenticated 200 / cross-tenant 403 / invalid-JWT 401.
+
+Wave 26 adds a guarded preview-only launcher and repeatable smoke verifier. It does not itself count as E2E evidence.
+
+See `docs/CONTROL_TOWER_PREVIEW_SMOKE.md`.
+
 ## Next action
 
-1. pass normal CI + Supabase DB CI for the read shell;
-2. configure staging-safe Vercel env vars only;
-3. verify unauthenticated live shell returns 401;
-4. use synthetic Auth users to verify authenticated tenant isolation end-to-end;
-5. then implement deterministic Daily Brief/Store Health metrics;
+1. merge Wave 26 after normal CI passes;
+2. run the guarded preview launcher from canonical local `main`;
+3. create/use supported synthetic Supabase Auth identities;
+4. close issue #19 only after live authenticated 200/403/401 evidence;
+5. then implement persistent deterministic Daily Brief / Store Health metric reads;
 6. only after read-path evidence, add bounded Attention → Action → Measurement writes.
 
 Primary distribution remains pull/inbound; no dependency on cold outbound sales.
