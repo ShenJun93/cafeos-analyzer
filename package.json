@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/stamp-dist.mjs",
-    "test": "npm run build && node --test tests/run.test.mjs tests/fingerprint.test.mjs tests/deploy-script.test.mjs tests/indexability.test.mjs tests/control-tower-schema.test.mjs tests/supabase-migration-sync.test.mjs tests/control-tower-api.test.mjs tests/control-tower-preview-smoke.test.mjs tests/restore-drill-safety.test.mjs tests/operator-offboarding.test.mjs tests/operator-tenant-offboarding.test.mjs",
+    "test": "npm run build && node --test tests/run.test.mjs tests/fingerprint.test.mjs tests/deploy-script.test.mjs tests/indexability.test.mjs tests/control-tower-schema.test.mjs tests/supabase-migration-sync.test.mjs tests/control-tower-api.test.mjs tests/control-tower-preview-smoke.test.mjs tests/restore-drill-safety.test.mjs tests/operator-offboarding.test.mjs tests/operator-tenant-offboarding.test.mjs tests/operator-offboarding-live.test.mjs",
     "analyze:fixture": "npm run build && node scripts/analyze-fixture.mjs fixtures/known-anomaly.csv",
     "analyze:file": "npm run build && node scripts/analyze-file.mjs",
     "serve": "npm run build && node scripts/serve.mjs",
@@ -18,7 +18,7 @@
     "serve:vercel": "npm run build && node scripts/serve-vercel-preview.mjs",
     "verify:deploy": "node scripts/verify-deploy.mjs",
     "verify:live": "node scripts/verify-live-deployment.mjs",
-    "test:dist": "node scripts/verify-deploy.mjs && node --test tests/run.test.mjs tests/fingerprint.test.mjs tests/deploy-script.test.mjs tests/indexability.test.mjs tests/control-tower-schema.test.mjs tests/supabase-migration-sync.test.mjs tests/control-tower-api.test.mjs tests/control-tower-preview-smoke.test.mjs tests/restore-drill-safety.test.mjs tests/operator-offboarding.test.mjs tests/operator-tenant-offboarding.test.mjs",
+    "test:dist": "node scripts/verify-deploy.mjs && node --test tests/run.test.mjs tests/fingerprint.test.mjs tests/deploy-script.test.mjs tests/indexability.test.mjs tests/control-tower-schema.test.mjs tests/supabase-migration-sync.test.mjs tests/control-tower-api.test.mjs tests/control-tower-preview-smoke.test.mjs tests/restore-drill-safety.test.mjs tests/operator-offboarding.test.mjs tests/operator-tenant-offboarding.test.mjs tests/operator-offboarding-live.test.mjs",
     "field:session": "npm run build && node scripts/field-session.mjs",
     "field:finalize": "npm run build && node scripts/finalize-field-session.mjs",
     "field:registry:add": "npm run build && node scripts/field-registry.mjs add",
@@ -28,6 +28,7 @@
     "deploy:control-tower-preview": "powershell -ExecutionPolicy Bypass -File .\\scripts\\deploy-control-tower-preview.ps1",
     "verify:control-tower-auth-smoke": "powershell -ExecutionPolicy Bypass -File .\\scripts\\run-control-tower-auth-smoke.ps1",
     "operator:offboard-user": "node scripts/operator-offboard-user.mjs",
-    "operator:offboard-tenant": "node scripts/operator-offboard-tenant.mjs"
+    "operator:offboard-tenant": "node scripts/operator-offboard-tenant.mjs",
+    "verify:operator-offboarding-live": "powershell -ExecutionPolicy Bypass -File .\\\\scripts\\\\run-operator-user-offboarding-live.ps1"
   }
 }
