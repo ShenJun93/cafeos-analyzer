@@ -79,26 +79,40 @@ It does not let the client create trusted Attention rows.
 
 Requires selected tenant membership.
 
-Current read shell combines:
+The endpoint calls the fixed `public.daily_brief_aggregate(uuid,date)` Postgres RPC using the **caller JWT** plus the publishable key. It does not transfer raw tenant transaction history to Vercel.
 
-- latest committed import freshness;
-- Store list;
-- current attention items;
+The response combines:
+
+- selected tenant context;
+- aggregate-selected `asOfBusinessDate`;
+- committed-import / observed-transaction freshness;
+- Store mapping and comparison coverage;
+- deterministic net sales / orders / AOV;
+- exact four-week same-weekday baseline dates/status;
+- current persisted attention items;
 - unresolved actions.
 
-The response explicitly declares:
+Optional bounded input:
+
+```http
+GET /api/app/brief?asOfBusinessDate=YYYY-MM-DD
+```
+
+Invalid calendar dates fail with `400 AS_OF_DATE_INVALID`. When omitted, the database selects the latest caller-visible mapped active-Store business date.
+
+The response declares:
 
 ```json
 {
   "capabilities": {
     "persistedAttention": true,
     "actionRead": true,
-    "deterministicTopMetrics": false
+    "deterministicTopMetrics": true
   }
 }
 ```
 
-This is intentional. Wave 25 must not pretend the persisted Daily Brief metric path exists before it is actually implemented.
+When the four required same-weekday samples are unavailable or coverage is incomplete, authoritative baseline/delta fields remain null and the aggregate exposes the corresponding baseline status.
 
 ## Failure behavior
 
@@ -122,15 +136,16 @@ Do not commit the key value into the repository even though publishable keys are
 
 Never configure a Supabase secret/service-role key for browser or user-RLS read paths.
 
-## Next gate
+## Current gate
 
-After repository CI and Supabase DB CI pass:
+The authenticated read shell, timezone/order correctness gate, and fixed Daily Brief aggregate are already staging-verified.
 
-1. configure the two staging-safe Vercel environment variables;
-2. deploy preview/staging shell;
-3. verify unauthenticated `/api/app/session` returns 401;
-4. create/use synthetic Supabase Auth users for authenticated live smoke;
-5. prove Tenant A cannot select Tenant B through the deployed shell;
-6. only then add deterministic Daily Brief metric reads.
+For the deterministic Daily Brief API slice:
+
+1. deploy the preview with the same preview-only Supabase URL + publishable key;
+2. run authenticated synthetic smoke;
+3. require Tenant A `/api/app/brief` → 200 with `deterministicTopMetrics=true`, metrics and coverage;
+4. preserve Tenant B → 403 and invalid JWT → 401;
+5. only after read-path evidence proceed to Store Health reuse or bounded workflow writes.
 
 No real merchant data is authorized by this shell.
