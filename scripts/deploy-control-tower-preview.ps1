@@ -83,8 +83,8 @@ try {
     Write-Host "Refreshing preview-only Vercel variable: $Name" -ForegroundColor Cyan
 
     $remove = Invoke-VercelCli -Arguments @(
-      "--scope", $teamSlug, "--project", $projectId,
-      "env", "rm", $Name, "preview", "--yes"
+      "env", "rm", $Name, "preview", "--yes",
+      "--scope", $teamSlug, "--project", $projectId
     )
     if ($remove.ExitCode -ne 0 -and $remove.Text -notmatch '(not found|does not exist|no environment variable)') {
       $remove.Output | Out-Host
@@ -92,8 +92,8 @@ try {
     }
 
     $add = Invoke-VercelCli -Arguments @(
-      "--scope", $teamSlug, "--project", $projectId,
-      "env", "add", $Name, "preview"
+      "env", "add", $Name, "preview",
+      "--scope", $teamSlug, "--project", $projectId
     ) -InputText $Value -HasInput
     if ($add.ExitCode -ne 0) {
       $add.Output | Out-Host
@@ -108,8 +108,8 @@ try {
 
   Write-Host "Verifying required Preview environment variable names..." -ForegroundColor Cyan
   $envList = Invoke-VercelCli -Arguments @(
-    "--scope", $teamSlug, "--project", $projectId,
-    "env", "ls", "preview"
+    "env", "ls", "preview",
+    "--scope", $teamSlug, "--project", $projectId
   )
   if ($envList.ExitCode -ne 0) {
     $envList.Output | Out-Host
@@ -129,7 +129,8 @@ try {
 
   Write-Host "Deploying a PREVIEW target only; production alias will not be promoted." -ForegroundColor Green
   $deploy = Invoke-VercelCli -Arguments @(
-    "--yes", "--scope", $teamSlug, "--project", $projectId
+    "deploy", "--yes",
+    "--scope", $teamSlug, "--project", $projectId
   )
   $deploy.Output | Out-Host
   if ($deploy.ExitCode -ne 0) { throw "Vercel preview deployment failed" }
