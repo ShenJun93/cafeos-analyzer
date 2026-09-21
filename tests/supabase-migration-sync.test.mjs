@@ -66,7 +66,7 @@ test("Store Health read-model migration stays text-equivalent to canonical contr
     "utf8"
   );
   const migration = await readFile(
-    new URL("../supabase/migrations/20260921132000_store_health_read_model.sql", import.meta.url),
+    new URL("../supabase/migrations/20260921201000_store_health_read_model.sql", import.meta.url),
     "utf8"
   );
   assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
