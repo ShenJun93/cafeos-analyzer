@@ -21,8 +21,8 @@ const env = {
   SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test"
 };
 
-function req(headers = {}, method = "GET") {
-  return { method, headers };
+function req(headers = {}, method = "GET", url = "/") {
+  return { method, headers, url };
 }
 
 function res() {
@@ -185,26 +185,45 @@ test("session endpoint returns only memberships visible to the authenticated use
   assert.equal(calls.length, 3);
 });
 
-test("read-shell endpoints bind every business query to the selected tenant", async () => {
+test("read endpoints scope every business access to the selected tenant", async () => {
   const businessCalls = [];
-  const fetchImpl = async (url) => {
+  const aggregate = {
+    tenantId: TENANT_A,
+    asOfBusinessDate: "2026-09-21",
+    freshness: {
+      latestCommittedImportAt: "2026-09-21T00:00:00Z",
+      latestObservedTransactionAt: "2026-09-21T01:00:00Z"
+    },
+    coverage: {
+      activeStores: 1,
+      storesRepresented: 1,
+      stableStoreMappingRate: 1,
+      baselineSamples: []
+    },
+    metrics: {
+      netSales: { current: 80, baseline: null, deltaPct: null, baselineType: "same_weekday_4w", baselineDates: [], baselineStatus: "insufficient_history" },
+      orders: { current: 2, baseline: null, deltaPct: null, baselineType: "same_weekday_4w", baselineDates: [], baselineStatus: "insufficient_history" },
+      aov: { current: 40, baseline: null, deltaPct: null, baselineType: "same_weekday_4w", baselineDates: [], baselineStatus: "insufficient_history" }
+    }
+  };
+  const fetchImpl = async (url, init = {}) => {
     const u = new URL(url);
     if (u.pathname === "/auth/v1/user") return jsonResponse({ id: USER_A });
     if (u.pathname === "/rest/v1/tenant_members") {
       return jsonResponse([{ tenant_id: TENANT_A, role: "owner" }]);
     }
-    businessCalls.push(u);
+    businessCalls.push({ u, init });
     if (u.pathname === "/rest/v1/stores") {
       return jsonResponse([{ id: "store-1", name: "Store A", timezone: "Asia/Ho_Chi_Minh", active: true }]);
     }
     if (u.pathname === "/rest/v1/attention_items") {
       return jsonResponse([{ id: "attention-1", metric: "net_sales", status: "open" }]);
     }
-    if (u.pathname === "/rest/v1/imports") {
-      return jsonResponse([{ id: "import-1", source_namespace: "test", status: "committed", row_count: 10, invalid_row_count: 0, committed_at: "2026-09-21T00:00:00Z" }]);
-    }
     if (u.pathname === "/rest/v1/actions") {
       return jsonResponse([{ id: "action-1", title: "Investigate", status: "open" }]);
+    }
+    if (u.pathname === "/rest/v1/rpc/daily_brief_aggregate") {
+      return jsonResponse(aggregate);
     }
     return jsonResponse({ error: "unexpected path" }, 500);
   };
@@ -216,23 +235,120 @@ test("read-shell endpoints bind every business query to the selected tenant", as
     assert.equal(response.statusCode, 200);
   }
 
-  assert.ok(businessCalls.length >= 6);
-  for (const u of businessCalls) {
-    assert.equal(
-      u.searchParams.get("tenant_id"),
-      `eq.${TENANT_A}`,
-      `${u.pathname} must be tenant-filtered`
-    );
+  assert.ok(businessCalls.length >= 5);
+  for (const { u, init } of businessCalls) {
+    assert.equal(init.headers.authorization, "Bearer jwt");
+    assert.equal(init.headers.apikey, "sb_publishable_test");
+    if (u.pathname === "/rest/v1/rpc/daily_brief_aggregate") {
+      assert.equal(init.method, "POST");
+      assert.deepEqual(JSON.parse(init.body), {
+        p_tenant_id: TENANT_A,
+        p_as_of_business_date: null
+      });
+    } else {
+      assert.equal(
+        u.searchParams.get("tenant_id"),
+        `eq.${TENANT_A}`,
+        `${u.pathname} must be tenant-filtered`
+      );
+    }
   }
 });
 
-test("brief is explicit about the incomplete deterministic top-metric path", async () => {
-  const fetchImpl = async (url) => {
+test("brief returns deterministic aggregate metrics through caller-RLS RPC", async () => {
+  const rpcCalls = [];
+  const aggregate = {
+    tenantId: TENANT_A,
+    asOfBusinessDate: "2026-09-21",
+    freshness: {
+      latestCommittedImportAt: "2026-09-21T00:00:00Z",
+      latestObservedTransactionAt: "2026-09-21T01:00:00Z"
+    },
+    coverage: {
+      activeStores: 1,
+      storesRepresented: 1,
+      stableStoreMappingRate: 1,
+      baselineSamples: []
+    },
+    metrics: {
+      netSales: { current: 80, baseline: 100, deltaPct: -0.2, baselineType: "same_weekday_4w", baselineDates: ["2026-08-24","2026-08-31","2026-09-07","2026-09-14"], baselineStatus: "ready" },
+      orders: { current: 2, baseline: 2, deltaPct: 0, baselineType: "same_weekday_4w", baselineDates: ["2026-08-24","2026-08-31","2026-09-07","2026-09-14"], baselineStatus: "ready" },
+      aov: { current: 40, baseline: 50, deltaPct: -0.2, baselineType: "same_weekday_4w", baselineDates: ["2026-08-24","2026-08-31","2026-09-07","2026-09-14"], baselineStatus: "ready" }
+    }
+  };
+  const fetchImpl = async (url, init = {}) => {
     const u = new URL(url);
     if (u.pathname === "/auth/v1/user") return jsonResponse({ id: USER_A });
     if (u.pathname === "/rest/v1/tenant_members") return jsonResponse([{ tenant_id: TENANT_A, role: "analyst" }]);
-    if (u.pathname === "/rest/v1/imports") return jsonResponse([]);
-    if (u.pathname === "/rest/v1/stores") return jsonResponse([]);
+    if (u.pathname === "/rest/v1/rpc/daily_brief_aggregate") {
+      rpcCalls.push({ u, init });
+      return jsonResponse(aggregate);
+    }
+    if (u.pathname === "/rest/v1/attention_items") return jsonResponse([{ id: "attention-1", status: "open" }]);
+    if (u.pathname === "/rest/v1/actions") return jsonResponse([{ id: "action-1", status: "open" }]);
+    return jsonResponse({}, 500);
+  };
+  const response = res();
+  await briefHandle(
+    req(
+      { authorization: "Bearer jwt", "x-cafeos-tenant-id": TENANT_A },
+      "GET",
+      "/api/app/brief?asOfBusinessDate=2026-09-21"
+    ),
+    response,
+    { env, fetchImpl }
+  );
+  const body = parsed(response);
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.kind, "control-tower-daily-brief");
+  assert.equal(body.tenant.role, "analyst");
+  assert.equal(body.asOfBusinessDate, "2026-09-21");
+  assert.deepEqual(body.metrics, aggregate.metrics);
+  assert.deepEqual(body.coverage, aggregate.coverage);
+  assert.equal(body.attention.length, 1);
+  assert.equal(body.unresolvedActions.length, 1);
+  assert.equal(body.capabilities.deterministicTopMetrics, true);
+  assert.equal(rpcCalls.length, 1);
+  assert.equal(rpcCalls[0].init.method, "POST");
+  assert.equal(rpcCalls[0].init.headers.apikey, "sb_publishable_test");
+  assert.equal(rpcCalls[0].init.headers.authorization, "Bearer jwt");
+  assert.deepEqual(JSON.parse(rpcCalls[0].init.body), {
+    p_tenant_id: TENANT_A,
+    p_as_of_business_date: "2026-09-21"
+  });
+});
+
+test("brief rejects an invalid as-of calendar date before aggregate access", async () => {
+  let rpcCalled = false;
+  const fetchImpl = async (url) => {
+    const u = new URL(url);
+    if (u.pathname === "/auth/v1/user") return jsonResponse({ id: USER_A });
+    if (u.pathname === "/rest/v1/tenant_members") return jsonResponse([{ tenant_id: TENANT_A, role: "owner" }]);
+    if (u.pathname === "/rest/v1/rpc/daily_brief_aggregate") rpcCalled = true;
+    return jsonResponse([], 200);
+  };
+  const response = res();
+  await briefHandle(
+    req(
+      { authorization: "Bearer jwt", "x-cafeos-tenant-id": TENANT_A },
+      "GET",
+      "/api/app/brief?asOfBusinessDate=2026-02-30"
+    ),
+    response,
+    { env, fetchImpl }
+  );
+  const body = parsed(response);
+  assert.equal(response.statusCode, 400);
+  assert.equal(body.error.code, "AS_OF_DATE_INVALID");
+  assert.equal(rpcCalled, false);
+});
+
+test("brief fails closed when aggregate RPC returns a malformed payload", async () => {
+  const fetchImpl = async (url) => {
+    const u = new URL(url);
+    if (u.pathname === "/auth/v1/user") return jsonResponse({ id: USER_A });
+    if (u.pathname === "/rest/v1/tenant_members") return jsonResponse([{ tenant_id: TENANT_A, role: "owner" }]);
+    if (u.pathname === "/rest/v1/rpc/daily_brief_aggregate") return jsonResponse(null);
     if (u.pathname === "/rest/v1/attention_items") return jsonResponse([]);
     if (u.pathname === "/rest/v1/actions") return jsonResponse([]);
     return jsonResponse({}, 500);
@@ -244,10 +360,8 @@ test("brief is explicit about the incomplete deterministic top-metric path", asy
     { env, fetchImpl }
   );
   const body = parsed(response);
-  assert.equal(response.statusCode, 200);
-  assert.equal(body.kind, "control-tower-read-shell");
-  assert.equal(body.capabilities.deterministicTopMetrics, false);
-  assert.equal(body.tenant.role, "analyst");
+  assert.equal(response.statusCode, 502);
+  assert.equal(body.error.code, "SUPABASE_UPSTREAM");
 });
 
 test("Control Tower server boundary never references secret or service-role credentials", async () => {
@@ -264,15 +378,15 @@ test("Control Tower server boundary never references secret or service-role cred
   assert.match(combined, /SUPABASE_PUBLISHABLE_KEY/);
 });
 
-test("Control Tower read shell exposes GET only and no mutation methods", async () => {
+test("Control Tower client boundary stays GET-only while brief uses fixed internal RPC", async () => {
   const files = await Promise.all([
     "../api/app/session.mjs",
     "../api/app/stores.mjs",
     "../api/app/attention.mjs",
     "../api/app/brief.mjs"
   ].map(path => readFile(new URL(path, import.meta.url), "utf8")));
-  for (const source of files) {
-    assert.match(source, /onlyGet/);
-    assert.doesNotMatch(source, /method\s*[:=]\s*['"](?:POST|PATCH|PUT|DELETE)['"]/i);
-  }
+  for (const source of files) assert.match(source, /onlyGet/);
+  const briefSource = files.at(-1);
+  assert.match(briefSource, /\/rest\/v1\/rpc\/daily_brief_aggregate/);
+  assert.doesNotMatch(briefSource, /\/rest\/v1\/transaction_line_items/);
 });
