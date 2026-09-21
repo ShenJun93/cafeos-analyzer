@@ -216,3 +216,13 @@ test("protected authenticated verifier refuses production alias and missing cred
     /SUPABASE_PUBLISHABLE_KEY/
   );
 });
+test("protected verifier uses the Windows shell for npx instead of spawning npx.cmd directly", async () => {
+  const source = await readFile(
+    new URL("../scripts/verify-control-tower-protected-preview.mjs", import.meta.url),
+    "utf8"
+  );
+  assert.match(source, /const command = "npx"/);
+  assert.match(source, /const useShell = process\.platform === "win32"/);
+  assert.match(source, /shell: useShell/);
+  assert.doesNotMatch(source, /npx\.cmd/);
+});
