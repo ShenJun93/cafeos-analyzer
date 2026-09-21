@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 import { analyzeCsv } from "../dist/analyze.js";
 import { parseCsv } from "../dist/csv.js";
 import { mapHeaders } from "../dist/mapping.js";
+import { computeCoreMetrics } from "../dist/metrics.js";
+import { businessDate, daypartForInstant, parseSourceTimestamp, zonedDateTimeParts } from "../dist/time.js";
 
 const fixture = await readFile(new URL("../fixtures/known-anomaly.csv", import.meta.url), "utf8");
 
@@ -35,9 +37,9 @@ test("known-answer fixture reproduces deterministic metrics", () => {
   assert.equal(result.metrics.repeatRate, 1);
 });
 
-test("Q7 evening decline is detected and decomposes to order volume", () => {
+test("Q7 decline uses store-local daypart and same-weekday four-week evidence", () => {
   const result = analyzeCsv(fixture);
-  const q7 = result.insights.find(x => x.store === "Q7" && x.daypart === "evening");
+  const q7 = result.insights.find(x => x.store === "Q7" && x.daypart === "morning");
   assert.ok(q7);
   assert.equal(q7.currentSales, 350_000);
   assert.equal(q7.baselineSales, 500_000);
@@ -45,6 +47,13 @@ test("Q7 evening decline is detected and decomposes to order volume", () => {
   assert.equal(q7.baselineOrders, 10);
   assert.ok(Math.abs(q7.salesDeltaPct + 0.3) < 1e-12);
   assert.ok(Math.abs(q7.orderDeltaPct + 0.3) < 1e-12);
+  assert.deepEqual(q7.evidenceDates, [
+    "2026-08-18",
+    "2026-08-25",
+    "2026-09-01",
+    "2026-09-08",
+    "2026-09-15"
+  ]);
   assert.equal(result.insights.some(x => x.store === "Q1"), false);
 });
 
@@ -59,7 +68,41 @@ test("Vietnamese date and currency formats normalize deterministically", () => {
   assert.equal(result.health.invalidRows, 0);
   assert.equal(result.metrics.orders, 2);
   assert.equal(result.metrics.netSales, 1_272_000);
-  assert.equal(result.items[0].occurredAt, "2026-09-20T08:15:00.000Z");
+  assert.equal(result.items[0].occurredAt, "2026-09-20T01:15:00.000Z");
+  assert.equal(result.timeAssumptions.sourceTimezone, "Asia/Ho_Chi_Minh");
+  assert.equal(result.timeAssumptions.defaultStoreTimezone, "Asia/Ho_Chi_Minh");
+});
+
+test("explicit-offset timestamps preserve their instant while business time is store-local", () => {
+  const instant = parseSourceTimestamp("2026-09-20T18:30:00Z", "Asia/Ho_Chi_Minh");
+  assert.ok(instant);
+  assert.equal(instant.toISOString(), "2026-09-20T18:30:00.000Z");
+  assert.equal(businessDate(instant, "Asia/Ho_Chi_Minh"), "2026-09-21");
+  assert.equal(zonedDateTimeParts(instant, "Asia/Ho_Chi_Minh").hour, 1);
+  assert.equal(daypartForInstant(instant, "Asia/Ho_Chi_Minh"), "morning");
+});
+
+test("invalid IANA timezone is rejected before analysis", () => {
+  const csv = [
+    "occurred_at,transaction_id,store,product,quantity,net_amount",
+    "20/09/2026 08:15,O-1,Q1,Latte,1,50000"
+  ].join("\n");
+  assert.throws(
+    () => analyzeCsv(csv, undefined, { sourceTimezone: "Not/A_Real_Zone" }),
+    /Invalid IANA timezone/
+  );
+});
+
+test("source-scoped order identity separates collisions and keeps repeated lines in one order", () => {
+  const items = [
+    { sourceNamespace: "pos-a", transactionId: "O-1", occurredAt: "2026-09-20T01:00:00.000Z", store: "Q1", product: "Latte", quantity: 1, netAmount: 50 },
+    { sourceNamespace: "pos-a", transactionId: "O-1", occurredAt: "2026-09-20T01:00:00.000Z", store: "Q1", product: "Cake", quantity: 1, netAmount: 25 },
+    { sourceNamespace: "pos-b", transactionId: "O-1", occurredAt: "2026-09-20T01:00:00.000Z", store: "Q1", product: "Latte", quantity: 1, netAmount: 100 }
+  ];
+  const metrics = computeCoreMetrics(items);
+  assert.equal(metrics.netSales, 175);
+  assert.equal(metrics.orders, 2);
+  assert.equal(metrics.aov, 87.5);
 });
 
 test("low identity coverage disables retention capability without blocking sales analytics", () => {
