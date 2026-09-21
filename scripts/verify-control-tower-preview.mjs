@@ -77,12 +77,23 @@ export async function verifyControlTowerPreview({
   log("PASS authenticated /api/app/session -> 200 with expected membership");
 
   for (const path of ["/api/app/stores", "/api/app/attention", "/api/app/brief"]) {
-    await expectJson(
+    const payload = await expectJson(
       fetchImpl,
       `${base}${path}`,
       { headers: { ...authHeaders, "x-cafeos-tenant-id": tenantId } },
       200
     );
+    if (payload?.tenant?.id !== tenantId) {
+      fail(`${path} did not return the selected tenant context`);
+    }
+    if (path === "/api/app/brief") {
+      if (payload?.capabilities?.deterministicTopMetrics !== true) {
+        fail("/api/app/brief did not enable deterministicTopMetrics");
+      }
+      if (!payload?.metrics || !payload?.coverage || !Object.hasOwn(payload, "asOfBusinessDate")) {
+        fail("/api/app/brief did not return the deterministic Daily Brief contract");
+      }
+    }
     log(`PASS own-tenant ${path} -> 200`);
   }
 
