@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { verifyControlTowerPreview } from "../scripts/verify-control-tower-preview.mjs";
+import { verifyProtectedPreview } from "../scripts/verify-control-tower-protected-preview.mjs";
 
 const PREVIEW = "https://cafeos-analyzer-wave26-example.vercel.app";
 const TENANT_A = "10000000-0000-4000-8000-000000000001";
@@ -121,5 +122,97 @@ test("full smoke fails closed when synthetic auth inputs are missing", async () 
       log: () => {}
     }),
     /CAFEOS_TEST_USER_JWT/
+  );
+});
+
+test("protected authenticated verifier obtains a user token without logging secrets and proves tenant isolation", async () => {
+  const allowedTenantId = "11111111-1111-4111-8111-111111111111";
+  const forbiddenTenantId = "22222222-2222-4222-8222-222222222222";
+  const secretPassword = "synthetic-password-never-log";
+  const issuedToken = "issued-synthetic-jwt-never-log";
+  const logs = [];
+  const curlCalls = [];
+
+  const fetchImpl = async (url, options) => {
+    assert.equal(new URL(url).pathname, "/auth/v1/token");
+    assert.equal(new URL(url).searchParams.get("grant_type"), "password");
+    assert.equal(options.headers.apikey, "sb_publishable_test");
+    const body = JSON.parse(options.body);
+    assert.equal(body.email, "cafeos.synthetic.a@example.com");
+    assert.equal(body.password, secretPassword);
+    return jsonResponse({ access_token: issuedToken }, 200);
+  };
+
+  const curlImpl = (path, options) => {
+    curlCalls.push({ path, options });
+    const auth = options.headers?.authorization;
+    const tenant = options.headers?.["x-cafeos-tenant-id"];
+
+    if (path === "/api/app/session" && !auth) {
+      return { status: 401, body: { error: { code: "AUTH_REQUIRED" } } };
+    }
+    if (path === "/api/app/session" && auth === "Bearer invalid.synthetic.jwt") {
+      return { status: 401, body: { error: { code: "AUTH_INVALID" } } };
+    }
+    if (path === "/api/app/session" && auth === `Bearer ${issuedToken}`) {
+      return {
+        status: 200,
+        body: {
+          user: { id: "987c2476-ea27-4485-a75b-f382bcf04dc7" },
+          memberships: [{ tenantId: allowedTenantId, role: "owner", name: "CafeOS Synthetic A" }]
+        }
+      };
+    }
+    if (tenant === forbiddenTenantId) {
+      return { status: 403, body: { error: { code: "TENANT_FORBIDDEN" } } };
+    }
+    if (tenant === allowedTenantId) {
+      return { status: 200, body: { tenant: { id: allowedTenantId, role: "owner" } } };
+    }
+    return { status: 500, body: { error: { code: "UNEXPECTED" } } };
+  };
+
+  const result = await verifyProtectedPreview({
+    previewUrl: PREVIEW,
+    publishableKey: "sb_publishable_test",
+    password: secretPassword,
+    allowedTenantId,
+    forbiddenTenantId,
+    fetchImpl,
+    curlImpl,
+    log: message => logs.push(message)
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(curlCalls.some(x => x.options.headers?.authorization === `Bearer ${issuedToken}`), true);
+  assert.equal(curlCalls.some(x => x.options.headers?.["x-cafeos-tenant-id"] === forbiddenTenantId), true);
+  const logText = logs.join("\n");
+  assert.doesNotMatch(logText, new RegExp(secretPassword));
+  assert.doesNotMatch(logText, new RegExp(issuedToken));
+});
+
+test("protected authenticated verifier refuses production alias and missing credentials", async () => {
+  await assert.rejects(
+    verifyProtectedPreview({
+      previewUrl: "https://cafeos-analyzer.vercel.app",
+      publishableKey: "sb_publishable_test",
+      password: "x",
+      fetchImpl: async () => jsonResponse({ access_token: "x" }),
+      curlImpl: () => ({ status: 500, body: {} }),
+      log: () => {}
+    }),
+    /production alias/
+  );
+
+  await assert.rejects(
+    verifyProtectedPreview({
+      previewUrl: PREVIEW,
+      publishableKey: "",
+      password: "x",
+      fetchImpl: async () => jsonResponse({ access_token: "x" }),
+      curlImpl: () => ({ status: 500, body: {} }),
+      log: () => {}
+    }),
+    /SUPABASE_PUBLISHABLE_KEY/
   );
 });
