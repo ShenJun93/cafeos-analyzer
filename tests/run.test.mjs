@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 import { analyzeCsv } from "../dist/analyze.js";
 import { parseCsv } from "../dist/csv.js";
 import { mapHeaders } from "../dist/mapping.js";
+import { computeCoreMetrics } from "../dist/metrics.js";
+import { daypartForInstant, localBusinessClock } from "../dist/time.js";
 
 const fixture = await readFile(new URL("../fixtures/known-anomaly.csv", import.meta.url), "utf8");
 
@@ -60,6 +62,106 @@ test("Vietnamese date and currency formats normalize deterministically", () => {
   assert.equal(result.metrics.orders, 2);
   assert.equal(result.metrics.netSales, 1_272_000);
   assert.equal(result.items[0].occurredAt, "2026-09-20T08:15:00.000Z");
+});
+
+test("naive timestamps use an explicit source timezone while offset timestamps preserve their instant", () => {
+  const csv = [
+    "occurred_at,transaction_id,store,product,quantity,net_amount",
+    "20/09/2026 08:15,VN-LOCAL,Q1,Latte,1,50000",
+    "2026-09-20T08:15:00+07:00,VN-OFFSET,Q1,Latte,1,50000",
+    "2026-09-20T01:15:00Z,VN-Z,Q1,Latte,1,50000"
+  ].join("\n");
+
+  const result = analyzeCsv(csv, undefined, {
+    sourceTimezone: "Asia/Ho_Chi_Minh",
+    defaultStoreTimezone: "Asia/Ho_Chi_Minh",
+    sourceNamespace: "vn-pos"
+  });
+
+  assert.equal(result.items[0].occurredAt, "2026-09-20T01:15:00.000Z");
+  assert.equal(result.items[1].occurredAt, "2026-09-20T01:15:00.000Z");
+  assert.equal(result.items[2].occurredAt, "2026-09-20T01:15:00.000Z");
+  assert.equal(result.items[0].sourceTimezone, "Asia/Ho_Chi_Minh");
+  assert.equal(result.items[0].storeTimezone, "Asia/Ho_Chi_Minh");
+  assert.equal(result.items[0].sourceNamespace, "vn-pos");
+
+  assert.throws(
+    () => analyzeCsv(csv, undefined, { sourceTimezone: "Mars/Olympus" }),
+    /Invalid IANA timezone/
+  );
+});
+
+test("business date and daypart derive from Store timezone rather than UTC", () => {
+  const overnight = localBusinessClock("2026-09-20T18:30:00Z", "Asia/Ho_Chi_Minh");
+  assert.deepEqual(overnight, {
+    date: "2026-09-21",
+    hour: 1,
+    minute: 30,
+    second: 0
+  });
+
+  assert.equal(
+    daypartForInstant("2026-09-20T04:30:00Z", "Asia/Ho_Chi_Minh"),
+    "afternoon"
+  );
+});
+
+test("order identity is source-scoped and AOV uses the corrected order count", () => {
+  const csv = [
+    "occurred_at,transaction_id,store,product,quantity,net_amount,customer_phone",
+    "2026-09-20T08:00:00Z,SAME-ID,Q1,Latte,1,50000,0001234567"
+  ].join("\n");
+  const sourceA = analyzeCsv(csv, undefined, { sourceNamespace: "pos-a" }).items;
+  const sourceB = analyzeCsv(csv, undefined, { sourceNamespace: "pos-b" }).items;
+
+  const crossSource = computeCoreMetrics([...sourceA, ...sourceB]);
+  assert.equal(crossSource.orders, 2);
+  assert.equal(crossSource.netSales, 100000);
+  assert.equal(crossSource.aov, 50000);
+  assert.equal(crossSource.repeatCustomers, 1);
+
+  const repeatedLineSameOrder = computeCoreMetrics([...sourceA, ...sourceA]);
+  assert.equal(repeatedLineSameOrder.orders, 1);
+  assert.equal(repeatedLineSameOrder.netSales, 100000);
+  assert.equal(repeatedLineSameOrder.aov, 100000);
+});
+
+test("daypart decline uses Store-local time and exact previous four same-weekday dates", () => {
+  const csv = [
+    "occurred_at,transaction_id,store,product,quantity,net_amount",
+    "2026-08-24T04:30:00Z,W1,Q1,Latte,1,100000",
+    "2026-08-31T04:30:00Z,W2,Q1,Latte,1,100000",
+    "2026-09-07T04:30:00Z,W3,Q1,Latte,1,100000",
+    "2026-09-14T04:30:00Z,W4,Q1,Latte,1,100000",
+    "2026-09-21T04:30:00Z,W5,Q1,Latte,1,70000"
+  ].join("\n");
+
+  const result = analyzeCsv(csv, undefined, {
+    sourceNamespace: "pos-a",
+    sourceTimezone: "UTC",
+    defaultStoreTimezone: "Asia/Ho_Chi_Minh"
+  });
+  const insight = result.insights.find(x => x.store === "Q1");
+  assert.ok(insight);
+  assert.equal(insight.daypart, "afternoon");
+  assert.deepEqual(insight.evidenceDates, [
+    "2026-08-24",
+    "2026-08-31",
+    "2026-09-07",
+    "2026-09-14",
+    "2026-09-21"
+  ]);
+
+  const missingWeek = analyzeCsv(
+    csv.split("\n").filter(line => !line.startsWith("2026-09-07")).join("\n"),
+    undefined,
+    {
+      sourceNamespace: "pos-a",
+      sourceTimezone: "UTC",
+      defaultStoreTimezone: "Asia/Ho_Chi_Minh"
+    }
+  );
+  assert.equal(missingWeek.insights.length, 0);
 });
 
 test("low identity coverage disables retention capability without blocking sales analytics", () => {
