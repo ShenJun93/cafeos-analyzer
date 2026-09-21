@@ -14,10 +14,11 @@ import { handle as storesHandle } from "../api/app/stores.mjs";
 import { handle as attentionHandle } from "../api/app/attention.mjs";
 import { handle as briefHandle } from "../api/app/brief.mjs";
 import { handle as storeHealthHandle } from "../api/app/store-health.mjs";
-import { handle as actionsHandle } from "../api/app/actions.mjs";
-import { handle as actionStatusHandle } from "../api/app/action-status.mjs";
-import { handle as measurementWindowHandle } from "../api/app/measurement-window.mjs";
-import { handle as actionDetailHandle } from "../api/app/action-detail.mjs";
+import { dispatchWorkflow } from "../api/app/workflow.mjs";
+import { handle as actionsHandle } from "../server/app/actions.mjs";
+import { handle as actionStatusHandle } from "../server/app/action-status.mjs";
+import { handle as measurementWindowHandle } from "../server/app/measurement-window.mjs";
+import { handle as actionDetailHandle } from "../server/app/action-detail.mjs";
 
 const TENANT_A = "10000000-0000-4000-8000-000000000001";
 const USER_A = "a0000000-0000-4000-8000-000000000001";
@@ -913,6 +914,57 @@ test("Action detail hides cross-tenant Action ids before Measurement RPC", async
   assert.equal(rpcCalled, false);
 });
 
+test("workflow dispatcher routes the four bounded public operations without business duplication", async () => {
+  const seen = [];
+  const routes = {
+    actions: async () => { seen.push("actions"); },
+    "action-status": async () => { seen.push("action-status"); },
+    "measurement-window": async () => { seen.push("measurement-window"); },
+    "action-detail": async () => { seen.push("action-detail"); }
+  };
+
+  for (const route of Object.keys(routes)) {
+    const response = res();
+    await dispatchWorkflow(
+      req({}, "GET", `/api/app/workflow?route=${route}`),
+      response,
+      {},
+      routes
+    );
+  }
+
+  assert.deepEqual(seen, ["actions", "action-status", "measurement-window", "action-detail"]);
+});
+
+test("workflow dispatcher fails closed for an unmapped route", async () => {
+  const response = res();
+  await dispatchWorkflow(
+    req({}, "GET", "/api/app/workflow?route=unknown"),
+    response,
+    {},
+    {}
+  );
+  assert.equal(response.statusCode, 404);
+  assert.equal(parsed(response).error.code, "ROUTE_NOT_FOUND");
+});
+
+test("vercel rewrites preserve the four bounded workflow public URLs through one function", async () => {
+  const config = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
+  const expected = new Map([
+    ["/api/app/actions", "/api/app/workflow?route=actions"],
+    ["/api/app/action-status", "/api/app/workflow?route=action-status"],
+    ["/api/app/measurement-window", "/api/app/workflow?route=measurement-window"],
+    ["/api/app/action-detail", "/api/app/workflow?route=action-detail"]
+  ]);
+  for (const [source, destination] of expected) {
+    assert.equal(
+      config.rewrites.some(rule => rule.source === source && rule.destination === destination),
+      true,
+      `missing workflow rewrite ${source}`
+    );
+  }
+});
+
 test("Control Tower server boundary never references secret or service-role credentials", async () => {
   const source = await readFile(new URL("../api/_app-auth.mjs", import.meta.url), "utf8");
   const endpoints = await Promise.all([
@@ -920,12 +972,13 @@ test("Control Tower server boundary never references secret or service-role cred
     "stores.mjs",
     "attention.mjs",
     "brief.mjs",
-    "store-health.mjs",
-    "actions.mjs",
-    "action-status.mjs",
-    "measurement-window.mjs",
-    "action-detail.mjs"
-  ].map(name => readFile(new URL(`../api/app/${name}`, import.meta.url), "utf8")));
+    "../api/app/store-health.mjs",
+    "../api/app/workflow.mjs",
+    "../server/app/actions.mjs",
+    "../server/app/action-status.mjs",
+    "../server/app/measurement-window.mjs",
+    "../server/app/action-detail.mjs"
+  ].map(path => readFile(new URL(path, import.meta.url), "utf8")));
   const combined = [source, ...endpoints].join("\n");
   assert.doesNotMatch(combined, /SUPABASE_SECRET/i);
   assert.doesNotMatch(combined, /SERVICE_ROLE/i);
