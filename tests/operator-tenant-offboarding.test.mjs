@@ -201,7 +201,7 @@ test("hard-delete removes exactly the selected tenant graph and verifies all cou
 
   const deletes = calls.filter(call => call.method === "DELETE");
   assert.deepEqual(deletes.map(call => call.pathname), ["/rest/v1/tenants"]);
-  assert.match(deletes[0].search, /id=eq%2E/);
+  assert.equal(deletes[0].search, `?id=eq.${TENANT_ID}`);
 });
 
 test("explicit earlier-delete approval can override an unreached grace deadline", async () => {
