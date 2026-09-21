@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 const DEFAULTS = {
   previewUrl: "https://cafeos-analyzer-nzb1i2njx-nvhoa1691993-6852s-projects.vercel.app",
@@ -180,7 +181,7 @@ export async function verifyProtectedPreview({
   return { ok: true, previewUrl, allowedTenantId, forbiddenTenantId };
 }
 
-if (import.meta.url === new URL(`file://${process.argv[1].replaceAll("\\", "/")}`).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const previewUrl = process.argv[2] || DEFAULTS.previewUrl;
   const result = await verifyProtectedPreview({
     previewUrl,
