@@ -48,11 +48,21 @@ The launcher:
 5. refuses the production alias;
 6. runs the unauthenticated smoke gate.
 
-Expected unauthenticated result:
+Expected unauthenticated app result:
 
 ```text
 GET /api/app/session -> 401 AUTH_REQUIRED
 ```
+
+### Vercel Deployment Protection
+
+Preview deployments may be protected by Vercel Authentication.
+
+A normal `fetch()` can be redirected to Vercel's auth surface and end as HTTP 200 without ever reaching CafeOS. That is not an app-level pass/fail signal.
+
+Use `vercel curl` (or another Vercel-authenticated fetch) for protected preview smoke. Vercel CLI automatically bypasses Deployment Protection for authenticated operators.
+
+Do **not** disable Deployment Protection merely to make the smoke script easier.
 
 To configure env without deploying:
 
