@@ -1,4 +1,4 @@
-import { analyzeCsv, type MappingOverride } from "./analyze.js";
+import { analyzeCsv, type AnalysisOptions, type MappingOverride } from "./analyze.js";
 import { parseCsv } from "./csv.js";
 import { mapHeaders, suggestMappings } from "./mapping.js";
 import { analyzeXlsx, inspectXlsx } from "./xlsx.js";
@@ -46,10 +46,11 @@ export function analyzeBytes(
   filename: string,
   data: Uint8Array,
   sheetName?: string,
-  mappingOverride?: MappingOverride
+  mappingOverride?: MappingOverride,
+  options?: AnalysisOptions
 ): FileAnalysisResult {
   const lower = filename.toLowerCase();
-  if (lower.endsWith(".csv")) return analyzeCsv(decodeCsv(data), mappingOverride);
-  if (lower.endsWith(".xlsx")) return analyzeXlsx(data, sheetName, mappingOverride);
+  if (lower.endsWith(".csv")) return analyzeCsv(decodeCsv(data), mappingOverride, options);
+  if (lower.endsWith(".xlsx")) return analyzeXlsx(data, sheetName, mappingOverride, options);
   throw new Error("Unsupported file type. CafeOS v0.1 accepts .csv and .xlsx");
 }
