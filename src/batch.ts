@@ -1,4 +1,4 @@
-import { analyzeCanonicalItems, type MappingOverride } from "./analyze.js";
+import { analyzeCanonicalItems, type AnalysisOptions, type MappingOverride } from "./analyze.js";
 import { analyzeBytes } from "./file.js";
 import { InMemoryImportLedger } from "./imports.js";
 import type { AnalysisResult } from "./types.js";
@@ -8,6 +8,8 @@ export interface BatchFileInput {
   data: Uint8Array;
   sheetName?: string;
   mappingOverride?: MappingOverride;
+  sourceNamespace?: string;
+  analysisOptions?: Omit<AnalysisOptions, "sourceNamespace">;
 }
 
 export interface BatchFileSummary {
@@ -43,10 +45,17 @@ export function analyzeFileBatch(
   let overlapRows = 0;
 
   for (const file of files) {
-    const result = analyzeBytes(file.filename, file.data, file.sheetName, file.mappingOverride);
+    const fileSourceNamespace = file.sourceNamespace ?? sourceNamespace;
+    const result = analyzeBytes(
+      file.filename,
+      file.data,
+      file.sheetName,
+      file.mappingOverride,
+      { ...(file.analysisOptions ?? {}), sourceNamespace: fileSourceNamespace }
+    );
     sourceValidRows += result.items.length;
     invalidRows += result.health.invalidRows;
-    const plan = ledger.ingest(tenantId, sourceNamespace, result.items);
+    const plan = ledger.ingest(tenantId, fileSourceNamespace, result.items);
     overlapRows += plan.alreadyKnown;
     uniqueItems.push(...plan.newItems.map(x => x.item));
     summaries.push({
