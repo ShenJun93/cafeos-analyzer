@@ -5,6 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $teamId = "team_kVjgE7Q1dpEiDcANdPZqYEaS"
+$teamSlug = "nvhoa1691993-6852s-projects"
 $projectId = "prj_HG27M5PTKPJCrHUA0LPUOmsCrYIe"
 $cliVersion = "59.20.0"
 $productionAlias = "https://cafeos-analyzer.vercel.app"
@@ -58,17 +59,8 @@ try {
     # Vercel/npx may write informational npm notices to stderr, so capture native output
     # with Continue and make the actual pass/fail decision from LASTEXITCODE.
     $previousErrorActionPreference = $ErrorActionPreference
-    $previousOrgId = $env:VERCEL_ORG_ID
-    $previousProjectId = $env:VERCEL_PROJECT_ID
     try {
       $ErrorActionPreference = "Continue"
-
-      # Pin every Vercel CLI subprocess to the canonical CafeOS project using
-      # Vercel's documented environment-variable targeting. This avoids
-      # depending on stale/missing local .vercel project-link state.
-      $env:VERCEL_ORG_ID = $teamId
-      $env:VERCEL_PROJECT_ID = $projectId
-
       if ($HasInput) {
         $output = $InputText | & npx --yes "vercel@$cliVersion" @Arguments 2>&1
       }
@@ -79,18 +71,6 @@ try {
     }
     finally {
       $ErrorActionPreference = $previousErrorActionPreference
-      if ([string]::IsNullOrEmpty($previousOrgId)) {
-        Remove-Item Env:VERCEL_ORG_ID -ErrorAction SilentlyContinue
-      }
-      else {
-        $env:VERCEL_ORG_ID = $previousOrgId
-      }
-      if ([string]::IsNullOrEmpty($previousProjectId)) {
-        Remove-Item Env:VERCEL_PROJECT_ID -ErrorAction SilentlyContinue
-      }
-      else {
-        $env:VERCEL_PROJECT_ID = $previousProjectId
-      }
     }
 
     return [pscustomobject]@{
@@ -100,45 +80,67 @@ try {
     }
   }
 
+  function Write-RedactedVercelOutput($Result) {
+    $safeText = $Result.Text
+    if (-not [string]::IsNullOrWhiteSpace($publishableKey)) {
+      $safeText = $safeText -replace [regex]::Escape($publishableKey), "[REDACTED_PUBLISHABLE_KEY]"
+    }
+    Write-Host $safeText
+  }
+
   function Set-PreviewEnv([string]$Name, [string]$Value) {
-    Write-Host "Refreshing preview-only Vercel variable: $Name" -ForegroundColor Cyan
+    Write-Host "Upserting preview-only Vercel variable via authenticated API: $Name" -ForegroundColor Cyan
 
-    $remove = Invoke-VercelCli -Arguments @(
-      "env", "rm", $Name, "preview", "--yes"
-    )
-    if ($remove.ExitCode -ne 0 -and $remove.Text -notmatch '(not found|does not exist|no environment variable)') {
-      $remove.Output | Out-Host
-      throw "Could not safely refresh preview variable $Name"
+    # Use the Vercel REST API through `vercel api` instead of `vercel env add`.
+    # The preview env CLI has had non-interactive/all-Preview-branches regressions.
+    # --input - keeps the value on stdin rather than command-line arguments.
+    $requestBody = @{
+      key = $Name
+      value = $Value
+      type = "encrypted"
+      target = @("preview")
+    } | ConvertTo-Json -Compress
+
+    $endpoint = "/v10/projects/$projectId/env?teamId=$teamId&upsert=true"
+    $upsert = Invoke-VercelCli -Arguments @(
+      "api", $endpoint,
+      "-X", "POST",
+      "--input", "-",
+      "--raw"
+    ) -InputText $requestBody -HasInput
+
+    if ($upsert.ExitCode -ne 0) {
+      Write-RedactedVercelOutput $upsert
+      throw "Failed to upsert preview variable $Name via Vercel API"
     }
 
-    $add = Invoke-VercelCli -Arguments @(
-      "env", "add", $Name, "preview"
-    ) -InputText $Value -HasInput
-    if ($add.ExitCode -ne 0) {
-      $add.Output | Out-Host
-      throw "Failed to add preview variable $Name"
-    }
-
-    Write-Host "Preview variable configured: $Name" -ForegroundColor Green
+    Write-Host "Preview variable upserted: $Name" -ForegroundColor Green
   }
 
   Set-PreviewEnv "SUPABASE_URL" $SupabaseUrl.TrimEnd("/")
   Set-PreviewEnv "SUPABASE_PUBLISHABLE_KEY" $publishableKey
 
-  Write-Host "Verifying required Preview environment variable names..." -ForegroundColor Cyan
+  Write-Host "Verifying required Preview environment variable names via Vercel API..." -ForegroundColor Cyan
+  $envEndpoint = "/v10/projects/$projectId/env?teamId=$teamId&target=preview"
   $envList = Invoke-VercelCli -Arguments @(
-    "env", "ls", "preview",
-    "--format", "json"
+    "api", $envEndpoint,
+    "--raw"
   )
   if ($envList.ExitCode -ne 0) {
-    $envList.Output | Out-Host
-    throw "Could not list Vercel preview environment variables"
+    Write-RedactedVercelOutput $envList
+    throw "Could not list Vercel preview environment variables via API"
   }
+
+  $returnedKeys = @(
+    [regex]::Matches($envList.Text, '"key"\s*:\s*"([^"]+)"') |
+      ForEach-Object { $_.Groups[1].Value } |
+      Sort-Object -Unique
+  )
+
   foreach ($requiredName in @("SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY")) {
-    $jsonKeyPattern = '"key"\s*:\s*"' + [regex]::Escape($requiredName) + '"'
-    if ($envList.Text -notmatch $jsonKeyPattern) {
-      $envList.Output | Out-Host
-      throw "Required Vercel preview variable is missing after refresh: $requiredName"
+    if ($returnedKeys -notcontains $requiredName) {
+      $safeKeys = if ($returnedKeys.Count -gt 0) { $returnedKeys -join ", " } else { "(none)" }
+      throw "Required Vercel preview variable is missing after API upsert: $requiredName. Returned Preview keys: $safeKeys"
     }
   }
   Write-Host "PASS required Preview environment variable names are present" -ForegroundColor Green
@@ -150,7 +152,9 @@ try {
 
   Write-Host "Deploying a PREVIEW target only; production alias will not be promoted." -ForegroundColor Green
   $deploy = Invoke-VercelCli -Arguments @(
-    "deploy", "--yes"
+    "deploy", "--yes",
+    "--scope", $teamSlug,
+    "--project", $projectId
   )
   $deploy.Output | Out-Host
   if ($deploy.ExitCode -ne 0) { throw "Vercel preview deployment failed" }

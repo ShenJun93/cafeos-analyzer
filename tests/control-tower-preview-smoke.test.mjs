@@ -19,33 +19,34 @@ function jsonResponse(payload, status = 200) {
   });
 }
 
-test("preview deploy launcher is preview-only and handles native npm stderr by exit code", async () => {
+test("preview deploy launcher uses Vercel API upsert and keeps preview-only safety", async () => {
   const ps = await readFile(new URL("../scripts/deploy-control-tower-preview.ps1", import.meta.url), "utf8");
   assert.match(ps, /function Invoke-VercelCli/i);
   assert.match(ps, /\$ErrorActionPreference = "Continue"/);
   assert.match(ps, /\$exitCode = \$LASTEXITCODE/);
-  assert.match(ps, /\$ErrorActionPreference = \$previousErrorActionPreference/);
   assert.match(ps, /\$teamId = "team_kVjgE7Q1dpEiDcANdPZqYEaS"/);
+  assert.match(ps, /\$teamSlug = "nvhoa1691993-6852s-projects"/);
   assert.match(ps, /\$projectId = "prj_HG27M5PTKPJCrHUA0LPUOmsCrYIe"/);
-  assert.match(ps, /\$env:VERCEL_ORG_ID = \$teamId/);
-  assert.match(ps, /\$env:VERCEL_PROJECT_ID = \$projectId/);
-  assert.match(ps, /Remove-Item Env:VERCEL_ORG_ID/);
-  assert.match(ps, /Remove-Item Env:VERCEL_PROJECT_ID/);
-  assert.match(ps, /"env", "rm", \$Name, "preview", "--yes"/i);
-  assert.match(ps, /"env", "add", \$Name, "preview"/i);
-  assert.match(ps, /"env", "ls", "preview",[\s\S]*?"--format", "json"/i);
-  assert.match(ps, /"deploy", "--yes"/i);
-  assert.doesNotMatch(ps, /"--scope"/i);
-  assert.doesNotMatch(ps, /"--project"/i);
-  assert.match(ps, /"key"\\s\*:\\s\*"/i);
+  assert.match(ps, /\/v10\/projects\/\$projectId\/env\?teamId=\$teamId&upsert=true/);
+  assert.match(ps, /"api", \$endpoint,[\s\S]*"-X", "POST",[\s\S]*"--input", "-",[\s\S]*"--raw"/i);
+  assert.match(ps, /target = @\("preview"\)/i);
+  assert.match(ps, /type = "encrypted"/i);
+  assert.match(ps, /ConvertTo-Json -Compress/i);
+  assert.match(ps, /\/v10\/projects\/\$projectId\/env\?teamId=\$teamId&target=preview/);
+  assert.match(ps, /"api", \$envEndpoint,[\s\S]*"--raw"/i);
+  assert.match(ps, /"deploy", "--yes",[\s\S]*"--scope", \$teamSlug,[\s\S]*"--project", \$projectId/i);
+  assert.doesNotMatch(ps, /"env", "add"/i);
+  assert.doesNotMatch(ps, /"env", "rm"/i);
+  assert.doesNotMatch(ps, /"env", "ls"/i);
+  assert.doesNotMatch(ps, /VERCEL_ORG_ID/i);
+  assert.doesNotMatch(ps, /VERCEL_PROJECT_ID/i);
   assert.match(ps, /-HasInput/);
   assert.match(ps, /SUPABASE_PUBLISHABLE_KEY/);
   assert.match(ps, /sb_publishable_/);
   assert.match(ps, /production alias will not be promoted/i);
-  assert.match(ps, /"env", "ls", "preview"/i);
   assert.match(ps, /verify-control-tower-protected-preview\.mjs \$previewUrl --unauth-only/i);
   assert.match(ps, /cafeos-control-tower-preview-url\.txt/i);
-  assert.match(ps, /Required Vercel preview variable is missing after refresh/i);
+  assert.match(ps, /Required Vercel preview variable is missing after API upsert/i);
   assert.doesNotMatch(ps, /verify-control-tower-preview\.mjs \$previewUrl --unauth-only/i);
   assert.doesNotMatch(ps, /--prod\b/i);
   assert.doesNotMatch(ps, /sb_publishable_[A-Za-z0-9_-]{10,}/);
