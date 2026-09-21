@@ -93,6 +93,44 @@ test("authenticated Supabase calls use publishable apikey plus caller JWT", asyn
   assert.equal(calls[0].init.headers.authorization, "Bearer user-session-jwt");
 });
 
+test("Supabase Auth bad_jwt and unexpected_audience map to AUTH_INVALID, not upstream 502", async () => {
+  for (const errorCode of ["bad_jwt", "unexpected_audience"]) {
+    const fetchImpl = async () => jsonResponse(
+      { code: 403, error_code: errorCode, msg: "invalid token" },
+      403
+    );
+
+    await assert.rejects(
+      requireUser(
+        req({ authorization: "Bearer invalid.synthetic.jwt" }),
+        { env, fetchImpl }
+      ),
+      error =>
+        error instanceof AppHttpError &&
+        error.status === 401 &&
+        error.code === "AUTH_INVALID"
+    );
+  }
+});
+
+test("generic Supabase 403 remains an upstream failure", async () => {
+  const fetchImpl = async () => jsonResponse(
+    { error_code: "feature_forbidden", msg: "forbidden" },
+    403
+  );
+
+  await assert.rejects(
+    requireUser(
+      req({ authorization: "Bearer syntactically-valid-token" }),
+      { env, fetchImpl }
+    ),
+    error =>
+      error instanceof AppHttpError &&
+      error.status === 502 &&
+      error.code === "SUPABASE_UPSTREAM"
+  );
+});
+
 test("tenant membership must resolve through the caller's RLS-scoped JWT", async () => {
   const auth = { token: "jwt", user: { id: USER_A } };
   const acceptedFetch = async (url, init) => {
