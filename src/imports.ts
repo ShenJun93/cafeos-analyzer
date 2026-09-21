@@ -55,7 +55,8 @@ export function planImport(
   items: CanonicalLineItem[],
   existingRecordKeys: ReadonlySet<string> = new Set()
 ): ImportPlan {
-  const keyedItems = keyCanonicalItems(items);
+  const scopedItems = items.map(item => ({ ...item, sourceNamespace }));
+  const keyedItems = keyCanonicalItems(scopedItems);
   const newItems = keyedItems.filter(x => !existingRecordKeys.has(x.sourceRecordKey));
   return {
     importFingerprint: fingerprintImport(tenantId, sourceNamespace, keyedItems),
