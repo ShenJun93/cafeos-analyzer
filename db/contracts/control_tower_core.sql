@@ -276,6 +276,13 @@ create index if not exists actions_tenant_owner_status_idx
   on public.actions (tenant_id, owner_user_id, status)
   where owner_user_id is not null;
 
+create index if not exists actions_tenant_attention_idx
+  on public.actions (tenant_id, attention_item_id)
+  where attention_item_id is not null;
+
+create index if not exists transaction_line_items_first_import_id_idx
+  on public.transaction_line_items (first_import_id);
+
 create index if not exists action_status_history_tenant_action_created_idx
   on public.action_status_history (tenant_id, action_id, created_at);
 
@@ -324,8 +331,12 @@ create policy customers_member_select
   to authenticated
   using ((select private.has_tenant_access(tenant_id)));
 
--- customer_identifiers intentionally has no authenticated policy/grant.
 -- Matching HMACs remain server-only in the first Control Tower slice.
+-- Explicit deny policy is defense-in-depth and keeps Security Advisor unambiguous.
+create policy customer_identifiers_authenticated_deny
+  on public.customer_identifiers for select
+  to authenticated
+  using (false);
 
 create policy attention_items_member_select
   on public.attention_items for select

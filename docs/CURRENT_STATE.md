@@ -49,19 +49,35 @@ Analyzer deployment plumbing is CLOSED. Do not spend the next cycle expanding An
 
 Control Tower mission/PRD/reuse mapping/thin-slice design are now defined.
 
-Control Tower schema **contract** is now under CI at `db/contracts/control_tower_core.sql`.
+Control Tower schema contract at `db/contracts/control_tower_core.sql` has now passed **real isolated Supabase staging verification**.
 
-It is intentionally not yet a migration because migration history must be created through the Supabase CLI workflow and validated against a disposable/local/staging database.
+Verified on `cafeos-staging`:
+
+- schema applies on top of Analyzer baseline;
+- Tenant A cannot read Tenant B;
+- viewer writes are denied;
+- owner cross-tenant writes are denied;
+- composite tenant FKs reject cross-tenant references;
+- action insert creates audit history;
+- customer matching identifiers remain server-only;
+- measurement values remain server-owned;
+- legacy import idempotency remains intact;
+- Security Advisor has 0 findings after fixes;
+- Performance Advisor has no unindexed-FK findings after fixes.
+
+Only fresh-staging `unused_index` INFO notices remain and are not treated as defects.
+
+See `docs/research/WAVE_22_SUPABASE_STAGING_VERIFICATION.md`.
+
+The contract is intentionally still **not a migration-history artifact** because the current execution environment has no working Supabase CLI. Do not invent a migration filename.
 
 Next checkpoint:
 
-1. promote the reviewed contract with `supabase migration new control_tower_core` in an environment with a working CLI;
-2. add real DB/RLS negative tests for two tenants and role boundaries;
-3. run Supabase security + performance advisors;
-4. commit the generated migration only after those checks pass;
+1. create the migration through the Supabase CLI workflow in an environment with a working CLI;
+2. reconcile the CLI-generated migration with the staging-verified contract;
+3. rerun DB/RLS tests from migration state;
+4. commit migration + DB test evidence;
 5. do **not** mutate production or ingest real merchant data yet;
-6. after schema migration acceptance, build the authenticated `/api/app/*` and `/app` shell.
-
-See `docs/CONTROL_TOWER_IMPLEMENTATION_SLICE.md`, `docs/DB_MODEL.md` and `docs/SUPABASE_PROMOTION.md`.
+6. after migration acceptance, build authenticated `/api/app/*` and `/app` shell.
 
 Primary distribution remains pull/inbound; no dependency on cold outbound sales.
