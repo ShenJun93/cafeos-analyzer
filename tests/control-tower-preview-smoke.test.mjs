@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { verifyControlTowerPreview } from "../scripts/verify-control-tower-preview.mjs";
-import { verifyProtectedPreview } from "../scripts/verify-control-tower-protected-preview.mjs";
+import {
+  verifyProtectedPreview,
+  verifyProtectedUnauthPreview
+} from "../scripts/verify-control-tower-protected-preview.mjs";
 
 const PREVIEW = "https://cafeos-analyzer-wave26-example.vercel.app";
 const TENANT_A = "10000000-0000-4000-8000-000000000001";
@@ -28,8 +31,10 @@ test("preview deploy launcher is preview-only and handles native npm stderr by e
   assert.match(ps, /SUPABASE_PUBLISHABLE_KEY/);
   assert.match(ps, /sb_publishable_/);
   assert.match(ps, /production alias will not be promoted/i);
-  assert.match(ps, /"curl", "\/api\/app\/session", "--deployment", \$previewUrl/i);
-  assert.match(ps, /AUTH_REQUIRED/);
+  assert.match(ps, /"env", "ls", "preview"/i);
+  assert.match(ps, /verify-control-tower-protected-preview\.mjs \$previewUrl --unauth-only/i);
+  assert.match(ps, /cafeos-control-tower-preview-url\.txt/i);
+  assert.match(ps, /Required Vercel preview variable is missing after refresh/i);
   assert.doesNotMatch(ps, /verify-control-tower-preview\.mjs \$previewUrl --unauth-only/i);
   assert.doesNotMatch(ps, /--prod\b/i);
   assert.doesNotMatch(ps, /sb_publishable_[A-Za-z0-9_-]{10,}/);
@@ -255,4 +260,37 @@ test("protected verifier keeps authorization headers off process arguments and c
   assert.match(source, /finally \{[\s\S]*rmSync\(headerDir, \{ recursive: true, force: true \}\)/);
   assert.doesNotMatch(source, /args\.push\("--header", `\$\{name\}: \$\{value\}`\)/);
   assert.match(source, /Bearer \[REDACTED\]/);
+});
+
+
+test("protected unauth verifier accepts only app-level AUTH_REQUIRED on a preview URL", () => {
+  const logs = [];
+  const result = verifyProtectedUnauthPreview({
+    previewUrl: PREVIEW,
+    curlImpl: (path, options) => {
+      assert.equal(path, "/api/app/session");
+      assert.equal(options.previewUrl, PREVIEW);
+      return { status: 401, body: { error: { code: "AUTH_REQUIRED" } } };
+    },
+    log: message => logs.push(message)
+  });
+
+  assert.equal(result.ok, true);
+  assert.match(logs.join("\n"), /401 AUTH_REQUIRED/);
+});
+
+test("auth smoke reads the fresh preview URL from ignored Vercel state and contains no stale deployment URL", async () => {
+  const wrapper = await readFile(
+    new URL("../scripts/run-control-tower-auth-smoke.ps1", import.meta.url),
+    "utf8"
+  );
+  const verifier = await readFile(
+    new URL("../scripts/verify-control-tower-protected-preview.mjs", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(wrapper, /cafeos-control-tower-preview-url\.txt/);
+  assert.match(wrapper, /Run npm run deploy:control-tower-preview first/);
+  assert.doesNotMatch(wrapper, /cafeos-analyzer-nzb1i2njx/);
+  assert.doesNotMatch(verifier, /cafeos-analyzer-nzb1i2njx/);
 });

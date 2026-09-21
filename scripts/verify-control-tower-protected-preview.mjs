@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const DEFAULTS = {
-  previewUrl: "https://cafeos-analyzer-nzb1i2njx-nvhoa1691993-6852s-projects.vercel.app",
   supabaseUrl: "https://wjatnyvdygvblirggdcm.supabase.co",
   email: "cafeos.synthetic.a@example.com",
   allowedTenantId: "11111111-1111-4111-8111-111111111111",
@@ -133,8 +132,27 @@ function expect(result, status, code) {
   }
 }
 
+export function verifyProtectedUnauthPreview({
+  previewUrl,
+  curlImpl = runVercelCurl,
+  log = console.log
+}) {
+  if (!previewUrl) fail("Preview URL is required");
+  if (new URL(previewUrl).hostname === "cafeos-analyzer.vercel.app") {
+    fail("Protected smoke refuses the production alias");
+  }
+
+  const result = curlImpl("/api/app/session", {
+    previewUrl,
+    cliVersion: DEFAULTS.cliVersion
+  });
+  expect(result, 401, "AUTH_REQUIRED");
+  log("PASS unauthenticated session -> 401 AUTH_REQUIRED");
+  return { ok: true, previewUrl };
+}
+
 export async function verifyProtectedPreview({
-  previewUrl = DEFAULTS.previewUrl,
+  previewUrl,
   supabaseUrl = DEFAULTS.supabaseUrl,
   email = DEFAULTS.email,
   allowedTenantId = DEFAULTS.allowedTenantId,
@@ -145,6 +163,7 @@ export async function verifyProtectedPreview({
   curlImpl = runVercelCurl,
   log = console.log
 }) {
+  if (!previewUrl) fail("Preview URL is required");
   if (!publishableKey?.startsWith("sb_publishable_")) fail("SUPABASE_PUBLISHABLE_KEY is required");
   if (!password) fail("Synthetic user password is required");
   if (new URL(previewUrl).hostname === "cafeos-analyzer.vercel.app") {
@@ -160,9 +179,7 @@ export async function verifyProtectedPreview({
     cliVersion: DEFAULTS.cliVersion
   };
 
-  const unauth = curlImpl("/api/app/session", base);
-  expect(unauth, 401, "AUTH_REQUIRED");
-  log("PASS unauthenticated session -> 401 AUTH_REQUIRED");
+  verifyProtectedUnauthPreview({ previewUrl, curlImpl, log });
 
   const authHeaders = { authorization: `Bearer ${token}` };
   const session = curlImpl("/api/app/session", { ...base, headers: authHeaders });
@@ -212,11 +229,19 @@ export async function verifyProtectedPreview({
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const previewUrl = process.argv[2] || DEFAULTS.previewUrl;
-  const result = await verifyProtectedPreview({
-    previewUrl,
-    publishableKey: process.env.SUPABASE_PUBLISHABLE_KEY,
-    password: process.env.CAFEOS_TEST_USER_PASSWORD
-  });
-  console.log(`CONTROL TOWER AUTHENTICATED PREVIEW SMOKE PASS ${result.previewUrl}`);
+  const previewUrl = process.argv[2];
+  const unauthOnly = process.argv.includes("--unauth-only");
+
+  if (unauthOnly) {
+    const result = verifyProtectedUnauthPreview({ previewUrl });
+    console.log(`CONTROL TOWER UNAUTHENTICATED PREVIEW SMOKE PASS ${result.previewUrl}`);
+  }
+  else {
+    const result = await verifyProtectedPreview({
+      previewUrl,
+      publishableKey: process.env.SUPABASE_PUBLISHABLE_KEY,
+      password: process.env.CAFEOS_TEST_USER_PASSWORD
+    });
+    console.log(`CONTROL TOWER AUTHENTICATED PREVIEW SMOKE PASS ${result.previewUrl}`);
+  }
 }
