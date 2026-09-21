@@ -1,4 +1,4 @@
-import { type MappingOverride } from "./analyze.js";
+import { type AnalysisOptions, type MappingOverride } from "./analyze.js";
 import type { AnalysisResult } from "./types.js";
 export interface BatchFileInput {
     filename: string;
@@ -23,4 +23,4 @@ export interface BatchAnalysisResult extends AnalysisResult {
         files: BatchFileSummary[];
     };
 }
-export declare function analyzeFileBatch(files: BatchFileInput[], sourceNamespace?: string): BatchAnalysisResult;
+export declare function analyzeFileBatch(files: BatchFileInput[], sourceNamespace?: string, options?: Omit<AnalysisOptions, "sourceNamespace">): BatchAnalysisResult;
