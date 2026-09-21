@@ -6,6 +6,7 @@ on:
       - wave23-cli-migration-artifact
     paths:
       - ".github/workflows/supabase-migration-artifact.yml"
+      - "db/migrations/001_analyzer_core.sql"
       - "db/contracts/control_tower_core.sql"
       - "supabase/tests/database/control_tower_rls.test.sql"
 
@@ -29,26 +30,42 @@ jobs:
           supabase init --help
           supabase migration new --help
 
-      - name: Generate migration with Supabase CLI
+      - name: Generate ordered migrations with Supabase CLI
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf supabase/migrations
           supabase init
+
+          supabase migration new analyzer_core
+          analyzer_path="$(find supabase/migrations -maxdepth 1 -type f -name '*_analyzer_core.sql' | sort | tail -n 1)"
+          test -n "$analyzer_path"
+          cp db/migrations/001_analyzer_core.sql "$analyzer_path"
+
+          sleep 1
           supabase migration new control_tower_core
-          migration_path="$(find supabase/migrations -maxdepth 1 -type f -name '*_control_tower_core.sql' | sort | tail -n 1)"
-          test -n "$migration_path"
-          cp db/contracts/control_tower_core.sql "$migration_path"
-          printf '%s\n' "$migration_path" | tee migration_path.txt
-          sha256sum "$migration_path" | tee migration_sha256.txt
-          echo "MIGRATION_PATH=$migration_path" >> "$GITHUB_ENV"
+          control_path="$(find supabase/migrations -maxdepth 1 -type f -name '*_control_tower_core.sql' | sort | tail -n 1)"
+          test -n "$control_path"
+          cp db/contracts/control_tower_core.sql "$control_path"
+
+          {
+            printf 'ANALYZER_MIGRATION=%s\n' "$analyzer_path"
+            printf 'CONTROL_TOWER_MIGRATION=%s\n' "$control_path"
+          } | tee migration_paths.txt
+
+          sha256sum "$analyzer_path" "$control_path" | tee migration_sha256.txt
+
+          echo "ANALYZER_MIGRATION=$analyzer_path" >> "$GITHUB_ENV"
+          echo "CONTROL_TOWER_MIGRATION=$control_path" >> "$GITHUB_ENV"
 
       - name: Upload generated migration artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cafeos-control-tower-migration
+          name: cafeos-supabase-migrations
           path: |
-            ${{ env.MIGRATION_PATH }}
-            migration_path.txt
+            ${{ env.ANALYZER_MIGRATION }}
+            ${{ env.CONTROL_TOWER_MIGRATION }}
+            migration_paths.txt
             migration_sha256.txt
           if-no-files-found: error
           retention-days: 7
