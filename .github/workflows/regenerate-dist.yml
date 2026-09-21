@@ -1,0 +1,35 @@
+name: Regenerate committed dist
+on:
+  push:
+    branches:
+      - fix/daily-brief-correctness-gate
+
+permissions:
+  contents: write
+
+jobs:
+  build-dist:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/daily-brief-correctness-gate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx --yes -p typescript@5.9.3 tsc -p tsconfig.json
+      - run: node scripts/stamp-dist.mjs
+      - name: Commit generated dist
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist
+          if git diff --cached --quiet; then
+            echo "dist already current"
+            exit 0
+          fi
+          git commit -m "build: refresh committed dist"
+          git push origin HEAD:fix/daily-brief-correctness-gate
