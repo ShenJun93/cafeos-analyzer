@@ -144,3 +144,12 @@ test("legacy Analyzer tables get explicit grants compatible with new Supabase de
   has(/grant select, insert, update on table public\.imports to authenticated;/i);
   has(/grant select, insert on table public\.transaction_line_items to authenticated;/i);
 });
+
+test("server-only customer identifiers have an explicit deny policy", () => {
+  has(/create policy customer_identifiers_authenticated_deny[\s\S]*to authenticated[\s\S]*using \(false\)/i);
+});
+
+test("foreign-key hot paths have covering indexes found by staging advisors", () => {
+  has(/create index if not exists actions_tenant_attention_idx[\s\S]*on public\.actions \(tenant_id, attention_item_id\)/i);
+  has(/create index if not exists transaction_line_items_first_import_id_idx[\s\S]*on public\.transaction_line_items \(first_import_id\)/i);
+});
