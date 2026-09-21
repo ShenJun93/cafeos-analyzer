@@ -46,8 +46,6 @@ function runVercelCurl(path, {
     "--yes", `vercel@${cliVersion}`,
     "curl", path,
     "--deployment", previewUrl,
-    "--scope", teamSlug,
-    "--project", projectId,
     "--",
     "--silent",
     "--show-error",
