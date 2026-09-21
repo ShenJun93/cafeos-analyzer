@@ -15,10 +15,15 @@ function jsonResponse(payload, status = 200) {
   });
 }
 
-test("preview deploy launcher is preview-only and never embeds Supabase credentials", async () => {
+test("preview deploy launcher is preview-only and handles native npm stderr by exit code", async () => {
   const ps = await readFile(new URL("../scripts/deploy-control-tower-preview.ps1", import.meta.url), "utf8");
-  assert.match(ps, /env rm \$Name preview/i);
-  assert.match(ps, /env add \$Name preview/i);
+  assert.match(ps, /function Invoke-VercelCli/i);
+  assert.match(ps, /\$ErrorActionPreference = "Continue"/);
+  assert.match(ps, /\$exitCode = \$LASTEXITCODE/);
+  assert.match(ps, /\$ErrorActionPreference = \$previousErrorActionPreference/);
+  assert.match(ps, /"env", "rm", \$Name, "preview"/i);
+  assert.match(ps, /"env", "add", \$Name, "preview"/i);
+  assert.match(ps, /-HasInput/);
   assert.match(ps, /SUPABASE_PUBLISHABLE_KEY/);
   assert.match(ps, /sb_publishable_/);
   assert.match(ps, /production alias will not be promoted/i);
