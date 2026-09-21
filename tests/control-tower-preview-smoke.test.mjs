@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { verifyControlTowerPreview } from "../scripts/verify-control-tower-preview.mjs";
 import {
   verifyProtectedPreview,
@@ -22,6 +24,34 @@ function jsonResponse(payload, status = 200) {
     headers: { "content-type": "application/json" }
   });
 }
+
+test("preview deploy launcher parses as valid PowerShell", () => {
+  const scriptPath = fileURLToPath(
+    new URL("../scripts/deploy-control-tower-preview.ps1", import.meta.url)
+  );
+  const shell = process.platform === "win32" ? "powershell" : "pwsh";
+  const command = [
+    "$tokens = $null",
+    "$errors = $null",
+    "[System.Management.Automation.Language.Parser]::ParseFile($env:CAFEOS_PS_PARSE_TARGET, [ref]$tokens, [ref]$errors) | Out-Null",
+    "if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }"
+  ].join("; ");
+  const result = spawnSync(shell, ["-NoProfile", "-NonInteractive", "-Command", command], {
+    encoding: "utf8",
+    env: { ...process.env, CAFEOS_PS_PARSE_TARGET: scriptPath },
+    windowsHide: true
+  });
+  assert.equal(
+    result.error,
+    undefined,
+    `PowerShell parser could not start: ${result.error?.message ?? "unknown error"}`
+  );
+  assert.equal(
+    result.status,
+    0,
+    `PowerShell syntax error:\n${String(result.stderr || result.stdout || "").trim()}`
+  );
+});
 
 test("preview deploy launcher uses Vercel API upsert and keeps preview-only safety", async () => {
   const ps = await readFile(new URL("../scripts/deploy-control-tower-preview.ps1", import.meta.url), "utf8");
