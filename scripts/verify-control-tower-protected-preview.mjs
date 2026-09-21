@@ -49,7 +49,7 @@ function runVercelCurl(path, {
     "--",
     "--silent",
     "--show-error",
-    "--write-out", "\n__CAFEOS_STATUS__%{http_code}"
+    "--write-out=__CAFEOS_STATUS__%{http_code}"
   ];
   for (const [name, value] of Object.entries(headers)) {
     args.push("--header", `${name}: ${value}`);
