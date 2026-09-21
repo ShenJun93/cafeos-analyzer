@@ -1,6 +1,6 @@
 import { inflateRawSync } from "node:zlib";
 import { analyzeTable } from "./analyze.js";
-import type { MappingOverride } from "./analyze.js";
+import type { AnalysisOptions, MappingOverride } from "./analyze.js";
 import { mapHeaders } from "./mapping.js";
 import type { WorkbookAnalysisResult, WorkbookInspection, WorkbookSheetInspection } from "./types.js";
 
@@ -318,7 +318,12 @@ export function inspectXlsx(data: Uint8Array): WorkbookInspection {
   return { sheets, suggestedSheet, ambiguous };
 }
 
-export function analyzeXlsx(data: Uint8Array, sheetName?: string, mappingOverride?: MappingOverride): WorkbookAnalysisResult {
+export function analyzeXlsx(
+  data: Uint8Array,
+  sheetName?: string,
+  mappingOverride?: MappingOverride,
+  options?: AnalysisOptions
+): WorkbookAnalysisResult {
   const workbook = parseWorkbook(data);
   const inspectionSheets = workbook.sheets.map(s => inspectRows(s.name, s.rows));
   const ranked = [...inspectionSheets].sort((a, b) => b.candidateScore - a.candidateScore || b.rowCount - a.rowCount);
@@ -329,7 +334,7 @@ export function analyzeXlsx(data: Uint8Array, sheetName?: string, mappingOverrid
   if (!sheetName && ambiguous) throw new Error("Multiple equally plausible transaction sheets; select a sheet explicitly");
   const selected = workbook.sheets.find(s => s.name === selectedName);
   if (!selected) throw new Error(`Worksheet not found: ${selectedName}`);
-  const analysis = analyzeTable(selected.rows, mappingOverride);
+  const analysis = analyzeTable(selected.rows, mappingOverride, options);
   return {
     ...analysis,
     workbook: {
