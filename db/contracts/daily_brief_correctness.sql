@@ -7,7 +7,7 @@ create or replace function private.is_valid_iana_timezone(candidate text)
 returns boolean
 language sql
 stable
-security definer
+security invoker
 set search_path = pg_catalog, pg_temp
 as $$
   select candidate is not null
