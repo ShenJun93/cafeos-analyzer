@@ -226,3 +226,12 @@ test("protected verifier uses the Windows shell for npx instead of spawning npx.
   assert.match(source, /shell: useShell/);
   assert.doesNotMatch(source, /npx\.cmd/);
 });
+test("protected verifier uses deployment URL without forwarding project flags to native curl", async () => {
+  const source = await readFile(
+    new URL("../scripts/verify-control-tower-protected-preview.mjs", import.meta.url),
+    "utf8"
+  );
+  assert.match(source, /"curl", path,[\s\S]*"--deployment", previewUrl,[\s\S]*"--"/);
+  assert.doesNotMatch(source, /"curl", path,[\s\S]*"--scope"/);
+  assert.doesNotMatch(source, /"curl", path,[\s\S]*"--project"/);
+});
