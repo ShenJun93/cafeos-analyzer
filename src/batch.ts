@@ -1,4 +1,4 @@
-import { analyzeCanonicalItems, type MappingOverride } from "./analyze.js";
+import { analyzeCanonicalItems, type AnalysisOptions, type MappingOverride } from "./analyze.js";
 import { analyzeBytes } from "./file.js";
 import { InMemoryImportLedger } from "./imports.js";
 import type { AnalysisResult } from "./types.js";
@@ -31,7 +31,8 @@ export interface BatchAnalysisResult extends AnalysisResult {
 
 export function analyzeFileBatch(
   files: BatchFileInput[],
-  sourceNamespace = "manual-export-batch"
+  sourceNamespace = "manual-export-batch",
+  options: Omit<AnalysisOptions, "sourceNamespace"> = {}
 ): BatchAnalysisResult {
   if (!files.length) throw new Error("Batch must contain at least one file");
   const ledger = new InMemoryImportLedger();
@@ -43,7 +44,7 @@ export function analyzeFileBatch(
   let overlapRows = 0;
 
   for (const file of files) {
-    const result = analyzeBytes(file.filename, file.data, file.sheetName, file.mappingOverride);
+    const result = analyzeBytes(file.filename, file.data, file.sheetName, file.mappingOverride, { ...options, sourceNamespace });
     sourceValidRows += result.items.length;
     invalidRows += result.health.invalidRows;
     const plan = ledger.ingest(tenantId, sourceNamespace, result.items);
@@ -58,7 +59,7 @@ export function analyzeFileBatch(
     });
   }
 
-  const merged = analyzeCanonicalItems(uniqueItems, invalidRows);
+  const merged = analyzeCanonicalItems(uniqueItems, invalidRows, {}, { ...options, sourceNamespace });
   return {
     ...merged,
     batch: {
