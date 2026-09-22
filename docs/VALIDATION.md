@@ -8,13 +8,15 @@
 - 100k-row dataset remains usable
 - cross-tenant reads are impossible
 
-## Product gates after 10–20 real datasets
+## Product gates after 10–20 real permissioned target-ICP sessions
+
+A scoreable target session requires an owner/operator participant, 3–15 café locations, and explicit validation-evidence permission.
 - successful import ≥80%
 - metric trust ≥90%
 - useful/new insight ≥60%
 - repeat usage intent ≥40%
 - continuous-sync intent ≥25%
-- clear willingness to pay ≥20% of target operators
+- clear willingness to pay ≥20% of value-demonstrated sessions where WTP was asked
 
 If useful insight or repeat intent fails materially, stop or pivot rather than expanding the suite.
 
@@ -39,7 +41,7 @@ If useful insight or repeat intent fails materially, stop or pivot rather than e
 
 ## Wave 9 evidence
 - no-PII inbound record model: PASS
-- target-ICP derivation from 3–15 stores: PASS
+- target-ICP derivation from owner/operator role + 3–15 stores: PASS
 - acquisition funnel deduplication by anonymous session: PASS
 - acquisition and field-validation scorecards remain separated: PASS
 - Free Cafe Sales Analyzer landing route: HTTP SMOKE PASS
