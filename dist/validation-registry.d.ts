@@ -1,8 +1,8 @@
-import type { FieldValidationRecord } from './validation-gates.js';
+import { type CanonicalAnalyzerValidationRecord } from './validation-record-contract.js';
 export interface ValidationRegistry {
     version: 1;
-    records: FieldValidationRecord[];
+    records: CanonicalAnalyzerValidationRecord[];
 }
-export declare function assertCanonicalValidationRecord(value: unknown): asserts value is FieldValidationRecord;
+export declare function assertCanonicalValidationRecord(value: unknown): asserts value is CanonicalAnalyzerValidationRecord;
 export declare function emptyValidationRegistry(): ValidationRegistry;
-export declare function upsertValidationRecord(registry: ValidationRegistry, record: FieldValidationRecord): ValidationRegistry;
+export declare function upsertValidationRecord(registry: ValidationRegistry, record: CanonicalAnalyzerValidationRecord): ValidationRegistry;
