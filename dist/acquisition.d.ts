@@ -1,4 +1,4 @@
-import type { FieldValidationRecord } from './validation-gates.js';
+import { type CanonicalAnalyzerValidationRecord, type ParticipantRoleClass, type PrivacyMode, type WtpBand } from './validation-record-contract.js';
 export type AcquisitionEventName = 'landing_view' | 'analyzer_opened' | 'upload_started' | 'report_completed' | 'compatibility_profile_downloaded' | 'feedback_record_downloaded';
 export interface AcquisitionEvent {
     id: string;
@@ -10,17 +10,20 @@ export interface AcquisitionEvent {
     campaign?: string;
     referrerHost?: string;
 }
+export type InboundValidationRecord = CanonicalAnalyzerValidationRecord;
 export interface InboundValidationDraft {
-    status: "DRAFT_NOT_SCOREABLE";
+    status: 'DRAFT_NOT_SCOREABLE';
     id: string;
-    source: string;
+    source: CanonicalAnalyzerValidationRecord['source'];
+    participantRoleClass: ParticipantRoleClass;
+    permissionedSession: boolean;
     storeCount: number;
-    storeBucket: InboundValidationRecord["storeBucket"];
+    storeBucket: CanonicalAnalyzerValidationRecord['storeBucket'];
     targetIcp: boolean;
-    acquisitionSource?: string;
-    acquisitionMedium?: string;
-    acquisitionCampaign?: string;
-    privacyMode?: InboundValidationRecord["privacyMode"];
+    acquisitionSource?: CanonicalAnalyzerValidationRecord['acquisitionSource'];
+    acquisitionMedium?: CanonicalAnalyzerValidationRecord['acquisitionMedium'];
+    acquisitionCampaign?: CanonicalAnalyzerValidationRecord['acquisitionCampaign'];
+    privacyMode?: PrivacyMode;
     importAttempted: boolean;
     importSucceeded: boolean;
     reconciliationAttempted: boolean | null;
@@ -34,17 +37,19 @@ export interface InboundValidationDraft {
     valueDemonstrated: boolean | null;
     wtpAsked: boolean | null;
     willingnessToPay: boolean | null;
-    wtpBand: InboundValidationInput["wtpBand"] | null;
+    wtpBand: WtpBand | null;
 }
 export interface InboundValidationDraftInput {
     id: string;
     source: string;
+    participantRoleClass: ParticipantRoleClass;
+    permissionedSession: boolean;
     storeCount: number;
     importSucceeded: boolean;
     acquisitionSource?: string;
     acquisitionMedium?: string;
     acquisitionCampaign?: string;
-    privacyMode?: InboundValidationRecord["privacyMode"];
+    privacyMode?: PrivacyMode;
 }
 export interface InboundValidationAnswers {
     reconciliationAttempted: boolean;
@@ -58,7 +63,7 @@ export interface InboundValidationAnswers {
     valueDemonstrated: boolean;
     wtpAsked: boolean;
     willingnessToPay: boolean;
-    wtpBand?: InboundValidationInput["wtpBand"];
+    wtpBand?: WtpBand;
 }
 export interface AcquisitionFunnelSummary {
     uniqueSessions: number;
@@ -76,6 +81,8 @@ export interface AcquisitionFunnelSummary {
 export interface InboundValidationInput {
     id: string;
     source: string;
+    participantRoleClass: ParticipantRoleClass;
+    permissionedSession: boolean;
     storeCount: number;
     importAttempted: boolean;
     importSucceeded: boolean;
@@ -90,20 +97,11 @@ export interface InboundValidationInput {
     valueDemonstrated: boolean;
     wtpAsked: boolean;
     willingnessToPay: boolean;
-    wtpBand?: '0' | '<500k' | '500k-1m' | '1m-2m' | '2m+';
+    wtpBand?: WtpBand;
     acquisitionSource?: string;
     acquisitionMedium?: string;
     acquisitionCampaign?: string;
-    privacyMode?: 'local-only' | 'profile' | 'pseudonymized' | 'permissioned-raw';
-}
-export interface InboundValidationRecord extends FieldValidationRecord {
-    storeCount: number;
-    storeBucket: '1' | '2' | '3-5' | '6-10' | '11-15' | '16+';
-    acquisitionSource?: string;
-    acquisitionMedium?: string;
-    acquisitionCampaign?: string;
-    privacyMode?: 'local-only' | 'profile' | 'pseudonymized' | 'permissioned-raw';
-    wtpBand?: InboundValidationInput['wtpBand'];
+    privacyMode?: PrivacyMode;
 }
 export declare function buildInboundValidationRecord(input: InboundValidationInput): InboundValidationRecord;
 export declare function buildInboundValidationDraft(input: InboundValidationDraftInput): InboundValidationDraft;
