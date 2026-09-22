@@ -1,1 +1,128 @@
-<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CafeOS validation feedback</title><style>:root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#1c1917;background:#f5f5f4}*{box-sizing:border-box}body{margin:0}.wrap{max-width:760px;margin:auto;padding:44px 20px}.card{background:#fff;border:1px solid #e7e5e4;border-radius:16px;padding:22px}.row{margin:14px 0}label{display:block;font-weight:600;margin-bottom:6px}select,input{font:inherit;width:100%;padding:10px;border:1px solid #d6d3d1;border-radius:8px}button{font:inherit;background:#1c1917;color:#fff;border:0;border-radius:9px;padding:11px 14px;cursor:pointer}.muted{color:#78716c;font-size:14px}</style></head><body><main class="wrap"><h1>Validation feedback</h1><p class="muted">Không yêu cầu tên, email hay số điện thoại. File JSON tạo ra chỉ chứa evidence cho product gate.</p><form id="f" class="card"><div class="row"><label>POS/source</label><select id="source"><option>kiotviet</option><option>cukcuk</option><option>sapo-fnb</option><option>ipos</option><option>pos365</option><option>excel-other</option></select></div><div class="row"><label>Số cửa hàng</label><input id="stores" type="number" min="1" value="3" required></div><div class="row"><label>Import Analyzer thành công?</label><select id="importSucceeded"><option value="true">Có</option><option value="false">Không</option></select></div><div class="row"><label>Đã đối chiếu orders/net sales với POS?</label><select id="reconciled"><option value="true">Có — khớp và tin metric</option><option value="false">Chưa / không khớp</option></select></div><div class="row"><label>Có insight mới/hữu ích?</label><select id="useful"><option value="true">Có</option><option value="false">Không</option></select></div><div class="row"><label>Bạn có muốn dùng lại hàng tuần?</label><select id="repeat"><option value="true">Có</option><option value="false">Không</option></select></div><div class="row"><label>Nếu auto-sync hằng ngày, bạn có muốn bật?</label><select id="sync"><option value="true">Có</option><option value="false">Không</option></select></div><div class="row"><label>Nếu tạo giá trị đều đặn, bạn có sẵn sàng trả tiền?</label><select id="wtp"><option value="true">Có</option><option value="false">Không</option></select></div><div class="row"><label>Khoảng giá/tháng</label><select id="band"><option value="0">0</option><option value="<500k">&lt;500K</option><option value="500k-1m">500K–1M</option><option value="1m-2m">1M–2M</option><option value="2m+">2M+</option></select></div><button type="submit">Tải validation record JSON</button></form></main><script>const q=new URLSearchParams(location.search);const yes=id=>document.getElementById(id).value==='true';document.getElementById('f').onsubmit=e=>{e.preventDefault();const stores=Number(document.getElementById('stores').value);const reconciled=yes('reconciled');const useful=yes('useful');const repeat=yes('repeat');const sync=yes('sync');const wtp=yes('wtp');const payload={id:crypto.randomUUID(),source:document.getElementById('source').value,storeCount:stores,importAttempted:true,importSucceeded:yes('importSucceeded'),reconciliationAttempted:reconciled,metricTrusted:reconciled,insightReviewed:true,usefulNewInsight:useful,repeatUseAsked:true,repeatUseIntent:repeat,continuousSyncAsked:true,continuousSyncIntent:sync,valueDemonstrated:useful,wtpAsked:useful,willingnessToPay:useful&&wtp,wtpBand:document.getElementById('band').value,acquisitionSource:q.get('utm_source')||'direct',acquisitionMedium:q.get('utm_medium')||'none',acquisitionCampaign:q.get('utm_campaign')||'none',privacyMode:'local-only'};const blob=new Blob([JSON.stringify(payload,null,2)+'\n'],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='cafeos-validation-record.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};</script></body></html>
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CafeOS validation feedback</title><style>:root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#1c1917;background:#f5f5f4}*{box-sizing:border-box}body{margin:0}.wrap{max-width:760px;margin:auto;padding:44px 20px}.card{background:#fff;border:1px solid #e7e5e4;border-radius:16px;padding:22px}.row{margin:14px 0}.hidden{display:none}label{display:block;font-weight:600;margin-bottom:6px}select,input{font:inherit;width:100%;padding:10px;border:1px solid #d6d3d1;border-radius:8px}button{font:inherit;background:#1c1917;color:#fff;border:0;border-radius:9px;padding:11px 14px;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.muted{color:#78716c;font-size:14px}</style></head><body><main class="wrap"><h1>Validation feedback</h1><p class="muted">Không yêu cầu tên, email hay số điện thoại. Quyền đưa evidence ẩn danh vào validation bên dưới tách biệt với quyền xử lý file đã diễn ra ở bước Analyzer; checkbox này không cấp quyền hồi tố cho dữ liệu merchant.</p><form id="f" class="card">
+<div class="row"><label>POS/source</label><select id="source" required><option value="" disabled selected>Chọn…</option><option value="kiotviet">KiotViet</option><option value="cukcuk">CUKCUK</option><option value="sapo_fnb">Sapo FnB</option><option value="ipos">iPOS</option><option value="pos365">POS365</option><option value="generic_excel_csv">Excel/CSV chung</option><option value="other_pos">POS khác</option><option value="unknown">Không rõ</option></select></div>
+<div class="row"><label>Số cửa hàng</label><input id="stores" type="number" min="1" value="" required></div>
+<div class="row"><label>Vai trò người tham gia</label><select id="role" required><option value="" disabled selected>Chọn…</option><option value="owner_operator">Chủ/quản lý vận hành</option><option value="other">Vai trò khác</option></select></div>
+<div class="row"><label>Cho phép đưa record ẩn danh này vào validation evidence?</label><select id="permission" required><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+<div class="row"><label>Đã thử import vào Analyzer?</label><select id="importAttempted"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+<div class="row hidden" id="row-importSucceeded"><label>Import Analyzer thành công?</label><select id="importSucceeded"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+<div class="row hidden" id="row-reconciliationAttempted"><label>Đã đối chiếu orders/net sales với POS?</label><select id="reconciliationAttempted"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+<div class="row hidden" id="row-metricTrusted"><label>Sau đối chiếu, có tin các metric?</label><select id="metricTrusted"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+<div class="row hidden" id="row-insightReviewed"><label>Đã review ít nhất một insight?</label><select id="insightReviewed"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+<div class="row hidden" id="row-usefulNewInsight"><label>Insight đã review có mới và hữu ích?</label><select id="usefulNewInsight"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+<div class="row"><label>Đã hỏi họ có muốn dùng lại?</label><select id="repeatUseAsked"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+<div class="row hidden" id="row-repeatUseIntent"><label>Họ có muốn dùng lại?</label><select id="repeatUseIntent"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+<div class="row"><label>Đã hỏi họ có muốn auto-sync liên tục?</label><select id="continuousSyncAsked"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+<div class="row hidden" id="row-continuousSyncIntent"><label>Họ có muốn auto-sync liên tục?</label><select id="continuousSyncIntent"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+<div class="row"><label>Đã chứng minh giá trị vận hành cụ thể?</label><select id="valueDemonstrated"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+<div class="row hidden" id="row-wtpAsked"><label>Đã hỏi willingness-to-pay mà chưa đưa khoảng giá trước?</label><select id="wtpAsked"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+<div class="row hidden" id="row-willingnessToPay"><label>Họ có sẵn sàng trả tiền?</label><select id="willingnessToPay"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+<div class="row hidden" id="row-band"><label>Khoảng giá/tháng (tùy chọn, chỉ sau câu trả lời WTP)</label><select id="band"><option value="">Không ghi band</option><option value="<500k">&lt;500K</option><option value="500k-1m">500K–1M</option><option value="1m-2m">1M–2M</option><option value="2m+">2M+</option></select></div>
+<button id="download" type="submit" disabled>Tải validation record JSON</button>
+</form></main><script>
+const q=new URLSearchParams(location.search);
+const byId=id=>document.getElementById(id);
+const bool=id=>byId(id).value===''?null:byId(id).value==='true';
+const setVisible=(rowId,visible)=>{byId(rowId).classList.toggle('hidden',!visible)};
+const resolved=id=>byId(id).value!=='';
+const positiveInt=()=>{const n=Number(byId('stores').value);return Number.isInteger(n)&&n>0};
+const normalizedAttribution=()=>{
+  const source=(q.get('utm_source')||'').trim().toLowerCase();
+  const medium=(q.get('utm_medium')||'').trim().toLowerCase();
+  const campaign=(q.get('utm_campaign')||'').trim().toLowerCase();
+  const known=new Set(['kiotviet-excel-analysis','sapo-fnb-excel-analysis','cafe-excel-analysis']);
+  if(source==='seo'&&medium==='organic'&&known.has(campaign))return{acquisitionSource:'seo',acquisitionMedium:'organic',acquisitionCampaign:campaign};
+  if((source===''||source==='direct')&&(medium===''||medium==='none')&&campaign==='')return{acquisitionSource:'direct',acquisitionMedium:'none'};
+  return{acquisitionSource:'other',acquisitionMedium:'other',acquisitionCampaign:'other'};
+};
+function sync(){
+  const attempted=bool('importAttempted');
+  setVisible('row-importSucceeded',attempted===true);
+  const imported=attempted===true?bool('importSucceeded'):false;
+  setVisible('row-reconciliationAttempted',imported===true);
+  const reconciled=imported===true?bool('reconciliationAttempted'):false;
+  setVisible('row-metricTrusted',reconciled===true);
+  const trusted=reconciled===true?bool('metricTrusted'):false;
+  setVisible('row-insightReviewed',imported===true);
+  const reviewed=imported===true?bool('insightReviewed'):false;
+  setVisible('row-usefulNewInsight',trusted===true&&reviewed===true);
+
+  const repeatAsked=bool('repeatUseAsked');
+  setVisible('row-repeatUseIntent',repeatAsked===true);
+  const syncAsked=bool('continuousSyncAsked');
+  setVisible('row-continuousSyncIntent',syncAsked===true);
+
+  const value=bool('valueDemonstrated');
+  setVisible('row-wtpAsked',value===true);
+  const asked=value===true?bool('wtpAsked'):false;
+  setVisible('row-willingnessToPay',asked===true);
+  const willing=asked===true?bool('willingnessToPay'):false;
+  setVisible('row-band',willing===true);
+
+  const complete=
+    resolved('source')&&positiveInt()&&resolved('role')&&resolved('permission')&&
+    attempted!==null&&
+    (attempted!==true||resolved('importSucceeded'))&&
+    (imported!==true||resolved('reconciliationAttempted'))&&
+    (reconciled!==true||resolved('metricTrusted'))&&
+    (imported!==true||resolved('insightReviewed'))&&
+    (!(trusted===true&&reviewed===true)||resolved('usefulNewInsight'))&&
+    repeatAsked!==null&&(repeatAsked!==true||resolved('repeatUseIntent'))&&
+    syncAsked!==null&&(syncAsked!==true||resolved('continuousSyncIntent'))&&
+    value!==null&&(value!==true||resolved('wtpAsked'))&&
+    (asked!==true||resolved('willingnessToPay'));
+  byId('download').disabled=!complete;
+  return complete;
+}
+for(const el of document.querySelectorAll('select,input'))el.addEventListener('change',sync);
+byId('stores').addEventListener('input',sync);
+sync();
+byId('f').onsubmit=e=>{
+  e.preventDefault();
+  if(!sync())return;
+  const stores=Number(byId('stores').value);
+  const role=byId('role').value;
+  const attempted=bool('importAttempted');
+  const imported=attempted===true?bool('importSucceeded'):false;
+  const reconciled=imported===true?bool('reconciliationAttempted'):false;
+  const trusted=reconciled===true?bool('metricTrusted'):false;
+  const reviewed=imported===true?bool('insightReviewed'):false;
+  const useful=trusted===true&&reviewed===true?bool('usefulNewInsight'):false;
+  const repeatAsked=bool('repeatUseAsked');
+  const syncAsked=bool('continuousSyncAsked');
+  const value=bool('valueDemonstrated');
+  const asked=value===true?bool('wtpAsked'):false;
+  const willing=asked===true?bool('willingnessToPay'):false;
+  const payload={
+    id:crypto.randomUUID(),
+    source:byId('source').value,
+    participantRoleClass:role,
+    permissionedSession:bool('permission'),
+    targetIcp:role==='owner_operator'&&stores>=3&&stores<=15,
+    storeCount:stores,
+    storeBucket:stores<=1?'1':stores===2?'2':stores<=5?'3-5':stores<=10?'6-10':stores<=15?'11-15':'16+',
+    importAttempted:attempted,
+    importSucceeded:imported,
+    reconciliationAttempted:reconciled,
+    metricTrusted:trusted,
+    insightReviewed:reviewed,
+    usefulNewInsight:useful,
+    repeatUseAsked:repeatAsked,
+    repeatUseIntent:repeatAsked===true?bool('repeatUseIntent'):false,
+    continuousSyncAsked:syncAsked,
+    continuousSyncIntent:syncAsked===true?bool('continuousSyncIntent'):false,
+    valueDemonstrated:value,
+    wtpAsked:asked,
+    willingnessToPay:willing,
+    ...normalizedAttribution(),
+    privacyMode:'local-only'
+  };
+  const band=byId('band').value;
+  if(willing===true&&band)payload.wtpBand=band;
+  const blob=new Blob([JSON.stringify(payload,null,2)+'\n'],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='cafeos-validation-record.json';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+</script></html>
