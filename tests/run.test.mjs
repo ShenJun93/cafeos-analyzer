@@ -337,6 +337,7 @@ function validationRecord(id, overrides = {}) {
     id,
     source: "test-pos",
     targetIcp: true,
+    permissionedSession: true,
     importAttempted: true,
     importSucceeded: true,
     reconciliationAttempted: true,
@@ -415,8 +416,10 @@ import { buildInboundValidationRecord, buildInboundValidationDraft, finalizeInbo
 
 test("inbound validation record derives target ICP from 3-15 stores without PII fields", () => {
   const record = buildInboundValidationRecord({
-    id: "V-1",
+    id: "validation-V-1",
     source: "kiotviet",
+    participantRoleClass: "owner_operator",
+    permissionedSession: true,
     storeCount: 7,
     importAttempted: true,
     importSucceeded: true,
@@ -446,7 +449,7 @@ test("inbound validation record derives target ICP from 3-15 stores without PII 
 
 test("inbound validation record excludes 1-2 and 16+ store operators from target ICP", () => {
   const base = {
-    id: "x", source: "test", importAttempted: true, importSucceeded: true,
+    id: "validation-x", source: "test", participantRoleClass: "owner_operator", permissionedSession: true, importAttempted: true, importSucceeded: true,
     reconciliationAttempted: true, metricTrusted: true, insightReviewed: true,
     usefulNewInsight: true, repeatUseAsked: true, repeatUseIntent: true,
     continuousSyncAsked: true, continuousSyncIntent: true, valueDemonstrated: true,
@@ -551,7 +554,7 @@ test("public pages disclose 4MB transient processing instead of local-only promi
 
 
 test("field-session draft keeps unanswered evidence nullable and cannot silently count as negative evidence", () => {
-  const draft = buildInboundValidationDraft({ id: "D-1", source: "kiotviet", storeCount: 7, importSucceeded: true, acquisitionSource: "organic", privacyMode: "local-only" });
+  const draft = buildInboundValidationDraft({ id: "validation-D-1", source: "kiotviet", participantRoleClass: "owner_operator", permissionedSession: true, storeCount: 7, importSucceeded: true, acquisitionSource: "organic", privacyMode: "local-only" });
   assert.equal(draft.status, "DRAFT_NOT_SCOREABLE");  assert.equal(draft.targetIcp, true);
   assert.equal(draft.importSucceeded, true);
   assert.equal(draft.metricTrusted, null);
@@ -563,7 +566,7 @@ test("field-session draft keeps unanswered evidence nullable and cannot silently
 
 
 test("field-session finalization enforces evidence ordering and produces canonical scorecard record", () => {
-  const draft = buildInboundValidationDraft({ id: "D-2", source: "cukcuk", storeCount: 5, importSucceeded: true, privacyMode: "local-only" });
+  const draft = buildInboundValidationDraft({ id: "validation-D-2", source: "cukcuk", participantRoleClass: "owner_operator", permissionedSession: true, storeCount: 5, importSucceeded: true, privacyMode: "local-only" });
   assert.throws(() => finalizeInboundValidationDraft(draft, {
     reconciliationAttempted: false, metricTrusted: true, insightReviewed: true, usefulNewInsight: true,
     repeatUseAsked: true, repeatUseIntent: true, continuousSyncAsked: true, continuousSyncIntent: true,
@@ -583,9 +586,13 @@ test("field-session finalization enforces evidence ordering and produces canonic
 import { assertCanonicalValidationRecord, emptyValidationRegistry, upsertValidationRecord } from "../dist/validation-registry.js";
 
 const canonicalFieldRecord = {
-  id: "field-001",
+  id: "11111111-1111-4111-8111-111111111111",
   source: "kiotviet",
+  participantRoleClass: "owner_operator",
+  permissionedSession: true,
   targetIcp: true,
+  storeCount: 5,
+  storeBucket: "3-5",
   importAttempted: true,
   importSucceeded: true,
   reconciliationAttempted: true,
@@ -601,18 +608,18 @@ const canonicalFieldRecord = {
   willingnessToPay: true
 };
 
-test("validation registry accepts canonical PII-free records and deduplicates by session id", () => {
+test("validation registry is idempotent for identical evidence and rejects conflicting duplicate ids", () => {
   assert.doesNotThrow(() => assertCanonicalValidationRecord(canonicalFieldRecord));
   const one = upsertValidationRecord(emptyValidationRegistry(), canonicalFieldRecord);
-  const replacement = { ...canonicalFieldRecord, willingnessToPay: false };
-  const two = upsertValidationRecord(one, replacement);
-  assert.equal(two.records.length, 1);
-  assert.equal(two.records[0].willingnessToPay, false);
+  const same = upsertValidationRecord(one, { ...canonicalFieldRecord });
+  assert.equal(same.records.length, 1);
+  const replacement = { ...canonicalFieldRecord, willingnessToPay: false, wtpBand: undefined };
+  assert.throws(() => upsertValidationRecord(one, replacement), /already exists with different canonical evidence/);
 });
 
 test("validation registry rejects PII/local fields before aggregation", () => {
-  assert.throws(() => assertCanonicalValidationRecord({ ...canonicalFieldRecord, email: "owner@example.com" }), /forbidden PII/);
-  assert.throws(() => assertCanonicalValidationRecord({ ...canonicalFieldRecord, meta: { phone: "0000000000" } }), /forbidden PII/);
+  assert.throws(() => assertCanonicalValidationRecord({ ...canonicalFieldRecord, email: "owner@example.com" }), /unknown canonical fields|forbidden PII/);
+  assert.throws(() => assertCanonicalValidationRecord({ ...canonicalFieldRecord, meta: { phone: "0000000000" } }), /unknown canonical fields|forbidden PII/);
 });
 
 test("Windows field kit launcher has explicit task-owned server cleanup", async () => {
