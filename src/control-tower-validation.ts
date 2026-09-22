@@ -285,7 +285,7 @@ export function buildControlTowerValidationDraft(input: {
 }): ControlTowerValidationDraft {
   const emptyEvidence = Object.fromEntries(EVIDENCE_FIELDS.map(field => [field, null])) as
     Pick<ControlTowerValidationRecord, typeof EVIDENCE_FIELDS[number]>;
-  return {
+  const draft: ControlTowerValidationDraft = {
     status: 'DRAFT_NOT_PUBLIC',
     id: input.id,
     storeCount: input.storeCount,
@@ -305,13 +305,35 @@ export function buildControlTowerValidationDraft(input: {
     measurementCheckedAt: null,
     measurementSessionId: null
   };
+  const { status: _status, ...canonical } = draft;
+  assertControlTowerValidationRecord(canonical);
+  return draft;
 }
+
+const ANSWER_FIELDS = new Set([
+  'transactionSourcesReviewed','transactionSources',
+  'trustedDataReviewed','metricTrusted','dailyBriefReviewed','dailyBriefUseful',
+  'storeHealthReviewed','storeHealthUseful','attentionReviewed','actionCreated',
+  'returnReviewObserved','terminalActionReviewed','measurementAvailable','measurementChecked',
+  'nonCausalWordingUnderstood','repeatLoopAsked','repeatLoopIntent','continuousSyncAsked',
+  'continuousSyncIntent','workflowConceptReviewed','workflowConceptUnderstood',
+  'actionCreatedAt','actionSessionId','returnReviewObservedAt','returnSessionId',
+  'measurementCheckedAt','measurementSessionId',
+  'acquisitionSource','acquisitionMedium','acquisitionCampaign'
+]);
 
 export function finalizeControlTowerValidationDraft(
   draft: ControlTowerValidationDraft,
   answers: ControlTowerEvidenceAnswers
 ): ControlTowerValidationRecord {
   if (draft.status !== 'DRAFT_NOT_PUBLIC') throw new Error('Expected a Control Tower validation draft');
+  if (!answers || typeof answers !== 'object' || Array.isArray(answers)) {
+    throw new Error('Control Tower evidence answers must be an object');
+  }
+  const unknownAnswers = Object.keys(answers).filter(key => !ANSWER_FIELDS.has(key));
+  if (unknownAnswers.length) {
+    throw new Error(`Unknown Control Tower evidence answer fields: ${unknownAnswers.join(', ')}`);
+  }
   const record: ControlTowerValidationRecord = {
     id: draft.id,
     storeCount: draft.storeCount,
