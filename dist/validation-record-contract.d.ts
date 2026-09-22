@@ -1,18 +1,18 @@
-export declare const ANALYZER_SOURCE_CLASSES: readonly ["kiotviet", "cukcuk", "sapo_fnb", "ipos", "pos365", "generic_excel_csv", "other_pos", "unknown"];
+export declare const ANALYZER_SOURCE_CLASSES: readonly ['kiotviet', 'cukcuk', 'sapo_fnb', 'ipos', 'pos365', 'generic_excel_csv', 'other_pos', 'unknown'];
 export type AnalyzerSourceClass = typeof ANALYZER_SOURCE_CLASSES[number];
-export declare const PARTICIPANT_ROLE_CLASSES: readonly ["owner_operator", "other"];
+export declare const PARTICIPANT_ROLE_CLASSES: readonly ['owner_operator', 'other'];
 export type ParticipantRoleClass = typeof PARTICIPANT_ROLE_CLASSES[number];
-export declare const STORE_BUCKETS: readonly ["1", "2", "3-5", "6-10", "11-15", "16+"];
+export declare const STORE_BUCKETS: readonly ['1', '2', '3-5', '6-10', '11-15', '16+'];
 export type StoreBucket = typeof STORE_BUCKETS[number];
-export declare const PRIVACY_MODES: readonly ["local-only", "profile", "pseudonymized", "permissioned-raw"];
+export declare const PRIVACY_MODES: readonly ['local-only', 'profile', 'pseudonymized', 'permissioned-raw'];
 export type PrivacyMode = typeof PRIVACY_MODES[number];
-export declare const WTP_BANDS: readonly ["0", "<500k", "500k-1m", "1m-2m", "2m+"];
+export declare const WTP_BANDS: readonly ['0', '<500k', '500k-1m', '1m-2m', '2m+'];
 export type WtpBand = typeof WTP_BANDS[number];
-export declare const ACQUISITION_SOURCES: readonly ["seo", "direct", "other"];
+export declare const ACQUISITION_SOURCES: readonly ['seo', 'direct', 'other'];
 export type AcquisitionSourceClass = typeof ACQUISITION_SOURCES[number];
-export declare const ACQUISITION_MEDIA: readonly ["organic", "none", "other"];
+export declare const ACQUISITION_MEDIA: readonly ['organic', 'none', 'other'];
 export type AcquisitionMediumClass = typeof ACQUISITION_MEDIA[number];
-export declare const ACQUISITION_CAMPAIGNS: readonly ["kiotviet-excel-analysis", "sapo-fnb-excel-analysis", "cafe-excel-analysis", "other"];
+export declare const ACQUISITION_CAMPAIGNS: readonly ['kiotviet-excel-analysis', 'sapo-fnb-excel-analysis', 'cafe-excel-analysis', 'other'];
 export type AcquisitionCampaignClass = typeof ACQUISITION_CAMPAIGNS[number];
 export interface CanonicalAnalyzerValidationRecord {
     id: string;
