@@ -613,7 +613,8 @@ test("validation registry is idempotent for identical evidence and rejects confl
   const one = upsertValidationRecord(emptyValidationRegistry(), canonicalFieldRecord);
   const same = upsertValidationRecord(one, { ...canonicalFieldRecord });
   assert.equal(same.records.length, 1);
-  const replacement = { ...canonicalFieldRecord, willingnessToPay: false, wtpBand: undefined };
+  const replacement = { ...canonicalFieldRecord, repeatUseIntent: false };
+  assert.doesNotThrow(() => assertCanonicalValidationRecord(replacement));
   assert.throws(() => upsertValidationRecord(one, replacement), /already exists with different canonical evidence/);
 });
 
