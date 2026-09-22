@@ -9,6 +9,7 @@ const DEFAULTS = {
   email: "cafeos.synthetic.a@example.com",
   allowedTenantId: "11111111-1111-4111-8111-111111111111",
   forbiddenTenantId: "22222222-2222-4222-8222-222222222222",
+  workflowActionId: "11111111-eeee-4eee-8eee-111111111111",
   teamSlug: "nvhoa1691993-6852s-projects",
   projectId: "prj_HG27M5PTKPJCrHUA0LPUOmsCrYIe",
   cliVersion: "59.20.0"
@@ -157,6 +158,7 @@ export async function verifyProtectedPreview({
   email = DEFAULTS.email,
   allowedTenantId = DEFAULTS.allowedTenantId,
   forbiddenTenantId = DEFAULTS.forbiddenTenantId,
+  workflowActionId = DEFAULTS.workflowActionId,
   publishableKey,
   password,
   fetchImpl = globalThis.fetch,
@@ -250,6 +252,31 @@ export async function verifyProtectedPreview({
   }
   log("PASS Tenant A /api/app/store-health -> 200");
 
+  const actionDetailPath = `/api/app/action-detail?actionId=${encodeURIComponent(workflowActionId)}`;
+  const actionDetail = curlImpl(actionDetailPath, {
+    ...base,
+    headers: {
+      ...authHeaders,
+      "x-cafeos-tenant-id": allowedTenantId
+    }
+  });
+  expect(actionDetail, 200);
+  if (actionDetail.body?.tenant?.id !== allowedTenantId ||
+      actionDetail.body?.action?.id !== workflowActionId ||
+      actionDetail.body?.capabilities?.boundedWorkflowWrites !== true ||
+      actionDetail.body?.capabilities?.deterministicMeasurement !== true ||
+      actionDetail.body?.capabilities?.causalAttribution !== false ||
+      !Array.isArray(actionDetail.body?.history) ||
+      actionDetail.body.history.length < 1 ||
+      !Array.isArray(actionDetail.body?.measurementWindows) ||
+      actionDetail.body.measurementWindows.length < 1 ||
+      actionDetail.body.measurementWindows.some(window =>
+        window?.deterministicResult?.result?.interpretation !== "before_after_not_causal"
+      )) {
+    fail("/api/app/action-detail did not return the bounded non-causal workflow contract");
+  }
+  log("PASS Tenant A /api/app/action-detail -> 200 bounded non-causal measurement");
+
   const forbidden = curlImpl("/api/app/stores", {
     ...base,
     headers: {
@@ -269,6 +296,16 @@ export async function verifyProtectedPreview({
   });
   expect(forbiddenStoreHealth, 403, "TENANT_FORBIDDEN");
   log("PASS Tenant B Store Health selection -> 403 TENANT_FORBIDDEN");
+
+  const forbiddenActionDetail = curlImpl(actionDetailPath, {
+    ...base,
+    headers: {
+      ...authHeaders,
+      "x-cafeos-tenant-id": forbiddenTenantId
+    }
+  });
+  expect(forbiddenActionDetail, 403, "TENANT_FORBIDDEN");
+  log("PASS Tenant B Action detail selection -> 403 TENANT_FORBIDDEN");
 
   const invalid = curlImpl("/api/app/session", {
     ...base,

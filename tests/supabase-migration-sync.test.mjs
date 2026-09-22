@@ -72,6 +72,18 @@ test("Store Health read-model migration stays text-equivalent to canonical contr
   assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
 });
 
+test("Action Measurement loop migration stays text-equivalent to canonical contract", async () => {
+  const source = await readFile(
+    new URL("../db/contracts/action_measurement_loop.sql", import.meta.url),
+    "utf8"
+  );
+  const migration = await readFile(
+    new URL("../supabase/migrations/20260921203000_action_measurement_loop.sql", import.meta.url),
+    "utf8"
+  );
+  assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
+});
+
 test("migration sync normalization ignores line-ending style only", () => {
   const lf = "select 1;\nselect 2;\n";
   const crlf = "select 1;\r\nselect 2;\r\n";

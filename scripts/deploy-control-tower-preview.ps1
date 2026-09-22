@@ -1,5 +1,6 @@
 param(
   [string]$SupabaseUrl = "https://wjatnyvdygvblirggdcm.supabase.co",
+  [string]$ExpectedCommit = "",
   [switch]$SkipDeploy
 )
 
@@ -16,21 +17,56 @@ $securePublishableKey = $null
 $publishableKeyPtr = [IntPtr]::Zero
 Push-Location $repoRoot
 try {
-  $branch = (git branch --show-current).Trim()
-  if ($branch -ne "main") {
-    throw "Control Tower preview setup only runs from canonical main. Current branch: $branch"
-  }
+  $branch = (@(git branch --show-current) -join "").Trim()
 
   $dirty = git status --porcelain
   if ($dirty) {
     throw "Working tree is not clean. Commit, stash, or discard local changes first."
   }
 
-  git fetch origin main | Out-Host
-  $localSha = (git rev-parse HEAD).Trim()
-  $remoteSha = (git rev-parse origin/main).Trim()
-  if ($localSha -ne $remoteSha) {
-    throw "Local main ($localSha) does not match origin/main ($remoteSha). Run git pull --ff-only first."
+  $localSha = (git rev-parse HEAD).Trim().ToLowerInvariant()
+  if ($localSha -notmatch '^[0-9a-f]{40}$') {
+    throw "Could not resolve the local HEAD to a full Git commit SHA."
+  }
+
+  if ($branch -eq "main") {
+    git fetch origin main | Out-Host
+    $remoteSha = (git rev-parse origin/main).Trim().ToLowerInvariant()
+    if ($localSha -ne $remoteSha) {
+      throw "Local main ($localSha) does not match origin/main ($remoteSha). Run git pull --ff-only first."
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedCommit)) {
+      $expectedSha = $ExpectedCommit.Trim().ToLowerInvariant()
+      if ($expectedSha -notmatch '^[0-9a-f]{40}$' -or $localSha -ne $expectedSha) {
+        throw "ExpectedCommit must exactly match the current full main SHA."
+      }
+    }
+    Write-Host "Preview source verified: canonical main $localSha" -ForegroundColor Green
+  }
+  else {
+    if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
+      throw "Non-main preview requires -ExpectedCommit with the exact 40-character merge-candidate SHA."
+    }
+    $expectedSha = $ExpectedCommit.Trim().ToLowerInvariant()
+    if ($expectedSha -notmatch '^[0-9a-f]{40}$') {
+      throw "ExpectedCommit must be a full 40-character hexadecimal Git SHA."
+    }
+    if ($localSha -ne $expectedSha) {
+      throw "Local HEAD ($localSha) does not match ExpectedCommit ($expectedSha)."
+    }
+
+    git fetch origin --prune | Out-Host
+    $remoteContainingBranches = @(
+      git branch -r --contains $localSha |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ -like 'origin/*' }
+    )
+    if ($remoteContainingBranches.Count -eq 0) {
+      throw "Preview candidate $localSha is not present on any origin branch. Push the exact candidate before deploying."
+    }
+
+    $sourceLabel = if ([string]::IsNullOrWhiteSpace($branch)) { "detached HEAD" } else { "branch $branch" }
+    Write-Host "Preview source verified: $sourceLabel at exact pushed candidate $localSha" -ForegroundColor Green
   }
 
   if ($SupabaseUrl -notmatch '^https://[a-z0-9]+\.supabase\.co/?$') {

@@ -1,4 +1,4 @@
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import { sourceFingerprint } from './source-fingerprint.mjs';
 
 const required = [
@@ -15,6 +15,11 @@ const required = [
   'api/app/attention.mjs',
   'api/app/brief.mjs',
   'api/app/store-health.mjs',
+  'api/app/workflow.mjs',
+  'server/app/actions.mjs',
+  'server/app/action-status.mjs',
+  'server/app/measurement-window.mjs',
+  'server/app/action-detail.mjs',
   'public/index.html',
   'public/analyzer.html',
   'public/sample-report.html',
@@ -26,6 +31,26 @@ const required = [
   'public/sitemap.xml'
 ];
 for (const path of required) await access(path);
+
+async function countApiFunctionSources(dir = 'api') {
+  const entries = await readdir(dir, { withFileTypes: true });
+  let count = 0;
+  for (const entry of entries) {
+    const path = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      count += await countApiFunctionSources(path);
+    }
+    else if (entry.isFile() && /\.(?:mjs|cjs|js|ts)$/.test(entry.name)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+const apiFunctionCount = await countApiFunctionSources();
+if (apiFunctionCount > 12) {
+  throw new Error(`Vercel Hobby function budget exceeded: ${apiFunctionCount}/12 api source files`);
+}
 const expected = JSON.parse(await readFile('dist/.source-fingerprint.json', 'utf8'));
 const actual = await sourceFingerprint();
 if (expected.sha256 !== actual.sha256) throw new Error('Committed dist is stale: source fingerprint does not match');

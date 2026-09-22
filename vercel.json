@@ -4,6 +4,22 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/app/actions",
+      "destination": "/api/app/workflow?route=actions"
+    },
+    {
+      "source": "/api/app/action-status",
+      "destination": "/api/app/workflow?route=action-status"
+    },
+    {
+      "source": "/api/app/measurement-window",
+      "destination": "/api/app/workflow?route=measurement-window"
+    },
+    {
+      "source": "/api/app/action-detail",
+      "destination": "/api/app/workflow?route=action-detail"
+    },
+    {
       "source": "/analyzer",
       "destination": "/analyzer.html"
     },
@@ -46,5 +62,8 @@
         }
       ]
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": false
+  }
 }

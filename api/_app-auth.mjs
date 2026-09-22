@@ -131,11 +131,43 @@ export async function appContext(req, deps = {}) {
   return { ...auth, tenant };
 }
 
-export function onlyGet(req, res) {
-  if (req.method === 'GET') return true;
-  res.setHeader('allow', 'GET');
+export function onlyMethod(req, res, method) {
+  if (req.method === method) return true;
+  res.setHeader('allow', method);
   json(res, 405, { error: { code: 'METHOD_NOT_ALLOWED', message: 'Method not allowed' } });
   return false;
+}
+
+export function onlyGet(req, res) {
+  return onlyMethod(req, res, 'GET');
+}
+
+export function onlyPost(req, res) {
+  return onlyMethod(req, res, 'POST');
+}
+
+export function onlyPatch(req, res) {
+  return onlyMethod(req, res, 'PATCH');
+}
+
+export function requestJsonObject(req) {
+  if (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) {
+    return req.body;
+  }
+  if (typeof req.body === 'string' && req.body.trim()) {
+    try {
+      const parsed = JSON.parse(req.body);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  throw new AppHttpError(400, 'BODY_INVALID', 'A JSON object body is required');
+}
+
+export function requireOperatorRole(ctx) {
+  if (!['owner', 'admin', 'analyst'].includes(ctx?.tenant?.role)) {
+    throw new AppHttpError(403, 'ROLE_FORBIDDEN', 'This workflow requires an operator role');
+  }
+  return ctx;
 }
 
 export function appError(res, error) {

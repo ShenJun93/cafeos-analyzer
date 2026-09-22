@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { verifyControlTowerPreview } from "../scripts/verify-control-tower-preview.mjs";
 import {
   verifyProtectedPreview,
@@ -12,6 +16,8 @@ const TENANT_A = "10000000-0000-4000-8000-000000000001";
 const TENANT_B = "20000000-0000-4000-8000-000000000002";
 const USER_A = "a0000000-0000-4000-8000-000000000001";
 const STORE_A = "11000000-0000-4000-8000-000000000001";
+const ACTION_A = "11111111-eeee-4eee-8eee-111111111111";
+const MEASUREMENT_A = "11111111-abcd-4abc-8abc-111111111111";
 const TOKEN = "synthetic-user-jwt";
 
 function jsonResponse(payload, status = 200) {
@@ -20,6 +26,82 @@ function jsonResponse(payload, status = 200) {
     headers: { "content-type": "application/json" }
   });
 }
+
+test("preview deploy launcher parses as valid PowerShell", () => {
+  const scriptPath = fileURLToPath(
+    new URL("../scripts/deploy-control-tower-preview.ps1", import.meta.url)
+  );
+  const shell = process.platform === "win32" ? "powershell" : "pwsh";
+  const command = [
+    "$tokens = $null",
+    "$errors = $null",
+    "[System.Management.Automation.Language.Parser]::ParseFile($env:CAFEOS_PS_PARSE_TARGET, [ref]$tokens, [ref]$errors) | Out-Null",
+    "if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }"
+  ].join("; ");
+  const result = spawnSync(shell, ["-NoProfile", "-NonInteractive", "-Command", command], {
+    encoding: "utf8",
+    env: { ...process.env, CAFEOS_PS_PARSE_TARGET: scriptPath },
+    windowsHide: true
+  });
+  assert.equal(
+    result.error,
+    undefined,
+    `PowerShell parser could not start: ${result.error?.message ?? "unknown error"}`
+  );
+  assert.equal(
+    result.status,
+    0,
+    `PowerShell syntax error:\n${String(result.stderr || result.stdout || "").trim()}`
+  );
+});
+
+test("preview deploy launcher branch probe tolerates detached HEAD", async () => {
+  const ps = await readFile(
+    new URL("../scripts/deploy-control-tower-preview.ps1", import.meta.url),
+    "utf8"
+  );
+  const probe = ps.match(
+    /^\s*(\$branch = \(@\(git branch --show-current\) -join ""\)\.Trim\(\))/m
+  );
+  assert.ok(probe, "launcher must normalize empty detached-HEAD branch output before Trim()");
+
+  const repoDir = await mkdtemp(join(tmpdir(), "cafeos-detached-head-"));
+  try {
+    const runGit = args => spawnSync("git", args, {
+      cwd: repoDir,
+      encoding: "utf8",
+      windowsHide: true
+    });
+    assert.equal(runGit(["init"]).status, 0);
+    assert.equal(runGit(["config", "user.email", "cafeos-test@example.invalid"]).status, 0);
+    assert.equal(runGit(["config", "user.name", "CafeOS Test"]).status, 0);
+    await writeFile(join(repoDir, "probe.txt"), "probe\n", "utf8");
+    assert.equal(runGit(["add", "probe.txt"]).status, 0);
+    assert.equal(runGit(["commit", "-m", "test: detached head probe"]).status, 0);
+    assert.equal(runGit(["checkout", "--detach", "HEAD"]).status, 0);
+
+    const shell = process.platform === "win32" ? "powershell" : "pwsh";
+    const command = [
+      probe[1],
+      'if ($null -eq $branch) { Write-Error "branch remained null"; exit 9 }',
+      'Write-Output "__CAFEOS_BRANCH_PROBE_OK__<$branch>"'
+    ].join("; ");
+    const result = spawnSync(shell, ["-NoProfile", "-NonInteractive", "-Command", command], {
+      cwd: repoDir,
+      encoding: "utf8",
+      windowsHide: true
+    });
+    assert.equal(
+      result.status,
+      0,
+      `detached-HEAD branch probe failed:\n${String(result.stderr || result.stdout || "").trim()}`
+    );
+    assert.match(result.stdout, /__CAFEOS_BRANCH_PROBE_OK__<>/);
+  }
+  finally {
+    await rm(repoDir, { recursive: true, force: true });
+  }
+});
 
 test("preview deploy launcher uses Vercel API upsert and keeps preview-only safety", async () => {
   const ps = await readFile(new URL("../scripts/deploy-control-tower-preview.ps1", import.meta.url), "utf8");
@@ -52,6 +134,13 @@ test("preview deploy launcher uses Vercel API upsert and keeps preview-only safe
   assert.match(ps, /ZeroFreeBSTR\(\$publishableKeyPtr\)/);
   assert.match(ps, /sb_publishable_/);
   assert.match(ps, /production alias will not be promoted/i);
+  assert.match(ps, /\[string\]\$ExpectedCommit = ""/);
+  assert.match(ps, /Non-main preview requires -ExpectedCommit with the exact 40-character merge-candidate SHA/);
+  assert.match(ps, /ExpectedCommit must be a full 40-character hexadecimal Git SHA/);
+  assert.match(ps, /Local HEAD \(\$localSha\) does not match ExpectedCommit \(\$expectedSha\)/);
+  assert.match(ps, /git branch -r --contains \$localSha/);
+  assert.match(ps, /is not present on any origin branch/);
+  assert.match(ps, /Local main \(\$localSha\) does not match origin\/main \(\$remoteSha\)/);
   assert.match(ps, /verify-control-tower-protected-preview\.mjs \$previewUrl --unauth-only/i);
   assert.match(ps, /cafeos-control-tower-preview-url\.txt/i);
   assert.match(ps, /Required Vercel preview variable is missing after API upsert/i);
@@ -60,6 +149,13 @@ test("preview deploy launcher uses Vercel API upsert and keeps preview-only safe
   assert.doesNotMatch(ps, /sb_publishable_[A-Za-z0-9_-]{10,}/);
   assert.doesNotMatch(ps, /service_role/i);
   assert.doesNotMatch(ps, /SUPABASE_SECRET/i);
+});
+
+test("Vercel Git auto-deploy is disabled so guarded manual preview is authoritative", async () => {
+  const config = JSON.parse(
+    await readFile(new URL("../vercel.json", import.meta.url), "utf8")
+  );
+  assert.equal(config.git?.deploymentEnabled, false);
 });
 
 test("unauthenticated preview smoke requires AUTH_REQUIRED", async () => {
@@ -293,6 +389,34 @@ test("protected authenticated verifier obtains a user token without logging secr
         }
       };
     }
+    if (tenant === allowedTenantId && path === `/api/app/action-detail?actionId=${ACTION_A}`) {
+      return {
+        status: 200,
+        body: {
+          tenant: { id: allowedTenantId, role: "owner" },
+          action: { id: ACTION_A, status: "in_progress" },
+          history: [
+            { id: "history-1", action_id: ACTION_A, from_status: "open", to_status: "in_progress" }
+          ],
+          measurementWindows: [{
+            id: MEASUREMENT_A,
+            deterministicResult: {
+              measurementWindowId: MEASUREMENT_A,
+              actionId: ACTION_A,
+              result: {
+                status: "measured",
+                interpretation: "before_after_not_causal"
+              }
+            }
+          }],
+          capabilities: {
+            boundedWorkflowWrites: true,
+            deterministicMeasurement: true,
+            causalAttribution: false
+          }
+        }
+      };
+    }
     if (tenant === allowedTenantId) {
       return { status: 200, body: { tenant: { id: allowedTenantId, role: "owner" } } };
     }
@@ -313,6 +437,20 @@ test("protected authenticated verifier obtains a user token without logging secr
   assert.equal(result.ok, true);
   assert.equal(curlCalls.some(x => x.options.headers?.authorization === `Bearer ${issuedToken}`), true);
   assert.equal(curlCalls.some(x => x.options.headers?.["x-cafeos-tenant-id"] === forbiddenTenantId), true);
+  assert.equal(
+    curlCalls.some(x =>
+      x.path === `/api/app/action-detail?actionId=${ACTION_A}` &&
+      x.options.headers?.["x-cafeos-tenant-id"] === allowedTenantId
+    ),
+    true
+  );
+  assert.equal(
+    curlCalls.some(x =>
+      x.path === `/api/app/action-detail?actionId=${ACTION_A}` &&
+      x.options.headers?.["x-cafeos-tenant-id"] === forbiddenTenantId
+    ),
+    true
+  );
   const logText = logs.join("\n");
   assert.doesNotMatch(logText, new RegExp(secretPassword));
   assert.doesNotMatch(logText, new RegExp(issuedToken));
