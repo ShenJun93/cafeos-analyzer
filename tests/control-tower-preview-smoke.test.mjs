@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { verifyControlTowerPreview } from "../scripts/verify-control-tower-preview.mjs";
 import {
@@ -51,6 +53,55 @@ test("preview deploy launcher parses as valid PowerShell", () => {
     0,
     `PowerShell syntax error:\n${String(result.stderr || result.stdout || "").trim()}`
   );
+});
+
+test("preview deploy launcher branch probe tolerates detached HEAD", async () => {
+  const ps = await readFile(
+    new URL("../scripts/deploy-control-tower-preview.ps1", import.meta.url),
+    "utf8"
+  );
+  const probe = ps.match(
+    /^\s*(\$branch = \[string\]\(git branch --show-current\))\r?\n\s*(\$branch = \$branch\.Trim\(\))/m
+  );
+  assert.ok(probe, "launcher must coerce an empty detached-HEAD branch probe to string before Trim()");
+
+  const repoDir = await mkdtemp(join(tmpdir(), "cafeos-detached-head-"));
+  try {
+    const runGit = args => spawnSync("git", args, {
+      cwd: repoDir,
+      encoding: "utf8",
+      windowsHide: true
+    });
+    assert.equal(runGit(["init"]).status, 0);
+    assert.equal(runGit(["config", "user.email", "cafeos-test@example.invalid"]).status, 0);
+    assert.equal(runGit(["config", "user.name", "CafeOS Test"]).status, 0);
+    await writeFile(join(repoDir, "probe.txt"), "probe\n", "utf8");
+    assert.equal(runGit(["add", "probe.txt"]).status, 0);
+    assert.equal(runGit(["commit", "-m", "test: detached head probe"]).status, 0);
+    assert.equal(runGit(["checkout", "--detach", "HEAD"]).status, 0);
+
+    const shell = process.platform === "win32" ? "powershell" : "pwsh";
+    const command = [
+      probe[1],
+      probe[2],
+      'if ($null -eq $branch) { Write-Error "branch remained null"; exit 9 }',
+      'Write-Output "__CAFEOS_BRANCH_PROBE_OK__<$branch>"'
+    ].join("; ");
+    const result = spawnSync(shell, ["-NoProfile", "-NonInteractive", "-Command", command], {
+      cwd: repoDir,
+      encoding: "utf8",
+      windowsHide: true
+    });
+    assert.equal(
+      result.status,
+      0,
+      `detached-HEAD branch probe failed:\n${String(result.stderr || result.stdout || "").trim()}`
+    );
+    assert.match(result.stdout, /__CAFEOS_BRANCH_PROBE_OK__<>/);
+  }
+  finally {
+    await rm(repoDir, { recursive: true, force: true });
+  }
 });
 
 test("preview deploy launcher uses Vercel API upsert and keeps preview-only safety", async () => {
