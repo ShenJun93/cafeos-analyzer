@@ -650,9 +650,16 @@ test("local health endpoint identifies CafeOS so launcher cannot accept an unrel
   assert.match(launcher, /Health\.service -eq 'cafeos-analyzer'/);
 });
 
-test("field-kit builder packages the committed runtime without node_modules", async () => {
+test("field-kit builder uses a least-privilege committed runtime allowlist", async () => {
   const source = await readFile(new URL("../scripts/build-field-kit.mjs", import.meta.url), "utf8");
-  assert.match(source, /\['dist','scripts','web','field-kit'\]/);
+  assert.match(source, /const runtimeScripts = \[/);
+  assert.match(source, /'serve\.mjs'/);
+  assert.match(source, /'field-session\.mjs'/);
+  assert.match(source, /'finalize-field-session\.mjs'/);
+  assert.match(source, /'field-registry\.mjs'/);
+  assert.doesNotMatch(source, /deploy-control-tower-preview/);
+  assert.doesNotMatch(source, /operator-offboard/);
+  assert.doesNotMatch(source, /AGENTS\.md/);
   assert.doesNotMatch(source, /node_modules/);
   assert.match(source, /No npm install required/);
 });
