@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { analyzeBytes } from '../dist/file.js';
@@ -18,9 +18,15 @@ function parseArgs(argv) {
 }
 
 const { file, opts } = parseArgs(process.argv.slice(2));
-if (!file || !opts.source || !opts.stores || !opts.out) {
-  console.error('Usage: node scripts/field-session.mjs <file.csv|file.xlsx> --source=<pos> --stores=<n> --out=<folder> [--id=<id>] [--acquisition-source=<source>] [--acquisition-medium=<medium>] [--acquisition-campaign=<campaign>]');
+if (!file || !opts.source || !opts.stores || !opts.out || !opts.role || !opts.permissioned) {
+  console.error('Usage: node scripts/field-session.mjs <file.csv|file.xlsx> --source=<source-class> --stores=<n> --role=<owner_operator|other> --permissioned=true --out=<folder> [--id=<opaque-id>] [--acquisition-source=<source>] [--acquisition-medium=<medium>] [--acquisition-campaign=<campaign>]');
   process.exit(2);
+}
+if (!['owner_operator', 'other'].includes(opts.role)) {
+  throw new Error('--role must be owner_operator or other');
+}
+if (opts.permissioned !== 'true') {
+  throw new Error('--permissioned=true is required before a scoreable field session may process the export');
 }
 const storeCount = Number(opts.stores);
 if (!Number.isInteger(storeCount) || storeCount < 1) throw new Error('--stores must be a positive integer');
@@ -47,10 +53,12 @@ try {
   await writeFile(`${outDir}/import-error.local.txt`, importError + '\n');
 }
 
-const id = opts.id ?? `field-${fileSha256.slice(0, 12)}`;
+const id = opts.id ?? randomUUID();
 const draft = buildInboundValidationDraft({
   id,
   source: opts.source,
+  participantRoleClass: opts.role,
+  permissionedSession: true,
   storeCount,
   importSucceeded: Boolean(analysis),
   acquisitionSource: opts['acquisition-source'],
@@ -61,7 +69,7 @@ const draft = buildInboundValidationDraft({
 await writeFile(`${outDir}/validation-record.draft.json`, JSON.stringify(draft, null, 2) + '\n');
 
 const metrics = analysis?.metrics;
-const reconciliation = `# Reconciliation worksheet\n\nSession: ${id}\nSource: ${opts.source}\nFile SHA-256: ${fileSha256}\n\n## CafeOS calculated\n\n- Import succeeded: ${Boolean(analysis)}\n- Net sales: ${metrics?.netSales ?? 'N/A'}\n- Orders: ${metrics?.orders ?? 'N/A'}\n- AOV: ${metrics?.aov ?? 'N/A'}\n\n## Source/POS totals — fill from the original report\n\n- Net sales: ______\n- Orders: ______\n- Same date range/filter confirmed: YES / NO\n\n## Reconciliation\n\n- Sales delta %: ______\n- Order delta: ______\n- Metric trusted after reconciliation: YES / NO\n\n## Operator evidence — fill only after showing the report\n\n- Insight reviewed: YES / NO\n- Useful/new insight: YES / NO\n- Wants repeat use: YES / NO\n- Wants continuous sync: YES / NO\n- Value demonstrated before WTP question: YES / NO\n- Willing to pay: YES / NO\n- WTP band: 0 / <500k / 500k-1m / 1m-2m / 2m+\n\nDo not put name, phone, email or raw customer data in the finalized validation record.\n`;
+const reconciliation = `# Reconciliation worksheet\n\nSession: ${id}\nSource class: ${draft.source}\nFile SHA-256: ${fileSha256}\n\n## CafeOS calculated\n\n- Import succeeded: ${Boolean(analysis)}\n- Net sales: ${metrics?.netSales ?? 'N/A'}\n- Orders: ${metrics?.orders ?? 'N/A'}\n- AOV: ${metrics?.aov ?? 'N/A'}\n\n## Source/POS totals — fill from the original report\n\n- Net sales: ______\n- Orders: ______\n- Same date range/filter confirmed: YES / NO\n\n## Reconciliation\n\n- Sales delta %: ______\n- Order delta: ______\n- Metric trusted after reconciliation: YES / NO\n\n## Operator evidence — fill only after showing the report\n\n- Insight reviewed: YES / NO\n- Useful/new insight: YES / NO\n- Wants repeat use: YES / NO\n- Wants continuous sync: YES / NO\n- Value demonstrated before WTP question: YES / NO\n- Willing to pay: YES / NO\n- WTP band: 0 / <500k / 500k-1m / 1m-2m / 2m+\n\nDo not put name, phone, email or raw customer data in the finalized validation record.\n`;
 await writeFile(`${outDir}/RECONCILIATION.md`, reconciliation);
 
 const readme = `# CafeOS field session\n\nThis folder is a local working package for one validation session.\n\nShareable by default:\n- compatibility-profile.shareable.json\n\nKeep local/private:\n- analysis.local.json (when import succeeds)\n- operator-report.local.html (when import succeeds; may contain store names/business metrics)\n- import-error.local.txt (when import fails)\n- RECONCILIATION.md\n- original merchant export (not copied into this folder)\n\nvalidation-record.draft.json is intentionally NOT scoreable because unanswered evidence fields are null. Complete the interview/reconciliation first, then convert it to the canonical boolean validation record before including it in the scorecard.\n`;
