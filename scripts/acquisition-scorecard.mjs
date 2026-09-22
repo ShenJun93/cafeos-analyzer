@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { acquisitionBreakdown, summarizeAcquisitionFunnel } from '../dist/acquisition.js';
+import { assertCanonicalValidationRecord } from '../dist/validation-registry.js';
 import { evaluateFieldValidation } from '../dist/validation-gates.js';
 
 const input = process.argv[2];
@@ -11,6 +12,7 @@ if (!input) {
 const payload = JSON.parse(await readFile(resolve(input), 'utf8'));
 const events = Array.isArray(payload.events) ? payload.events : [];
 const records = Array.isArray(payload.records) ? payload.records : [];
+for (const record of records) assertCanonicalValidationRecord(record);
 process.stdout.write(JSON.stringify({
   acquisition: summarizeAcquisitionFunnel(events),
   sources: acquisitionBreakdown(events),
