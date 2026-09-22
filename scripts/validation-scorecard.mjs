@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { assertCanonicalValidationRecord } from "../dist/validation-registry.js";
 import { evaluateFieldValidation } from "../dist/validation-gates.js";
 
 const input = process.argv[2];
@@ -9,4 +10,5 @@ if (!input) {
 }
 const records = JSON.parse(await readFile(resolve(input), "utf8"));
 if (!Array.isArray(records)) throw new Error("Validation records JSON must be an array");
+for (const record of records) assertCanonicalValidationRecord(record);
 process.stdout.write(JSON.stringify(evaluateFieldValidation(records), null, 2) + "\n");

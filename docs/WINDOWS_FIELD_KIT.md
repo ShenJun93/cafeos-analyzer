@@ -17,8 +17,8 @@ The field kit is designed to remove cloud deployment as a blocker for permission
 
 ## Field researcher flow
 
-Drag a permissioned CSV/XLSX export onto `RUN_FIELD_SESSION.cmd`. Enter POS/source and location count. The kit creates a timestamped folder under `field-sessions/` containing the shareable compatibility profile, local analysis/reconciliation evidence, and non-scoreable validation draft.
+Drag a CSV/XLSX export onto `RUN_FIELD_SESSION.cmd`. Before Node reads the export, the launcher asks participant role and explicit processing permission; declining permission exits without analysis or a validation draft. After permission, choose a bounded POS/source class and location count. The kit creates a timestamped folder under `field-sessions/` containing the shareable compatibility profile, local analysis/reconciliation evidence, and non-scoreable validation draft.
 
-Finalize the evidence separately with `field:finalize`, then add the canonical PII-free record to the registry with `field:registry:add`.
+Finalize the evidence separately with `field:finalize`, which follows dependency-aware question flow and asks any WTP price band only after a positive unanchored willingness answer. Then add the canonical PII-free record to the registry with `field:registry:add`.
 
 Do not copy original merchant exports into shared evidence folders.

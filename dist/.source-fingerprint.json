@@ -1,5 +1,5 @@
 {
-  "sha256": "c4d4376f862f1b6837bd37d66587cea1d253fa0b2e1a8640bdcb7a355d594ec1",
+  "sha256": "1752ca72412b8827775c5215247c325363d4a6109b2e40d67a5a623b0f79d70d",
   "files": [
     "src/acquisition.ts",
     "src/analyze.ts",
@@ -17,6 +17,7 @@
     "src/time.ts",
     "src/types.ts",
     "src/validation-gates.ts",
+    "src/validation-record-contract.ts",
     "src/validation-registry.ts",
     "src/validation.ts",
     "src/xlsx.ts",

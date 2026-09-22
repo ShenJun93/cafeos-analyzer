@@ -2,6 +2,7 @@ export interface FieldValidationRecord {
     id: string;
     source: string;
     targetIcp: boolean;
+    permissionedSession: boolean;
     importAttempted: boolean;
     importSucceeded: boolean;
     reconciliationAttempted: boolean;

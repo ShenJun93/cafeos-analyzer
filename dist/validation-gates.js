@@ -5,7 +5,7 @@ function metric(numerator, denominator, threshold) {
     return { numerator, denominator, rate, threshold, pass: rate >= threshold };
 }
 export function evaluateFieldValidation(records, minimumTargetRecords = 10) {
-    const target = records.filter(record => record.targetIcp);
+    const target = records.filter(record => record.targetIcp && record.permissionedSession);
     const attempts = target.filter(record => record.importAttempted);
     const reconciled = target.filter(record => record.importSucceeded && record.reconciliationAttempted);
     const insightReviewed = target.filter(record => record.metricTrusted && record.insightReviewed);

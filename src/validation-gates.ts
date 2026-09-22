@@ -2,6 +2,7 @@ export interface FieldValidationRecord {
   id: string;
   source: string;
   targetIcp: boolean;
+  permissionedSession: boolean;
   importAttempted: boolean;
   importSucceeded: boolean;
   reconciliationAttempted: boolean;
@@ -48,7 +49,7 @@ export function evaluateFieldValidation(
   records: FieldValidationRecord[],
   minimumTargetRecords = 10
 ): FieldValidationScorecard {
-  const target = records.filter(record => record.targetIcp);
+  const target = records.filter(record => record.targetIcp && record.permissionedSession);
   const attempts = target.filter(record => record.importAttempted);
   const reconciled = target.filter(record => record.importSucceeded && record.reconciliationAttempted);
   const insightReviewed = target.filter(record => record.metricTrusted && record.insightReviewed);
