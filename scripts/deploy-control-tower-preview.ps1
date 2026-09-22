@@ -17,8 +17,7 @@ $securePublishableKey = $null
 $publishableKeyPtr = [IntPtr]::Zero
 Push-Location $repoRoot
 try {
-  $branch = [string](git branch --show-current)
-  $branch = $branch.Trim()
+  $branch = (@(git branch --show-current) -join "").Trim()
 
   $dirty = git status --porcelain
   if ($dirty) {
