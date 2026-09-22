@@ -45,9 +45,9 @@ test("feedback form keeps evidence questions separate and dependency-gated", asy
     "willingnessToPay"
   ]) assert.match(html, new RegExp(`id="${id}"`));
 
-  assert.match(html, /id="row-wtpAsked" class="row hidden"/);
-  assert.match(html, /id="row-willingnessToPay" class="row hidden"/);
-  assert.match(html, /id="row-band" class="row hidden"/);
+  assert.match(html, /class="row hidden" id="row-wtpAsked"/);
+  assert.match(html, /class="row hidden" id="row-willingnessToPay"/);
+  assert.match(html, /class="row hidden" id="row-band"/);
   assert.match(script, /setVisible\('row-wtpAsked',value===true\)/);
   assert.match(script, /setVisible\('row-band',willing===true\)/);
   assert.doesNotMatch(script, /metricTrusted:reconciled/);
