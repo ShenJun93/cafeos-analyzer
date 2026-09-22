@@ -61,9 +61,9 @@ test("preview deploy launcher branch probe tolerates detached HEAD", async () =>
     "utf8"
   );
   const probe = ps.match(
-    /^\s*(\$branch = \[string\]\(git branch --show-current\))\r?\n\s*(\$branch = \$branch\.Trim\(\))/m
+    /^\s*(\$branch = \(@\(git branch --show-current\) -join ""\)\.Trim\(\))/m
   );
-  assert.ok(probe, "launcher must coerce an empty detached-HEAD branch probe to string before Trim()");
+  assert.ok(probe, "launcher must normalize empty detached-HEAD branch output before Trim()");
 
   const repoDir = await mkdtemp(join(tmpdir(), "cafeos-detached-head-"));
   try {
@@ -83,7 +83,6 @@ test("preview deploy launcher branch probe tolerates detached HEAD", async () =>
     const shell = process.platform === "win32" ? "powershell" : "pwsh";
     const command = [
       probe[1],
-      probe[2],
       'if ($null -eq $branch) { Write-Error "branch remained null"; exit 9 }',
       'Write-Output "__CAFEOS_BRANCH_PROBE_OK__<$branch>"'
     ].join("; ");
