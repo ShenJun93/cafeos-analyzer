@@ -1,4 +1,15 @@
-import type { FieldValidationRecord } from './validation-gates.js';
+import {
+  PARTICIPANT_ROLE_CLASSES,
+  assertAnalyzerEvidenceDependencies,
+  deriveAnalyzerStoreBucket,
+  deriveAnalyzerTargetIcp,
+  normalizeAcquisitionAttribution,
+  normalizeAnalyzerSource,
+  type CanonicalAnalyzerValidationRecord,
+  type ParticipantRoleClass,
+  type PrivacyMode,
+  type WtpBand
+} from './validation-record-contract.js';
 
 export type AcquisitionEventName =
   | 'landing_view'
@@ -19,18 +30,21 @@ export interface AcquisitionEvent {
   referrerHost?: string;
 }
 
+export type InboundValidationRecord = CanonicalAnalyzerValidationRecord;
 
 export interface InboundValidationDraft {
-  status: "DRAFT_NOT_SCOREABLE";
+  status: 'DRAFT_NOT_SCOREABLE';
   id: string;
-  source: string;
+  source: CanonicalAnalyzerValidationRecord['source'];
+  participantRoleClass: ParticipantRoleClass;
+  permissionedSession: boolean;
   storeCount: number;
-  storeBucket: InboundValidationRecord["storeBucket"];
+  storeBucket: CanonicalAnalyzerValidationRecord['storeBucket'];
   targetIcp: boolean;
-  acquisitionSource?: string;
-  acquisitionMedium?: string;
-  acquisitionCampaign?: string;
-  privacyMode?: InboundValidationRecord["privacyMode"];
+  acquisitionSource?: CanonicalAnalyzerValidationRecord['acquisitionSource'];
+  acquisitionMedium?: CanonicalAnalyzerValidationRecord['acquisitionMedium'];
+  acquisitionCampaign?: CanonicalAnalyzerValidationRecord['acquisitionCampaign'];
+  privacyMode?: PrivacyMode;
   importAttempted: boolean;
   importSucceeded: boolean;
   reconciliationAttempted: boolean | null;
@@ -44,20 +58,21 @@ export interface InboundValidationDraft {
   valueDemonstrated: boolean | null;
   wtpAsked: boolean | null;
   willingnessToPay: boolean | null;
-  wtpBand: InboundValidationInput["wtpBand"] | null;
+  wtpBand: WtpBand | null;
 }
 
 export interface InboundValidationDraftInput {
   id: string;
   source: string;
+  participantRoleClass: ParticipantRoleClass;
+  permissionedSession: boolean;
   storeCount: number;
   importSucceeded: boolean;
   acquisitionSource?: string;
   acquisitionMedium?: string;
   acquisitionCampaign?: string;
-  privacyMode?: InboundValidationRecord["privacyMode"];
+  privacyMode?: PrivacyMode;
 }
-
 
 export interface InboundValidationAnswers {
   reconciliationAttempted: boolean;
@@ -71,7 +86,7 @@ export interface InboundValidationAnswers {
   valueDemonstrated: boolean;
   wtpAsked: boolean;
   willingnessToPay: boolean;
-  wtpBand?: InboundValidationInput["wtpBand"];
+  wtpBand?: WtpBand;
 }
 
 export interface AcquisitionFunnelSummary {
@@ -91,6 +106,8 @@ export interface AcquisitionFunnelSummary {
 export interface InboundValidationInput {
   id: string;
   source: string;
+  participantRoleClass: ParticipantRoleClass;
+  permissionedSession: boolean;
   storeCount: number;
   importAttempted: boolean;
   importSucceeded: boolean;
@@ -105,40 +122,48 @@ export interface InboundValidationInput {
   valueDemonstrated: boolean;
   wtpAsked: boolean;
   willingnessToPay: boolean;
-  wtpBand?: '0' | '<500k' | '500k-1m' | '1m-2m' | '2m+';
+  wtpBand?: WtpBand;
   acquisitionSource?: string;
   acquisitionMedium?: string;
   acquisitionCampaign?: string;
-  privacyMode?: 'local-only' | 'profile' | 'pseudonymized' | 'permissioned-raw';
-}
-
-export interface InboundValidationRecord extends FieldValidationRecord {
-  storeCount: number;
-  storeBucket: '1' | '2' | '3-5' | '6-10' | '11-15' | '16+';
-  acquisitionSource?: string;
-  acquisitionMedium?: string;
-  acquisitionCampaign?: string;
-  privacyMode?: 'local-only' | 'profile' | 'pseudonymized' | 'permissioned-raw';
-  wtpBand?: InboundValidationInput['wtpBand'];
+  privacyMode?: PrivacyMode;
 }
 
 const rate = (a: number, b: number): number | null => b === 0 ? null : a / b;
 
-function bucketStores(n: number): InboundValidationRecord['storeBucket'] {
-  if (n <= 1) return '1';
-  if (n === 2) return '2';
-  if (n <= 5) return '3-5';
-  if (n <= 10) return '6-10';
-  if (n <= 15) return '11-15';
-  return '16+';
+function assertRoleAndPermission(role: ParticipantRoleClass, permissionedSession: boolean): void {
+  if (!PARTICIPANT_ROLE_CLASSES.includes(role)) {
+    throw new Error('participantRoleClass must be owner_operator or other');
+  }
+  if (typeof permissionedSession !== 'boolean') {
+    throw new Error('permissionedSession must be boolean');
+  }
+}
+
+function attributionFields(input: {
+  acquisitionSource?: string;
+  acquisitionMedium?: string;
+  acquisitionCampaign?: string;
+}): Pick<CanonicalAnalyzerValidationRecord, 'acquisitionSource' | 'acquisitionMedium' | 'acquisitionCampaign'> | {} {
+  return normalizeAcquisitionAttribution(
+    input.acquisitionSource,
+    input.acquisitionMedium,
+    input.acquisitionCampaign
+  );
 }
 
 export function buildInboundValidationRecord(input: InboundValidationInput): InboundValidationRecord {
-  if (!Number.isInteger(input.storeCount) || input.storeCount < 1) throw new Error('storeCount must be a positive integer');
-  return {
+  if (!Number.isInteger(input.storeCount) || input.storeCount < 1) {
+    throw new Error('storeCount must be a positive integer');
+  }
+  assertRoleAndPermission(input.participantRoleClass, input.permissionedSession);
+
+  const record: InboundValidationRecord = {
     id: input.id,
-    source: input.source,
-    targetIcp: input.storeCount >= 3 && input.storeCount <= 15,
+    source: normalizeAnalyzerSource(input.source),
+    participantRoleClass: input.participantRoleClass,
+    permissionedSession: input.permissionedSession,
+    targetIcp: deriveAnalyzerTargetIcp(input.participantRoleClass, input.storeCount),
     importAttempted: input.importAttempted,
     importSucceeded: input.importSucceeded,
     reconciliationAttempted: input.reconciliationAttempted,
@@ -153,29 +178,33 @@ export function buildInboundValidationRecord(input: InboundValidationInput): Inb
     wtpAsked: input.wtpAsked,
     willingnessToPay: input.willingnessToPay,
     storeCount: input.storeCount,
-    storeBucket: bucketStores(input.storeCount),
-    acquisitionSource: input.acquisitionSource,
-    acquisitionMedium: input.acquisitionMedium,
-    acquisitionCampaign: input.acquisitionCampaign,
-    privacyMode: input.privacyMode,
-    wtpBand: input.wtpBand
+    storeBucket: deriveAnalyzerStoreBucket(input.storeCount),
+    ...attributionFields(input),
+    ...(input.privacyMode === undefined ? {} : { privacyMode: input.privacyMode }),
+    ...(input.wtpBand === undefined ? {} : { wtpBand: input.wtpBand })
   };
+
+  assertAnalyzerEvidenceDependencies(record);
+  return record;
 }
 
-
 export function buildInboundValidationDraft(input: InboundValidationDraftInput): InboundValidationDraft {
-  if (!Number.isInteger(input.storeCount) || input.storeCount < 1) throw new Error('storeCount must be a positive integer');
+  if (!Number.isInteger(input.storeCount) || input.storeCount < 1) {
+    throw new Error('storeCount must be a positive integer');
+  }
+  assertRoleAndPermission(input.participantRoleClass, input.permissionedSession);
+
   return {
-    status: "DRAFT_NOT_SCOREABLE",
+    status: 'DRAFT_NOT_SCOREABLE',
     id: input.id,
-    source: input.source,
+    source: normalizeAnalyzerSource(input.source),
+    participantRoleClass: input.participantRoleClass,
+    permissionedSession: input.permissionedSession,
     storeCount: input.storeCount,
-    storeBucket: bucketStores(input.storeCount),
-    targetIcp: input.storeCount >= 3 && input.storeCount <= 15,
-    acquisitionSource: input.acquisitionSource,
-    acquisitionMedium: input.acquisitionMedium,
-    acquisitionCampaign: input.acquisitionCampaign,
-    privacyMode: input.privacyMode,
+    storeBucket: deriveAnalyzerStoreBucket(input.storeCount),
+    targetIcp: deriveAnalyzerTargetIcp(input.participantRoleClass, input.storeCount),
+    ...attributionFields(input),
+    ...(input.privacyMode === undefined ? {} : { privacyMode: input.privacyMode }),
     importAttempted: true,
     importSucceeded: input.importSucceeded,
     reconciliationAttempted: null,
@@ -193,31 +222,42 @@ export function buildInboundValidationDraft(input: InboundValidationDraftInput):
   };
 }
 
-
-export function finalizeInboundValidationDraft(draft: InboundValidationDraft, answers: InboundValidationAnswers): InboundValidationRecord {
-  if (draft.status !== "DRAFT_NOT_SCOREABLE") throw new Error('Expected a field-session draft');
-  if (answers.metricTrusted && (!draft.importSucceeded || !answers.reconciliationAttempted)) throw new Error('metricTrusted requires successful import and reconciliation');
-  if (answers.usefulNewInsight && (!answers.metricTrusted || !answers.insightReviewed)) throw new Error('usefulNewInsight requires trusted metrics and reviewed insight');
-  if (answers.repeatUseIntent && !answers.repeatUseAsked) throw new Error('repeatUseIntent requires repeatUseAsked');
-  if (answers.continuousSyncIntent && !answers.continuousSyncAsked) throw new Error('continuousSyncIntent requires continuousSyncAsked');
-  if (answers.wtpAsked && !answers.valueDemonstrated) throw new Error('wtpAsked requires valueDemonstrated');
-  if (answers.willingnessToPay && (!answers.wtpAsked || !answers.valueDemonstrated)) throw new Error('willingnessToPay requires valueDemonstrated and wtpAsked');
+export function finalizeInboundValidationDraft(
+  draft: InboundValidationDraft,
+  answers: InboundValidationAnswers
+): InboundValidationRecord {
+  if (draft.status !== 'DRAFT_NOT_SCOREABLE') throw new Error('Expected a field-session draft');
   return buildInboundValidationRecord({
-    id: draft.id, source: draft.source, storeCount: draft.storeCount,
-    importAttempted: draft.importAttempted, importSucceeded: draft.importSucceeded,
-    reconciliationAttempted: answers.reconciliationAttempted, metricTrusted: answers.metricTrusted,
-    insightReviewed: answers.insightReviewed, usefulNewInsight: answers.usefulNewInsight,
-    repeatUseAsked: answers.repeatUseAsked, repeatUseIntent: answers.repeatUseIntent,
-    continuousSyncAsked: answers.continuousSyncAsked, continuousSyncIntent: answers.continuousSyncIntent,
-    valueDemonstrated: answers.valueDemonstrated, wtpAsked: answers.wtpAsked, willingnessToPay: answers.willingnessToPay,
-    wtpBand: answers.wtpBand, acquisitionSource: draft.acquisitionSource, acquisitionMedium: draft.acquisitionMedium,
-    acquisitionCampaign: draft.acquisitionCampaign, privacyMode: draft.privacyMode
+    id: draft.id,
+    source: draft.source,
+    participantRoleClass: draft.participantRoleClass,
+    permissionedSession: draft.permissionedSession,
+    storeCount: draft.storeCount,
+    importAttempted: draft.importAttempted,
+    importSucceeded: draft.importSucceeded,
+    reconciliationAttempted: answers.reconciliationAttempted,
+    metricTrusted: answers.metricTrusted,
+    insightReviewed: answers.insightReviewed,
+    usefulNewInsight: answers.usefulNewInsight,
+    repeatUseAsked: answers.repeatUseAsked,
+    repeatUseIntent: answers.repeatUseIntent,
+    continuousSyncAsked: answers.continuousSyncAsked,
+    continuousSyncIntent: answers.continuousSyncIntent,
+    valueDemonstrated: answers.valueDemonstrated,
+    wtpAsked: answers.wtpAsked,
+    willingnessToPay: answers.willingnessToPay,
+    wtpBand: answers.wtpBand,
+    acquisitionSource: draft.acquisitionSource,
+    acquisitionMedium: draft.acquisitionMedium,
+    acquisitionCampaign: draft.acquisitionCampaign,
+    privacyMode: draft.privacyMode
   });
 }
 
 export function summarizeAcquisitionFunnel(events: AcquisitionEvent[]): AcquisitionFunnelSummary {
   const uniqueSessions = new Set(events.map(event => event.anonymousSessionId)).size;
-  const sessionsFor = (name: AcquisitionEventName) => new Set(events.filter(event => event.event === name).map(event => event.anonymousSessionId)).size;
+  const sessionsFor = (name: AcquisitionEventName) =>
+    new Set(events.filter(event => event.event === name).map(event => event.anonymousSessionId)).size;
   const landingViews = sessionsFor('landing_view');
   const analyzerOpened = sessionsFor('analyzer_opened');
   const uploadStarted = sessionsFor('upload_started');
@@ -246,5 +286,9 @@ export function acquisitionBreakdown(events: AcquisitionEvent[]): Record<string,
     if (!sessions.has(key)) sessions.set(key, new Set());
     sessions.get(key)!.add(event.anonymousSessionId);
   }
-  return Object.fromEntries([...sessions.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, ids]) => [key, ids.size]));
+  return Object.fromEntries(
+    [...sessions.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, ids]) => [key, ids.size])
+  );
 }
