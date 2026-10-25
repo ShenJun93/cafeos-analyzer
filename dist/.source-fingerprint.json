@@ -1,9 +1,11 @@
 {
-  "sha256": "1752ca72412b8827775c5215247c325363d4a6109b2e40d67a5a623b0f79d70d",
+  "sha256": "d091ef360a9be2e15f813cc8d1aa8c9c608463b2cd18a2d3b5935b5f1400fbcf",
   "files": [
     "src/acquisition.ts",
     "src/analyze.ts",
     "src/batch.ts",
+    "src/control-tower-validation-registry.ts",
+    "src/control-tower-validation.ts",
     "src/csv.ts",
     "src/file.ts",
     "src/health.ts",
