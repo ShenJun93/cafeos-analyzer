@@ -1,0 +1,221 @@
+begin;
+
+create extension if not exists pgtap with schema extensions;
+select plan(21);
+
+insert into public.tenants (id,name) values
+ ('71000000-0000-4000-8000-000000000011','Commerce A'),
+ ('72000000-0000-4000-8000-000000000022','Commerce B');
+
+insert into public.tenant_members (tenant_id,user_id,role) values
+ ('71000000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000101','owner'),
+ ('71000000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000102','cashier'),
+ ('71000000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000103','viewer'),
+ ('72000000-0000-4000-8000-000000000022','72000000-0000-4000-8000-000000000201','owner');
+
+insert into public.stores (id,tenant_id,source_namespace,external_key,name,timezone) values
+ ('71100000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000011','synthetic','store-a','Commerce Store A','Asia/Ho_Chi_Minh'),
+ ('72100000-0000-4000-8000-000000000022','72000000-0000-4000-8000-000000000022','synthetic','store-b','Commerce Store B','Asia/Ho_Chi_Minh');
+
+insert into public.menu_categories (id,tenant_id,name) values
+ ('71200000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000011','Coffee');
+
+insert into public.menu_items (id,tenant_id,category_id,name,price) values
+ ('71300000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000011','71200000-0000-4000-8000-000000000011','Americano',35000);
+
+set local role authenticated;
+set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000103';
+
+select throws_ok(
+ $$select public.commerce_create_order(
+ '71000000-0000-4000-8000-000000000011',
+ '71100000-0000-4000-8000-000000000011',
+ 'receipt-1','counter',
+ '[{"menuItemId":"71300000-0000-4000-8000-000000000011","quantity":2}]'::jsonb
+ )$$,
+ '42501','COMMERCE_ROLE_FORBIDDEN','Viewer cannot create POS orders'
+);
+
+set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000102';
+
+select throws_ok(
+ $$select public.commerce_create_order(
+ '72000000-0000-4000-8000-000000000022',
+ '72100000-0000-4000-8000-000000000022',
+ 'receipt-cross','counter',
+ '[{"menuItemId":"71300000-0000-4000-8000-000000000011","quantity":1}]'::jsonb
+ )$$,
+ '42501','COMMERCE_ROLE_FORBIDDEN','Cashier cannot create cross-tenant POS orders'
+);
+
+select lives_ok(
+ $$select public.commerce_create_order(
+ '71000000-0000-4000-8000-000000000011',
+ '71100000-0000-4000-8000-000000000011',
+ 'receipt-1','counter',
+ '[{"menuItemId":"71300000-0000-4000-8000-000000000011","quantity":2}]'::jsonb
+ )$$,
+ 'Cashier can create a CafeOS-native order'
+);
+
+select results_eq(
+ $$select total from public.pos_orders
+    where client_order_key='receipt-1'$$,
+ array[70000::numeric],
+ 'Order total derives from trusted menu price'
+);
+
+select results_eq(
+ $$select unit_price from public.pos_order_items
+    where order_id=(select id from public.pos_orders where client_order_key='receipt-1')$$,
+ array[35000::numeric],
+ 'Order items retain trusted price snapshots'
+);
+
+select lives_ok(
+ $$select public.commerce_create_order(
+ '71000000-0000-4000-8000-000000000011',
+ '71100000-0000-4000-8000-000000000011',
+ 'receipt-1','counter',
+ '[{"menuItemId":"71300000-0000-4000-8000-000000000011","quantity":2}]'::jsonb
+ )$$,
+ 'Immediate retry returns existing order'
+);
+
+select results_eq(
+ $$select count(*) from public.pos_orders where client_order_key='receipt-1'$$,
+ array[1::bigint],
+ 'Immediate retry does not double-book'
+);
+
+select throws_ok(
+ $$select public.commerce_create_order(
+ '71000000-0000-4000-8000-000000000011',
+ '71100000-0000-4000-8000-000000000011',
+ 'receipt-1','counter',
+ '[{"menuItemId":"71300000-0000-4000-8000-000000000011","quantity":3}]'::jsonb
+ )$$,
+ '23505','COMMERCE_IDEMPOTENCY_CONFLICT',
+ 'Conflicting retry is rejected'
+);
+
+select throws_ok(
+ $$select public.commerce_capture_payment(
+ '71000000-0000-4000-8000-000000000011',
+ (select id from public.pos_orders where client_order_key='receipt-1'),
+ 'cash',35000,null
+ )$$,
+ '22023','COMMERCE_PAYMENT_AMOUNT_MISMATCH',
+ 'Payment cannot settle an incorrect amount'
+);
+
+select lives_ok(
+ $$select public.commerce_capture_payment(
+ '71000000-0000-4000-8000-000000000011',
+ (select id from public.pos_orders where client_order_key='receipt-1'),
+ 'cash',70000,null
+ )$$,
+ 'Exact settlement records a captured payment'
+);
+
+select results_eq(
+ $$select status from public.pos_orders where client_order_key='receipt-1'$$,
+ array['paid'::text],
+ 'Exact settlement atomically marks order paid'
+);
+
+select throws_ok(
+ $$select public.commerce_capture_payment(
+ '71000000-0000-4000-8000-000000000011',
+ (select id from public.pos_orders where client_order_key='receipt-1'),
+ 'cash',70000,null
+ )$$,
+ '55000','COMMERCE_ORDER_NOT_OPEN',
+ 'Second payment capture cannot charge twice'
+);
+
+select results_eq(
+ $$select (public.commerce_daily_dashboard(
+ '71000000-0000-4000-8000-000000000011',
+ '71100000-0000-4000-8000-000000000011',null
+ ) #>> '{salesTotal}')::numeric$$,
+ array[70000::numeric],
+ 'Dashboard reports first-party paid sales'
+);
+
+select lives_ok(
+ $$select public.commerce_create_order(
+ '71000000-0000-4000-8000-000000000011',
+ '71100000-0000-4000-8000-000000000011',
+ 'receipt-2','takeaway',
+ '[{"menuItemId":"71300000-0000-4000-8000-000000000011","quantity":1}]'::jsonb
+ )$$,
+ 'Cashier can open a second order'
+);
+
+set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000101';
+
+select throws_ok(
+ $$select public.commerce_close_day(
+ '71000000-0000-4000-8000-000000000011',
+ '71100000-0000-4000-8000-000000000011',null
+ )$$,
+ '55000','COMMERCE_CLOSE_OPEN_ORDERS',
+ 'Daily close blocks an unpaid order'
+);
+
+set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000102';
+
+select lives_ok(
+ $$select public.commerce_capture_payment(
+ '71000000-0000-4000-8000-000000000011',
+ (select id from public.pos_orders where client_order_key='receipt-2'),
+ 'bank_transfer',35000,null
+ )$$,
+ 'Second order is paid'
+);
+
+set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000101';
+
+select lives_ok(
+ $$select public.commerce_close_day(
+ '71000000-0000-4000-8000-000000000011',
+ '71100000-0000-4000-8000-000000000011',null
+ )$$,
+ 'Manager/owner closes paid business date'
+);
+
+select results_eq(
+ $$select sales_total from public.daily_closes$$,
+ array[105000::numeric],
+ 'Daily close freezes deterministic sales snapshot'
+);
+
+select lives_ok(
+ $$select public.commerce_close_day(
+ '71000000-0000-4000-8000-000000000011',
+ '71100000-0000-4000-8000-000000000011',null
+ )$$,
+ 'Repeated daily close is idempotent'
+);
+
+set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000102';
+
+select lives_ok(
+ $$select public.commerce_create_order(
+ '71000000-0000-4000-8000-000000000011',
+ '71100000-0000-4000-8000-000000000011',
+ 'receipt-1','counter',
+ '[{"menuItemId":"71300000-0000-4000-8000-000000000011","quantity":2}]'::jsonb
+ )$$,
+ 'Retry of an already-created paid order after daily close must be safe'
+);
+
+select results_eq(
+ $$select count(*) from public.pos_orders$$,
+ array[2::bigint],
+ 'Retry after close never creates a new order'
+);
+
+select * from finish();
+rollback;
