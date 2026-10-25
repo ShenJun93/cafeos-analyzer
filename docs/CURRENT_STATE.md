@@ -196,6 +196,16 @@ The product-level discovery gate in issue #11 remains open because real target-I
 - **Limit of evidence:** the legacy versions/files in the rehearsal are synthetic and have no original staging SQL receipts. The full staging receipts still require secure independent backup; the mapping still requires owner approval, before any real migration repair or application of the two pending guards.
 - Staging remains **7 old receipt versions, both guard SQL functions absent, DRAFT / NO-GO**; production untouched.
 
+## Local migration transition full GREEN-path proof — 2026-10-25
+
+- New `scripts/run-local-greenpath-ledger-drill.sh`, executed only against disposable localhost Supabase in CI. It resets **only** the local stack to Git migration `20261025094352` (8 historical migrations, both guard SQL bodies absent).
+- Read-only transition gate returns `HISTORY_READY_GUARDS_PENDING_OWNER_APPROVAL` for this legitimate intermediate state. Local test then simulates seven legacy receipt versions with **temporary no-op filenames**, verifies `PRE_REPAIR_NO_GO`, and runs history-only repair back to eight canonical receipts; function/data fingerprint stays unchanged and transition gate returns **GREEN** again.
+- The script then invokes `supabase migration up --db-url postgresql://postgres:postgres@127.0.0.1:54322/postgres` and applies the **two actual guard migrations in canonical timestamp order**. All ten receipt versions are present; SQL guard function bodies are materialized; gate returns `STOP_REVIEW_REQUIRED` intentionally because that *pre-deployment* classifier must never act as a post-deployment clearance.
+- A complete additional `supabase test db` after the local guard upgrade **PASS (123 assertions across 6 files; 42 Core Commerce)**. This validates local 8→10 upgrade from a real eight-migration SQL schema, not just ledger rewriting on an already-patched schema.
+- Exact code commit `69b73e9`: GitHub CI `40205736746`/`40205740231`, synthetic Chromium `40205740221`, Supabase DB `40205736706`/`40205740389` **all SUCCESS**. Green-path log contains `CAFEOS_LOCAL_GREENPATH_PASS: pre=8 legacy=7 reconciled=8 guarded=10`.
+- Scope of proof: **isolated CI DB with synthetic legacy receipt versions**, not a restore of the actual staging database or proof that the real seven-statement receipt backups exist. Staging still has **7 old receipts**, future-close and Menu-price guards **NOT APPLIED**; owner-controlled secure backup, independent review, real JWT E2E and staged deployment gates remain.
+- After an authorized staging deployment, a separately versioned **post-deployment** read-only acceptance is required, because the existing transition gate deliberately outputs `STOP_REVIEW_REQUIRED` whenever the guards are installed.
+
 ## Next engineering action
 
 1. Confirm exact-head CI + blank-database pgTAP on PR #74; record failures at the actual HEAD, not at earlier commits.

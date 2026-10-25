@@ -47,3 +47,7 @@ The detailed mapping and stop/rollback gates are recorded at `docs/research/2026
 ## Owner staging repair preparation — CLI rehearsal result
 
 The staging-specific history preflight remains unchanged (7 old receipts, 0 canonical, both SQL guards absent). Independently, the new disposable localhost CLI drill **PASSED** at `b867a14` for receipt transitions and confirms no schema/data modifications by CLI `migration repair`. To simulate the seven old receipt versions, CI needed local placeholder migration files, demonstrating that `--status applied` requires the version's migration file even when SQL is not executed. The placeholders were deleted within the runner and are **not** an acceptable substitute for secure receipt backup in staging. Keep future-close guard **UNAPPLIED** until the owner-controlled ledger reconciliation sequence, followed by real JWT staging tests.
+
+## Local green-path drill with real guard SQL (2026-10-25)
+
+Workflow `40205740389` at `69b73e9` resets only ephemeral Supabase to eight original migrations (future-close guard absent), exercises 7 legacy → 8 historical receipt reconciliation while keeping database definitions unchanged, then executes both truly pending guard migration SQL files. All **123 database tests PASS** after migration up; the old read-only transition gate refuses a post-guard state by design. This closes the **local candidate migration sequence** acceptance gate, but **not** the real staging backup/repair/JWT E2E release gates.
