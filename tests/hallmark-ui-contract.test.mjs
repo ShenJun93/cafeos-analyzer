@@ -32,3 +32,27 @@ test("Hallmark stylesheet is part of local preview and deploy artifact", async (
   assert.match(serverSource, /['"]\.css['"]\s*:\s*['"]text\/css;\s*charset=utf-8['"]/);
   assert.match(deploy, /public\/cafeos-ui\.css/);
 });
+
+
+test("landing uses Warm Cafe editorial macrostructure without changing evidence claims", async () => {
+  const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
+
+  assert.match(html, /<link rel="stylesheet" href="\/cafeos-ui\.css">/);
+  for (const marker of [
+    "landing-shell",
+    "landing-masthead",
+    "landing-hero",
+    "operator-proof",
+    "field-note",
+    "compatibility-checklist",
+    "privacy-boundary"
+  ]) assert.equal(html.includes(marker), true, "missing landing marker " + marker);
+
+  assert.match(html, /href="\/analyzer\?utm_source=cafeos-site&utm_medium=product&utm_campaign=free-analyzer"/);
+  assert.match(html, /href="\/sample-report"/);
+  assert.match(html, /3–15 cửa hàng/);
+  assert.match(html, /không lưu file vào database\/object storage/i);
+  assert.match(html, /validation build/i);
+  assert.doesNotMatch(html, /<div class="grid">/);
+  assert.doesNotMatch(html, /testimonial|customer logos|purple|pink gradient/i);
+});
