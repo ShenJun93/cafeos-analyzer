@@ -77,6 +77,7 @@ test("app shell uses the fixed authenticated endpoints", async () => {
     "/api/app/commerce-order",
     "/api/app/commerce-payment",
     "/api/app/commerce-order-status",
+    "/api/app/commerce-open-orders",
     "/api/app/commerce-dashboard",
     "/api/app/commerce-daily-close",
     "/api/app/brief"
@@ -99,6 +100,7 @@ test("app route is wired into Vercel, local preview, and deploy artifact", async
     "/api/app/commerce-order",
     "/api/app/commerce-payment",
     "/api/app/commerce-order-status",
+    "/api/app/commerce-open-orders",
     "/api/app/commerce-dashboard",
     "/api/app/commerce-daily-close"
   ]) assert.equal(preview.includes(path), true, "local preview missing " + path);
@@ -438,4 +440,60 @@ test("cashier POS affordances remain available while manager-only Menu and Daily
     openOrderCount: 0, closed: false
   }; renderClosePreview();`, context);
   assert.equal(element("closeDay").disabled, false);
+});
+
+test("POS recovers a server-owned open order without trusted price edit or browser persistence", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const script = html.split("<script>")[1]?.split("</script>")[0];
+  assert.ok(script);
+  const nodes = new Map();
+  function node(id) {
+    if (!nodes.has(id)) nodes.set(id, {
+      value: "", textContent: "", disabled: false, dataset: {},
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener() {}, replaceChildren() {}, append() {}, reset() {}
+    });
+    return nodes.get(id);
+  }
+  const context = createContext({
+    document: { getElementById: node, querySelectorAll: () => [],
+      createElement: () => node("created_" + nodes.size) },
+    window: { confirm: () => false },
+    fetch: async () => ({
+      ok: true, status: 200,
+      json: async () => ({ supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test" })
+    }),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "synthetic-key" }
+  });
+  runInContext(script, context);
+  runInContext(`
+    sessionToken = "jwt-test";
+    currentTenantId = "tenant-A";
+    currentTenantRole = "cashier";
+    currentStoreId = "store-A";
+    let requested = [];
+    appFetch = async path => {
+      requested.push(path);
+      return {
+        order: { id: "order-A", storeId: "store-A", status: "open", total: 42000 }
+      };
+    };
+  `, context);
+  await runInContext('resumeOpenOrder("order-A")', context);
+  assert.equal(runInContext("currentOrder.id", context), "order-A");
+  assert.equal(runInContext("currentOrder.total", context), 42000);
+  assert.equal(node("submitOrder").disabled, true);
+  assert.equal(node("recoverOpenOrders").disabled, true);
+  assert.match(node("status").textContent, /khôi phục đơn mở/i);
+  assert.equal(runInContext("requested.length", context), 1);
+
+  runInContext("currentOrder = null; cartState.clear();", context);
+  runInContext(`
+    appFetch = async () => ({ order: {
+      id: "order-A", storeId: "store-B", status: "open", total: 42000
+    } });
+  `, context);
+  await assert.rejects(runInContext('resumeOpenOrder("order-A")', context), /không thuộc Store/);
+  assert.equal(runInContext("currentOrder", context), null);
 });

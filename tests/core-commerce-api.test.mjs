@@ -11,6 +11,7 @@ import { handle as menuHandle } from "../server/commerce/menu.mjs";
 import { handle as orderHandle } from "../server/commerce/order.mjs";
 import { handle as paymentHandle } from "../server/commerce/payment.mjs";
 import { handle as orderStatusHandle } from "../server/commerce/order-status.mjs";
+import { handle as openOrdersHandle } from "../server/commerce/open-orders.mjs";
 import { handle as dashboardHandle } from "../server/commerce/dashboard.mjs";
 import { handle as dailyCloseHandle } from "../server/commerce/daily-close.mjs";
 
@@ -241,6 +242,7 @@ test("workflow dispatcher maps commerce routes without adding another Vercel API
     "commerce-order",
     "commerce-payment",
     "commerce-order-status",
+    "commerce-open-orders",
     "commerce-dashboard",
     "commerce-daily-close"
   ]) {
@@ -254,6 +256,7 @@ test("workflow dispatcher maps commerce routes without adding another Vercel API
     ["/api/app/commerce-order", "/api/app/workflow?route=commerce-order"],
     ["/api/app/commerce-payment", "/api/app/workflow?route=commerce-payment"],
     ["/api/app/commerce-order-status", "/api/app/workflow?route=commerce-order-status"],
+    ["/api/app/commerce-open-orders", "/api/app/workflow?route=commerce-open-orders"],
     ["/api/app/commerce-dashboard", "/api/app/workflow?route=commerce-dashboard"],
     ["/api/app/commerce-daily-close", "/api/app/workflow?route=commerce-daily-close"]
   ]);
@@ -322,4 +325,55 @@ test("order status endpoint is authenticated, GET-only, tenant-scoped and read-o
   await orderStatusHandle(req(authHeaders, "POST", "/api/app/commerce-order-status?orderId=" + ORDER_A),
     post, { env, fetchImpl: authFetch("cashier") });
   assert.equal(post.statusCode, 405);
+});
+
+test("cashier can list bounded open orders for own tenant/store; viewer, wrong status and anon denied", async () => {
+  const calls = [];
+  const response = res();
+  await openOrdersHandle(
+    req(authHeaders, "GET", "/api/app/commerce-open-orders?storeId=" + STORE_A),
+    response,
+    { env, fetchImpl: authFetch("cashier", async (url) => {
+      calls.push(url);
+      return jsonResponse([{
+        id: ORDER_A, order_number: "C-101", store_id: STORE_A,
+        status: "open", total: 35000, created_at: "2026-10-25T08:00:00Z", channel: "counter"
+      }]);
+    }) }
+  );
+  assert.equal(response.statusCode, 200);
+  assert.equal(parsed(response).orders[0].id, ORDER_A);
+  assert.equal(parsed(response).orders[0].status, "open");
+  assert.equal(calls[0].pathname, "/rest/v1/pos_orders");
+  assert.equal(calls[0].searchParams.get("tenant_id"), "eq." + TENANT_A);
+  assert.equal(calls[0].searchParams.get("store_id"), "eq." + STORE_A);
+  assert.equal(calls[0].searchParams.get("status"), "eq.open");
+  assert.equal(calls[0].searchParams.get("limit"), "20");
+  assert.equal(calls[0].searchParams.get("order"), "created_at.desc");
+
+  const viewer = res();
+  await openOrdersHandle(req(authHeaders, "GET",
+    "/api/app/commerce-open-orders?storeId=" + STORE_A), viewer,
+    { env, fetchImpl: authFetch("viewer") });
+  assert.equal(viewer.statusCode, 403);
+
+  const invalid = res();
+  await openOrdersHandle(req(authHeaders, "GET",
+    "/api/app/commerce-open-orders?storeId=nope"), invalid,
+    { env, fetchImpl: authFetch("cashier") });
+  assert.equal(invalid.statusCode, 400);
+
+  const malformed = res();
+  await openOrdersHandle(req(authHeaders, "GET",
+    "/api/app/commerce-open-orders?storeId=" + STORE_A), malformed,
+    { env, fetchImpl: authFetch("cashier", async () => jsonResponse([
+      { id: ORDER_A, store_id: STORE_A, status: "paid", total: 35000 }
+    ])) });
+  assert.equal(malformed.statusCode, 502);
+
+  const anonymous = res();
+  await openOrdersHandle(req({}, "GET",
+    "/api/app/commerce-open-orders?storeId=" + STORE_A), anonymous,
+    { env, fetchImpl: authFetch("cashier") });
+  assert.equal(anonymous.statusCode, 401);
 });

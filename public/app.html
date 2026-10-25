@@ -80,6 +80,8 @@
           <div id="cart" class="cart-lines"></div>
           <p class="muted">Cart chỉ là intent. Server total được xác nhận sau khi Create Order.</p>
           <button id="submitOrder" type="button" disabled>Create Order</button>
+          <button id="recoverOpenOrders" type="button" class="secondary">Khôi phục đơn chưa thanh toán</button>
+          <div id="openOrderList" class="open-order-list" aria-live="polite"></div>
 
           <section id="paymentPanel" class="payment-panel hidden">
             <div class="section-label">Settlement record</div>
@@ -312,6 +314,7 @@ function signOut() {
   orderSubmitInFlight = false;
   paymentSubmitInFlight = false;
   cartState.clear();
+  el("openOrderList").replaceChildren();
   el("appPanel").classList.add("hidden");
   el("authPanel").classList.remove("hidden");
   el("signOut").classList.add("hidden");
@@ -365,6 +368,7 @@ async function refreshStore() {
   currentOrder = null;
   pendingOrderSubmission = null;
   cartState.clear();
+  el("openOrderList").replaceChildren();
   // Control Tower reports on imported facts and must not block first-party sales.
   // Menu and daily dashboard remain required; their failures still fail closed.
   const [, , controlTowerReady] = await Promise.all([
@@ -502,6 +506,7 @@ function renderCart() {
 
   el("submitOrder").disabled = !canWriteCommerce() || !currentStoreId || !cartState.size || Boolean(currentOrder || orderSubmitInFlight);
   el("capturePayment").disabled = !canWriteCommerce() || paymentSubmitInFlight;
+  el("recoverOpenOrders").disabled = !canWriteCommerce() || hasUnfinishedCheckout();
   el("paymentPanel").classList.toggle("hidden", !currentOrder || currentOrder.status !== "open");
   if (currentOrder) {
     el("serverOrderTotal").textContent = "Server total · " + money(currentOrder.total);
@@ -610,6 +615,53 @@ async function capturePayment() {
     paymentSubmitInFlight = false;
     el("capturePayment").disabled = !canWriteCommerce();
   }
+}
+
+async function loadOpenOrdersForRecovery() {
+  if (!canWriteCommerce() || !currentStoreId) return;
+  if (hasUnfinishedCheckout()) {
+    return setStatus("Hoàn tất hoặc xác minh đơn hiện tại trước khi khôi phục đơn khác.", "error");
+  }
+  const payload = await appFetch(
+    "/api/app/commerce-open-orders?storeId=" + encodeURIComponent(currentStoreId)
+  );
+  const root = el("openOrderList");
+  root.replaceChildren();
+  if (!payload.orders?.length) {
+    root.textContent = "Không có đơn mở cần khôi phục.";
+    return;
+  }
+  for (const order of payload.orders) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary";
+    button.textContent = (order.orderNumber || order.id) + " · " + money(order.total);
+    button.addEventListener("click", () => guarded(() => resumeOpenOrder(order.id)));
+    root.append(button);
+  }
+  setStatus("Chọn đơn mở để tiếp tục ghi Payment.", "ok");
+}
+
+async function resumeOpenOrder(orderId) {
+  if (!canWriteCommerce() || hasUnfinishedCheckout()) return;
+  if (cartState.size && !window.confirm(
+    "Giỏ hàng chưa gửi sẽ bị xóa khi khôi phục đơn mở. Tiếp tục?"
+  )) return;
+  const payload = await appFetch(
+    "/api/app/commerce-order-status?orderId=" + encodeURIComponent(orderId)
+  );
+  const order = payload.order;
+  if (order?.id !== orderId || order.storeId !== currentStoreId || order.status !== "open") {
+    throw new Error("Đơn không còn mở hoặc không thuộc Store hiện tại.");
+  }
+  cartState.clear();
+  currentOrder = {
+    id: order.id, status: "open", total: order.total,
+    orderNumber: order.orderNumber || order.id
+  };
+  el("openOrderList").replaceChildren();
+  renderCart();
+  setStatus("Đã khôi phục đơn mở; kiểm tra server total rồi ghi Payment.", "ok");
 }
 
 async function createCategory(event) {
@@ -787,6 +839,7 @@ el("store").addEventListener("change", () => guarded(refreshStore));
 el("refreshApp").addEventListener("click", () => guarded(refreshStore));
 el("submitOrder").addEventListener("click", () => guarded(submitOrder));
 el("capturePayment").addEventListener("click", () => guarded(capturePayment));
+el("recoverOpenOrders").addEventListener("click", () => guarded(loadOpenOrdersForRecovery));
 el("categoryForm").addEventListener("submit", event => guarded(() => createCategory(event)));
 el("itemForm").addEventListener("submit", event => guarded(() => createItem(event)));
 el("closeDay").addEventListener("click", () => guarded(closeBusinessDay));
