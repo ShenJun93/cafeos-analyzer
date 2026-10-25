@@ -3,109 +3,127 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/cafeos-ui.css">
 <title>CafeOS Control Tower · E1 validation</title>
-<style>
-:root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#1c1917;background:#f5f5f4}
-*{box-sizing:border-box}body{margin:0}.wrap{max-width:1120px;margin:auto;padding:24px 18px 72px}
-.banner{background:#fff7ed;border:2px solid #c2410c;border-radius:14px;padding:14px 16px;font-weight:800;color:#9a3412}
-.top{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:18px 0}
-h1{margin:0;font-size:30px}.muted{color:#78716c}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
-.card{background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:16px}.card h3{margin:0 0 8px}
-.metric b{display:block;font-size:24px;margin-top:4px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-input,select,button,textarea{font:inherit;border:1px solid #d6d3d1;border-radius:9px;padding:9px 11px;background:#fff}
-button{cursor:pointer;background:#1c1917;color:#fff}.secondary{background:#fff;color:#1c1917}.danger{background:#7f1d1d}
-textarea{width:100%;min-height:72px}.hidden{display:none!important}.status{margin:12px 0;padding:10px 12px;border-radius:10px;background:#fff;border:1px solid #e7e5e4}
-.error{color:#991b1b}.ok{color:#166534}.section{margin-top:24px}.section h2{font-size:21px}
-.item{border-top:1px solid #e7e5e4;padding:12px 0}.item:first-child{border-top:0}.pill{display:inline-block;padding:3px 8px;border-radius:999px;background:#f5f5f4;font-size:12px}
-.notice{border-left:4px solid #57534e;padding:8px 12px;background:#fff}.noncausal{border-left-color:#b45309;font-weight:700}
-code{font-size:12px;word-break:break-all}.auth{max-width:620px}.auth input{min-width:220px}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media(max-width:760px){.detail-grid{grid-template-columns:1fr}}
-</style>
 </head>
-<body>
-<main class="wrap">
-<div id="syntheticBanner" class="banner">DEMO / SYNTHETIC CONTROL TOWER DATA — NOT YOUR STORE DATA</div>
-<div class="top">
-  <div><h1>Control Tower · E1 validation</h1><div class="muted">Brief → Store Health → Attention → Action → Measurement</div></div>
-  <button id="signOut" class="secondary hidden" type="button">Đăng xuất</button>
-</div>
+<body class="control-body">
+<main class="page-shell page-shell--wide control-shell">
+  <div id="syntheticBanner" class="synthetic-banner synthetic-system-strip">DEMO / SYNTHETIC CONTROL TOWER DATA — NOT YOUR STORE DATA</div>
 
-<section id="authPanel" class="card auth">
-  <h2>Đăng nhập synthetic staging</h2>
-  <p class="muted">Tài khoản này chỉ dùng cho môi trường synthetic. Token chỉ giữ trong memory của tab và không được ghi vào browser persistence.</p>
-  <div class="row">
-    <input id="email" type="email" autocomplete="username" placeholder="Synthetic test-user email">
-    <input id="password" type="password" autocomplete="current-password" placeholder="Password">
-    <button id="signIn" type="button">Đăng nhập</button>
-  </div>
-</section>
-
-<div id="status" class="status muted">Chưa đăng nhập.</div>
-
-<section id="app" class="hidden">
-  <div class="card">
-    <div class="row">
-      <label><strong>Tenant</strong> <select id="tenant"></select></label>
-      <label><strong>Store</strong> <select id="store"><option value="">— chọn store —</option></select></label>
-      <button id="refresh" type="button">Làm mới</button>
-    </div>
-    <p class="muted">Tenant list chỉ lấy từ membership của user hiện tại. Không có ô nhập tenant ID tự do.</p>
-  </div>
-
-  <section class="section">
-    <h2>Daily Brief</h2>
-    <div id="briefMeta" class="notice muted">Chưa tải.</div>
-    <div id="briefMetrics" class="grid"></div>
-  </section>
-
-  <section class="section detail-grid">
+  <header class="control-commandbar commandbar">
     <div>
-      <h2>Attention</h2>
-      <div id="attention" class="card"></div>
+      <div class="brand-mark">CafeOS Control Tower</div>
+      <div class="kicker">E1 · operator_synthetic_assisted</div>
     </div>
+    <div class="cluster">
+      <span class="muted">Brief → Store Health → Attention → Action → Measurement</span>
+      <button id="signOut" class="secondary hidden" type="button">Đăng xuất</button>
+    </div>
+  </header>
+
+  <section id="authPanel" class="glass-surface control-auth">
     <div>
-      <h2>Unresolved Actions</h2>
-      <div id="actions" class="card"></div>
+      <div class="section-label">Synthetic staging</div>
+      <h1>Đăng nhập để review một workflow giả lập có kiểm soát.</h1>
+      <p class="muted">Tài khoản này chỉ dùng cho môi trường synthetic. Token chỉ giữ trong memory của tab và không được ghi vào browser persistence.</p>
+    </div>
+    <div class="control-auth-fields">
+      <label class="field-group">Email synthetic<input id="email" type="email" autocomplete="username" placeholder="Synthetic test-user email"></label>
+      <label class="field-group">Password<input id="password" type="password" autocomplete="current-password" placeholder="Password"></label>
+      <button id="signIn" type="button">Đăng nhập</button>
     </div>
   </section>
 
-  <section class="section">
-    <h2>Store Health</h2>
-    <div id="storeMeta" class="notice muted">Chọn Store để xem.</div>
-    <div id="storeMetrics" class="grid"></div>
-    <div id="storeAttention" class="card" style="margin-top:12px"></div>
-  </section>
+  <div id="status" class="status-strip muted" aria-live="polite">Chưa đăng nhập.</div>
 
-  <section id="actionSection" class="section hidden">
-    <h2>Action detail / Measurement</h2>
-    <div id="actionDetail" class="card"></div>
-    <div class="detail-grid" style="margin-top:12px">
-      <div class="card">
-        <h3>Cập nhật status</h3>
-        <div class="row">
-          <select id="actionStatus">
-            <option value="in_progress">in_progress</option>
-            <option value="resolved">resolved</option>
-            <option value="dismissed">dismissed</option>
-          </select>
-          <button id="updateStatus" type="button">Cập nhật</button>
-        </div>
-        <textarea id="resolutionNote" placeholder="Resolution note — bắt buộc khi resolved/dismissed"></textarea>
+  <section id="app" class="hidden">
+    <section class="glass-surface control-sessionbar" aria-label="Session controls">
+      <div class="control-commandbar">
+        <label class="field-group"><span>Tenant</span><select id="tenant"></select></label>
+        <label class="field-group"><span>Store</span><select id="store"><option value="">— chọn store —</option></select></label>
+        <button id="refresh" type="button" class="secondary">Làm mới</button>
       </div>
-      <div class="card">
-        <h3>Tạo Measurement Window</h3>
-        <div class="grid">
-          <label>Baseline start<input id="baselineStart" type="datetime-local"></label>
-          <label>Baseline end<input id="baselineEnd" type="datetime-local"></label>
-          <label>Measure start<input id="measurementStart" type="datetime-local"></label>
-          <label>Measure end<input id="measurementEnd" type="datetime-local"></label>
+      <p class="muted">Tenant list chỉ lấy từ membership của user hiện tại. Không có ô nhập tenant ID tự do.</p>
+    </section>
+
+    <section class="brief-stage glass-surface" aria-labelledby="brief-title">
+      <div class="brief-heading">
+        <div>
+          <div class="section-label">Daily Brief</div>
+          <h2 id="brief-title">Tín hiệu điều hành đầu ngày</h2>
         </div>
-        <button id="createMeasurement" type="button" style="margin-top:10px">Tạo window</button>
-        <p class="muted">Metric/scope/value không được gửi từ client; backend derive từ Action + Attention.</p>
+        <div id="briefMeta" class="evidence-meta muted">Chưa tải.</div>
       </div>
-    </div>
+      <div id="briefMetrics" class="control-metrics"></div>
+    </section>
+
+    <section class="queue-board" aria-label="Working queue">
+      <div class="queue-column queue-column--attention">
+        <div class="section-label">Attention queue</div>
+        <h2>Cần xem</h2>
+        <div id="attention" class="queue-content"></div>
+      </div>
+      <div class="queue-column queue-column--actions">
+        <div class="section-label">Action queue</div>
+        <h2>Đang xử lý</h2>
+        <div id="actions" class="queue-content"></div>
+      </div>
+    </section>
+
+    <section class="store-diagnostic" aria-labelledby="store-health-title">
+      <div class="section-head">
+        <div>
+          <div class="section-label">Store diagnostic</div>
+          <h2 id="store-health-title">Store Health</h2>
+        </div>
+        <div id="storeMeta" class="muted">Chọn Store để xem.</div>
+      </div>
+      <div id="storeMetrics" class="control-metrics"></div>
+      <div id="storeAttention" class="queue-content store-attention"></div>
+    </section>
+
+    <section id="actionSection" class="action-workspace glass-surface hidden" aria-labelledby="action-workspace-title">
+      <div class="action-workspace-head">
+        <div>
+          <div class="section-label">Action workspace</div>
+          <h2 id="action-workspace-title">Action detail / Measurement</h2>
+        </div>
+      </div>
+
+      <div class="measurement-evidence">
+        <div id="actionDetail"></div>
+      </div>
+
+      <div class="action-controls">
+        <section class="status-resolution-panel">
+          <div class="section-label">Resolve</div>
+          <h3>Cập nhật status</h3>
+          <div class="cluster">
+            <select id="actionStatus" aria-label="Action status">
+              <option value="in_progress">in_progress</option>
+              <option value="resolved">resolved</option>
+              <option value="dismissed">dismissed</option>
+            </select>
+            <button id="updateStatus" type="button">Cập nhật</button>
+          </div>
+          <textarea id="resolutionNote" placeholder="Resolution note — bắt buộc khi resolved/dismissed"></textarea>
+        </section>
+
+        <section class="measurement-create-panel">
+          <div class="section-label">Measure</div>
+          <h3>Tạo Measurement Window</h3>
+          <div class="measurement-fields">
+            <label class="field-group">Baseline start<input id="baselineStart" type="datetime-local"></label>
+            <label class="field-group">Baseline end<input id="baselineEnd" type="datetime-local"></label>
+            <label class="field-group">Measure start<input id="measurementStart" type="datetime-local"></label>
+            <label class="field-group">Measure end<input id="measurementEnd" type="datetime-local"></label>
+          </div>
+          <button id="createMeasurement" type="button">Tạo window</button>
+          <p class="muted">Metric/scope/value không được gửi từ client; backend derive từ Action + Attention.</p>
+        </section>
+      </div>
+    </section>
   </section>
-</section>
 </main>
 <script>
 let config=null;

@@ -46,11 +46,13 @@ const staticMap = new Map([
   ['/analyzer', { dir: 'public', file: 'analyzer.html' }],
   ['/sample-report', { dir: 'public', file: 'sample-report.html' }],
   ['/feedback', { dir: 'public', file: 'feedback.html' }],
-  ['/control-tower-e1', { dir: 'web', file: 'control-tower-e1.html' }]
+  ['/control-tower-e1', { dir: 'web', file: 'control-tower-e1.html' }],
+  ['/cafeos-ui.css', { dir: 'public', file: 'cafeos-ui.css' }]
 ]);
 
 const types = {
-  '.html': 'text/html; charset=utf-8'
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8'
 };
 
 async function parseJsonBody(req, maxBytes = MAX_APP_JSON_BYTES) {

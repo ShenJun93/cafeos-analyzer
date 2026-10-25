@@ -1,1 +1,108 @@
-<!doctype html><html lang="vi"><head><meta charset="utf-8"><link rel="canonical" href="https://cafeos-analyzer.vercel.app/"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Phân tích doanh thu quán cafe từ Excel/CSV | CafeOS Analyzer</title><meta name="description" content="Phân tích file bán hàng quán cafe: doanh thu, số đơn, AOV, hiệu suất chi nhánh và tín hiệu khách quay lại. Không thay POS; dùng để kiểm tra dữ liệu và tìm vấn đề đáng chú ý."><style>:root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#1c1917;background:#f5f5f4}*{box-sizing:border-box}body{margin:0}.wrap{max-width:960px;margin:auto;padding:56px 20px 80px}.hero{background:#fff;border:1px solid #e7e5e4;border-radius:20px;padding:32px}.eyebrow{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#78716c}.hero h1{font-size:44px;line-height:1.08;margin:10px 0 14px}.lead{font-size:19px;line-height:1.6;color:#57534e;max-width:760px}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}.btn{display:inline-block;padding:12px 16px;border-radius:10px;text-decoration:none;border:1px solid #1c1917;background:#1c1917;color:#fff}.secondary{background:#fff;color:#1c1917}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:24px}.card{background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:18px}h2{margin-top:40px}.muted{color:#78716c}.note{border-left:4px solid #78716c;padding-left:14px}.small{font-size:14px}</style></head><body><main class="wrap"><section class="hero"><div class="eyebrow">CafeOS Analyzer · validation build</div><h1>Biến file bán hàng của quán cafe thành một báo cáo điều hành có bằng chứng.</h1><p class="lead">Đọc CSV/XLSX từ POS, chuẩn hóa dữ liệu và tính deterministic metrics trước khi phát hiện thay đổi đáng chú ý theo cửa hàng, khung giờ và khách hàng đã nhận diện.</p><div class="actions"><a class="btn" href="/analyzer?utm_source=cafeos-site&utm_medium=product&utm_campaign=free-analyzer">Mở Analyzer</a><a class="btn secondary" href="/sample-report">Xem báo cáo mẫu</a></div></section><div class="grid"><div class="card"><strong>Không bắt đổi POS</strong><p class="muted">Bắt đầu từ export CSV/XLSX hiện có.</p></div><div class="card"><strong>Không để AI tự tính số</strong><p class="muted">Doanh thu, số đơn, AOV và coverage được tính deterministic.</p></div><div class="card"><strong>Data-health trước insight</strong><p class="muted">Thiếu customer identity hoặc COGS sẽ được hiện rõ thay vì suy đoán.</p></div></div><h2>Phù hợp nhất với ai?</h2><p>Validation hiện nhắm tới owner/operator chuỗi cafe <strong>3–15 cửa hàng</strong>. Quán một cửa hàng vẫn có thể dùng Analyzer, nhưng không thuộc target ICP của scorecard hiện tại.</p><h2>File nào dùng được?</h2><p>CSV hoặc XLSX transaction/item-level. Có thể dùng nhiều export chia thời gian; engine hiện hỗ trợ overlap deduplication. Mapping thiếu confidence sẽ yêu cầu xác nhận thay vì tự đoán.</p><h2>Quyền riêng tư khi validation</h2><p class="note">Public validation preview xử lý file tạm thời trong request và không lưu file vào database/object storage. Preview giới hạn 4 MB/file. Với file lớn hoặc dữ liệu nhạy cảm, dùng local validation kit; compatibility profile không chứa row values và validation pack dùng HMAC để pseudonymize identifiers.</p><h2>Không phải là gì?</h2><p>CafeOS Analyzer chưa phải POS, CRM hay hệ thống gửi khuyến mãi. Mục tiêu hiện tại là kiểm chứng một câu hỏi đơn giản: báo cáo này có giúp operator tìm được insight đủ mới, đủ đáng tin và đủ hữu ích để họ muốn dùng lại hay không.</p><p class="small muted">Validation build — chưa phải production SaaS.</p></main></body></html>
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<link rel="canonical" href="https://cafeos-analyzer.vercel.app/">
+<link rel="stylesheet" href="/cafeos-ui.css">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Phân tích doanh thu quán cafe từ Excel/CSV | CafeOS Analyzer</title>
+<meta name="description" content="Phân tích file bán hàng quán cafe: doanh thu, số đơn, AOV, hiệu suất chi nhánh và tín hiệu khách quay lại. Không thay POS; dùng để kiểm tra dữ liệu và tìm vấn đề đáng chú ý.">
+</head>
+<body>
+<main class="page-shell landing-shell">
+  <header class="masthead landing-masthead">
+    <div>
+      <div class="brand-mark">CafeOS</div>
+      <div class="kicker">Analyzer · validation build</div>
+    </div>
+    <nav class="masthead-nav" aria-label="Điều hướng chính">
+      <a href="/sample-report">Báo cáo mẫu</a>
+      <a class="btn" href="/analyzer?utm_source=cafeos-site&utm_medium=product&utm_campaign=free-analyzer">Mở Analyzer</a>
+    </nav>
+  </header>
+
+  <section class="landing-hero" aria-labelledby="hero-title">
+    <div>
+      <div class="section-label">Decision evidence for café operators</div>
+      <h1 id="hero-title" class="display-title">Biến file bán hàng thành một báo cáo điều hành có bằng chứng.</h1>
+      <p class="lede">Đọc CSV/XLSX từ POS, chuẩn hóa dữ liệu và tính deterministic metrics trước khi phát hiện thay đổi đáng chú ý theo cửa hàng, khung giờ và khách hàng đã nhận diện.</p>
+      <div class="hero-actions">
+        <a class="btn" href="/analyzer?utm_source=cafeos-site&utm_medium=product&utm_campaign=free-analyzer">Mở Analyzer</a>
+        <a class="btn secondary" href="/sample-report">Xem báo cáo mẫu</a>
+      </div>
+    </div>
+    <aside class="material-note" aria-label="Nguyên tắc dữ liệu">
+      <div class="section-label">Trust before insight</div>
+      <strong>Data-health trước khi nói điều gì đáng chú ý.</strong>
+      <p>Thiếu customer identity hoặc COGS sẽ được hiện rõ thay vì suy đoán.</p>
+    </aside>
+  </section>
+
+  <section class="operator-proof" aria-label="Nguyên tắc vận hành">
+    <article>
+      <div class="section-label">01 · Start where you are</div>
+      <strong>Không bắt đổi POS</strong>
+      <span class="muted">Bắt đầu từ export CSV/XLSX hiện có.</span>
+    </article>
+    <article>
+      <div class="section-label">02 · Deterministic</div>
+      <strong>Không để AI tự tính số</strong>
+      <span class="muted">Doanh thu, số đơn, AOV và coverage được tính deterministic.</span>
+    </article>
+    <article>
+      <div class="section-label">03 · Evidence boundary</div>
+      <strong>Không che phần dữ liệu thiếu</strong>
+      <span class="muted">Khả năng phân tích bị thiếu sẽ được đánh dấu thay vì bù bằng giả định.</span>
+    </article>
+  </section>
+
+  <section class="section field-note" aria-labelledby="fit-title">
+    <div>
+      <div class="section-label">Field note / ICP</div>
+      <div class="note-number" aria-hidden="true">3—15</div>
+    </div>
+    <div class="note-copy">
+      <h2 id="fit-title">Phù hợp nhất với ai?</h2>
+      <p>Validation hiện nhắm tới owner/operator chuỗi cafe <strong>3–15 cửa hàng</strong>. Quán một cửa hàng vẫn có thể dùng Analyzer, nhưng không thuộc target ICP của scorecard hiện tại.</p>
+      <p class="muted">Mục tiêu hiện tại không phải thay POS, CRM hay hệ thống vận hành hiện có; mục tiêu là kiểm chứng liệu evidence này có đủ mới, đáng tin và hữu ích để operator muốn dùng lại.</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="files-title">
+    <div class="section-head">
+      <div>
+        <div class="section-label">Input contract</div>
+        <h2 id="files-title">File nào dùng được?</h2>
+      </div>
+      <p class="muted">Mapping thiếu confidence sẽ yêu cầu xác nhận thay vì tự đoán.</p>
+    </div>
+    <ol class="compatibility-checklist">
+      <li><span class="check-index">01</span><div><strong>CSV hoặc XLSX transaction/item-level</strong><div class="muted">Export giao dịch hoặc item-level từ POS hiện có.</div></div></li>
+      <li><span class="check-index">02</span><div><strong>Nhiều export chia thời gian</strong><div class="muted">Engine hiện hỗ trợ overlap deduplication.</div></div></li>
+      <li><span class="check-index">03</span><div><strong>Mapping có xác nhận</strong><div class="muted">Cột không chắc chắn được đưa về bước xác nhận thủ công.</div></div></li>
+    </ol>
+  </section>
+
+  <section class="section">
+    <div class="privacy-boundary">
+      <div>
+        <div class="section-label">Privacy boundary</div>
+        <h2>Quyền riêng tư khi validation</h2>
+        <p>Public validation preview xử lý file tạm thời trong request và <strong>không lưu file vào database/object storage</strong>. Preview giới hạn 4 MB/file.</p>
+      </div>
+      <div>
+        <p>Với file lớn hoặc dữ liệu nhạy cảm, dùng local validation kit; compatibility profile không chứa row values và validation pack dùng HMAC để pseudonymize identifiers.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="landing-final" aria-labelledby="final-title">
+    <div>
+      <div class="section-label">Validation build</div>
+      <h2 id="final-title">Kiểm tra số trước. Tin insight sau.</h2>
+    </div>
+    <a class="btn" href="/analyzer?utm_source=cafeos-site&utm_medium=product&utm_campaign=free-analyzer">Phân tích file bán hàng</a>
+  </section>
+</main>
+</body>
+</html>
