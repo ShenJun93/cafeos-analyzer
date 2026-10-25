@@ -206,6 +206,14 @@ The product-level discovery gate in issue #11 remains open because real target-I
 - Scope of proof: **isolated CI DB with synthetic legacy receipt versions**, not a restore of the actual staging database or proof that the real seven-statement receipt backups exist. Staging still has **7 old receipts**, future-close and Menu-price guards **NOT APPLIED**; owner-controlled secure backup, independent review, real JWT E2E and staged deployment gates remain.
 - After an authorized staging deployment, a separately versioned **post-deployment** read-only acceptance is required, because the existing transition gate deliberately outputs `STOP_REVIEW_REQUIRED` whenever the guards are installed.
 
+## Numeric money validation and post-guard acceptance gate — 2026-10-25
+
+- **Fixed binary-floating-point rejection in Commerce API**: `menu.mjs` and `payment.mjs` no longer compare `Math.round(value * 100)` to `value * 100`. A shared decimal-scale validator accepts valid amounts `0.07`, `0.29`, `2.55`, `19999.99` (and whole-number VND), while rejecting booleans, arrays, negative/small invalid amounts, greater than two decimal places and amounts beyond existing endpoint ceilings. No DB migration is required. Unit/API regressions plus synthetic browser and isolated-DB tests at `c3fb2eba`: **CI / Chromium / DB all SUCCESS**.
+- **Added separate READ-ONLY post-deployment acceptance**: `scripts/sql/cafeos-staging-post-guards-readonly-gate.sql`. It checks **10 exact canonical migration versions**, zero legacy versions, both guard function bodies present, **6/6 RLS**, **3/3 restricted SECURITY DEFINER grants** and zero observed Order subtotal, Payment state or Daily Close accounting anomalies. Passing result means `POST_GUARDS_READY_FOR_AUTH_E2E`, **not permission to release production**.
+- Ran the post-deployment audit directly on **unpatched staging**: it correctly returned `POST_GUARDS_NOT_READY_REVIEW` (7 old receipt versions, both new guards absent, no persisted Commerce anomalies; RLS/privilege profiles 6/6 and 3/3). **No SQL mutations**.
+- Updated `scripts/run-local-greenpath-ledger-drill.sh` to demand the new gate fail **before** local migration and pass **after** two actual SQL guard upgrades, then still pass after complete pgTAP. Await the **exact-head Supabase DB workflow** on `5518f199` before claiming this new acceptance test PASS.
+- Real authenticated staging E2E, secure backup of seven original receipts, independent security advisor signoff and controlled staging-only migration remain the blocking tasks. **PR #74 stays DRAFT / NO-GO; production unchanged.**
+
 ## Next engineering action
 
 1. Confirm exact-head CI + blank-database pgTAP on PR #74; record failures at the actual HEAD, not at earlier commits.

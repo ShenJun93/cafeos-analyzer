@@ -23,3 +23,7 @@ This could produce **header total different from the sum of Order line snapshots
 3. Staging ledger reconciliation from **7 old receipts → 8 canonical historical receipts**, explicitly leaving both incremental integrity guards pending. Secure backup and owner-approved execution only.
 4. Controlled staging migration deployment in order: future-close guard first, snapshot guard second. Then authenticated synthetic real-transport E2E, read-only financial invariants, rendered-browser QA and clean rollback receipts.
 5. **PR #74 remains Draft / NO_GO; production unchanged.**
+
+## API monetary scale validation (2026-10-25)
+
+The HTTP Menu and Payment handlers previously used `Math.round(value * 100) === value * 100`; this falsely rejects valid two-decimal values such as `0.29` and `2.55` due to IEEE-754 representation. Shared strict decimal scale validation in `server/commerce/_shared.mjs` fixes this without changing the SQL schema or trusted RPC amount calculation. API regression tests cover decimal values, invalid input types, negative values, non-cent precision, and maximum bounds. At `c3fb2eba`, GitHub CI, Chromium and isolated Supabase DB workflows **PASS**.
