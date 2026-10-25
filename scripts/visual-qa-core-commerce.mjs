@@ -165,6 +165,17 @@ async function runViewport(browser, width, height, base) {
     await page.goto(base + "/app", { waitUntil: "networkidle" });
     await snapshot(page, width, "login");
     await signIn(page, "manager@synthetic.invalid", "synthetic-only");
+    const modules = await page.locator(".app-nav-item,.app-nav-link").evaluateAll(
+      els => els.map(el => {
+        const box = el.getBoundingClientRect();
+        return { name: el.textContent.trim(), left: box.left, right: box.right, width: box.width };
+      })
+    );
+    assert.equal(modules.length, 6, "all modules must appear in POS navigation");
+    for (const link of modules) {
+      assert.ok(link.left >= -1 && link.right <= width + 1 && link.width > 0,
+        width + "px module tab clipped: " + JSON.stringify(link));
+    }
     assert.equal(await page.locator("#menuWriteControls").evaluate(el => el.classList.contains("hidden")), false);
     await snapshot(page, width, "pos");
     const latte = page.locator("#menuCatalog .menu-item-button").filter({ hasText: "Latte" });

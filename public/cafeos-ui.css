@@ -334,3 +334,26 @@ textarea{min-height:110px;resize:vertical}
 @media (max-width:420px){
   .menu-catalog,.commerce-metrics{grid-template-columns:1fr}
 }
+
+/* Core Commerce: all six module links remain visible on narrow POS screens.
+   A horizontally scrollable tab bar hid Daily Close / Control Tower / Analyzer. */
+@media (max-width:720px){
+  .commerce-body .app-nav{
+    margin-inline:0;
+    padding-inline:0;
+    flex-wrap:wrap;
+    overflow-x:visible;
+    gap:6px;
+  }
+  .commerce-body .app-nav-item,
+  .commerce-body .app-nav-link{
+    flex:1 1 calc(33.333% - 6px);
+    min-width:0;
+    min-height:48px;
+    padding:8px 6px;
+    white-space:normal;
+    text-align:center;
+    line-height:1.25;
+    border-radius:8px;
+  }
+}
