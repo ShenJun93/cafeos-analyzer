@@ -158,7 +158,7 @@ test("POS create-order retries reuse an intent key and lock the cart while reque
 test("unfinished POS checkout prevents Store/Tenant refresh from losing the idempotency key", async () => {
   const { createContext, runInContext } = await import("node:vm");
   const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
-  const script = html.match(/<script>([\\s\\S]*?)<\\/script>/)?.[1];
+  const script = html.split("<script>")[1]?.split("</script>")[0];
   assert.ok(script, "inline app controller must exist");
 
   const elements = new Map();
