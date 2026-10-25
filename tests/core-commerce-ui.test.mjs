@@ -50,10 +50,9 @@ test("POS client sends intent only and does not expose editable trusted prices o
     html,
     /const orderBody = \{\s*storeId:[\s\S]*clientOrderKey:[\s\S]*channel:[\s\S]*items:[\s\S]*\};/
   );
-  assert.doesNotMatch(
-    html,
-    /const orderBody = \{[\s\S]*?(?:price|subtotal|total)\s*:/i
-  );
+  const orderBodySource = html.match(/const orderBody = \{[\s\S]*?\n  \};/)?.[0] ?? "";
+  assert.ok(orderBodySource, "orderBody source must be present");
+  assert.doesNotMatch(orderBodySource, /(?:price|subtotal|total)\s*:/i);
   assert.doesNotMatch(html, /<input[^>]+(?:price|subtotal|total)/i);
   assert.match(html, /unit price is server-owned/i);
   assert.match(html, /server total/i);
