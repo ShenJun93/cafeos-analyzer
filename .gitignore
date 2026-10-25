@@ -8,3 +8,5 @@ node_modules/
 release/
 field-sessions/
 field-validation-registry.json
+control-tower-sessions/
+control-tower-validation-registry.json
