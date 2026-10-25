@@ -233,11 +233,11 @@ select results_eq(
 -- The synthetic price-race order is paid at its original snapshot amount,
 -- not at the Menu price after the test-trigger change.
 select lives_ok(
- $select public.commerce_capture_payment(
+ $$select public.commerce_capture_payment(
  '71000000-0000-4000-8000-000000000011',
  (select id from public.pos_orders where client_order_key='receipt-price-change'),
  'cash',70000,null
- )$,
+ )$$,
  'Price-changed Menu still settles the original trusted order amount'
 );
 
