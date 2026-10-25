@@ -132,7 +132,7 @@ Lock:
 - menu write policies require owner/admin/manager;
 - order/payment write policies require owner/admin/manager/cashier;
 - daily close requires owner/admin/manager;
-- RPCs are SECURITY INVOKER;
+- read RPC is SECURITY INVOKER; atomic order/payment/close write RPCs are hardened SECURITY DEFINER with explicit auth/role checks and no direct authenticated table writes;
 - RPCs derive menu price and totals server-side;
 - order key is tenant/store-idempotent;
 - payment requires exact remaining balance in v1;
@@ -156,7 +156,8 @@ Follow current Supabase requirements:
 - FK indexes;
 - fixed RPCs with no arbitrary SQL;
 - short atomic DB transactions;
-- no SECURITY DEFINER commerce write RPC.
+- hardened SECURITY DEFINER only for order/payment/close atomic writes, with explicit auth.uid(), tenant/role checks, fixed search_path and revoked PUBLIC/anon execution;
+- authenticated users receive no raw INSERT/UPDATE grants on trusted order/payment/close tables.
 
 Use \`FOR UPDATE\` only on the specific order row during payment transition.
 
