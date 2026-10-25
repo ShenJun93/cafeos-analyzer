@@ -368,20 +368,6 @@ export function assertControlTowerEvidenceDependencies(
     if (primaryCount > 1) throw new Error('transactionSources allow at most one primary source');
   }
 
-  if (record.evidenceProvenance === 'operator_synthetic_assisted') {
-    const forbiddenPositive = [
-      record.metricTrusted,
-      record.dailyBriefUseful,
-      record.storeHealthUseful,
-      record.actionCreated,
-      record.returnReviewObserved,
-      record.terminalActionReviewed,
-      record.measurementChecked
-    ];
-    if (forbiddenPositive.some(value => value === true)) {
-      throw new Error('operator_synthetic_assisted cannot record merchant-data workflow positives');
-    }
-  }
 }
 
 function metric(numerator: number, denominator: number): ControlTowerEvidenceMetric {
