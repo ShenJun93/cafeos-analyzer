@@ -4,6 +4,30 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/app/client-config",
+      "destination": "/api/app/workflow?route=client-config"
+    },
+    {
+      "source": "/api/app/commerce-menu",
+      "destination": "/api/app/workflow?route=commerce-menu"
+    },
+    {
+      "source": "/api/app/commerce-order",
+      "destination": "/api/app/workflow?route=commerce-order"
+    },
+    {
+      "source": "/api/app/commerce-payment",
+      "destination": "/api/app/workflow?route=commerce-payment"
+    },
+    {
+      "source": "/api/app/commerce-dashboard",
+      "destination": "/api/app/workflow?route=commerce-dashboard"
+    },
+    {
+      "source": "/api/app/commerce-daily-close",
+      "destination": "/api/app/workflow?route=commerce-daily-close"
+    },
+    {
       "source": "/api/app/actions",
       "destination": "/api/app/workflow?route=actions"
     },
