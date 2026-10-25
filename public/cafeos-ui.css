@@ -34,7 +34,7 @@ img,svg{max-width:100%}
 button,input,select,textarea{font:inherit;color:inherit}
 button,a,input,select,textarea{outline:none}
 button,input,select,textarea{min-height:44px}
-:focus-visible{outline:3px solid color-mix(in srgb,var(--clay) 65%,white);outline-offset:3px}
+:focus-visible{outline:3px solid var(--clay);outline:3px solid color-mix(in srgb,var(--clay) 65%,white);outline-offset:3px}
 ::selection{background:color-mix(in srgb,var(--clay) 24%,transparent)}
 
 .page-shell{width:min(1180px,calc(100% - 40px));margin:0 auto;padding:28px 0 76px}
