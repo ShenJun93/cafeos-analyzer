@@ -44,6 +44,10 @@
       "destination": "/api/app/workflow?route=action-detail"
     },
     {
+      "source": "/app",
+      "destination": "/app.html"
+    },
+    {
       "source": "/analyzer",
       "destination": "/analyzer.html"
     },
