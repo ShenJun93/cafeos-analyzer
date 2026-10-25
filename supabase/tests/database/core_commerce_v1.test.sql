@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(26);
+select plan(28);
 
 insert into public.tenants (id,name) values
  ('71000000-0000-4000-8000-000000000011','Commerce A'),
@@ -146,6 +146,21 @@ select results_eq(
  array['paid'::text],
  'Exact settlement atomically marks order paid'
 );
+
+-- RLS guarantees that authenticated status lookup remains tenant-isolated.
+set local request.jwt.claim.sub = '72000000-0000-4000-8000-000000000201';
+select results_eq(
+ $$select count(*) from public.pos_orders where tenant_id='71000000-0000-4000-8000-000000000011'$$,
+ array[0::bigint],
+ 'Tenant B owner cannot read Tenant A POS order status'
+);
+select results_eq(
+ $$select count(*) from public.pos_payments where tenant_id='71000000-0000-4000-8000-000000000011'$$,
+ array[0::bigint],
+ 'Tenant B owner cannot read Tenant A payment records'
+);
+set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000102';
+
 
 select throws_ok(
  $$select public.commerce_capture_payment(
