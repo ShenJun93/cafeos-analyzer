@@ -131,6 +131,13 @@ The product-level discovery gate in issue #11 remains open because real target-I
 - Staging foundation object survey: all 11 expected tables have RLS enabled. A separate read-only Git-vs-live catalog reconciliation found **11/11 baseline tables, 17/17 policies, 14/14 indexes, 3/3 functions and 1/1 trigger** by object name. Existence is not SQL definition equivalence nor repaired migration history.
 - Newer exact-head CI, authenticated HTTP E2E, real rendered UI screenshots at 390/1200px, privilege review and migration history reconciliation remain release gates.
 
+## Real HTTP integration milestone (synthetic transport)
+
+- `tests/core-commerce-http-flow.test.mjs` runs a real local Vercel-shaped HTTP server and exercises public routes end to end while substituting **only** the Supabase fetch transport with in-memory synthetic auth/DB. Synthetic users: cashier, manager, viewer; no real database credentials, real staging merchant data, or production payment processor.
+- Coverage: unauthorized and cross-tenant request failures, manager menu authoring, cashier price-authority rejection, create-order idempotency, listing of open orders, exact-payment/duplicate rejection, dashboard source label, daily-close open-order guard and manager close, and Control Tower's separate imported-data source.
+- GitHub CI PASS at test commit `c08e663` (runs `40191235831`, `40191231740`). This is **HTTP integration with a fake Supabase upstream**, not live authenticated staging HTTP E2E or rendered screenshot QA. Never conflate the two evidence levels.
+- Supabase DB CI must be revalidated at each subsequent exact HEAD. Migration history drift and security review still block merge/release.
+
 ## Next engineering action
 
 1. Confirm exact-head CI + blank-database pgTAP on PR #74; record failures at the actual HEAD, not at earlier commits.

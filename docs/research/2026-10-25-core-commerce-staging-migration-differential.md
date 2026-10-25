@@ -84,3 +84,11 @@ Live catalog survey on staging (2026-10-25) matched the expected **object names*
 An additional catalog check found RLS enabled on all 11 baseline tables. This reduces the risk that the missing history entries represent completely absent schema, but object names alone cannot prove DDL text, privilege, trigger-body, index-predicate or rollback equivalence. No migration-history records were mutated.
 
 **Release decision unchanged: staging history drift remains BLOCKED, bulk repair/db push prohibited without a full owner-approved reconciliation.**
+
+## Real HTTP integration contract — synthetic upstream
+
+`tests/core-commerce-http-flow.test.mjs` runs `createVercelShapePreviewServer` over a real loopback HTTP port, exercising the Vercel-shaped routing and JSON bodies from API entry through handlers to a deterministic **in-memory fake Supabase fetch endpoint**.
+
+Synthetic flow checks: a read-only menu, manager-only creation, cashier order creation with server-owned price, idempotent retry, open-order list, reject close while open, exact payment and reject duplicate, server order status, first-party commerce dashboard, manager close, and an intentionally separate imported Control Tower brief. It also asserts missing JWT, cross-tenant ID, cashier menu write, cashier close and viewer open-orders denial.
+
+GitHub CI runs `40191235831` and `40191231740` completed **PASS** at commit `c08e663`. **This does not access real Supabase Auth/PostgREST or Vercel preview protection, and must never be labeled 'authenticated live HTTP E2E'.** The last direct staging SQL pgTAP result remains **28/28 PASS**, rollback-only.
