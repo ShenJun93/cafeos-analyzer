@@ -56,3 +56,12 @@ Official guidance: https://supabase.com/docs/guides/deployment/database-migratio
 - Live staging (project `wjatnyvdygvblirggdcm`) SQL pgTAP **28/28 PASS** in one rollback transaction, with two new assertions that Tenant B owner cannot see Tenant A POS orders or payment records. Added to canonical test source commit `3760419`. Post-run fixture check: **0 test tenants, 0 POS orders, 0 payments, 0 closes**.
 - Foundation catalog survey (read-only): `tenants`, `tenant_members`, `imports`, `transaction_line_items`, `stores`, `customers`, `customer_identifiers`, `attention_items`, `actions`, `action_status_history`, `measurement_windows` all exist with RLS enabled. Their full SQL/permissions and missing staging migration history records are **not** yet proved equivalent.
 - Security Advisor rerun still reports 3 authenticated SECURITY DEFINER warnings and leaked-password protection disabled. Independent waiver/security review remains **OPEN**. The drift and release hold remain unchanged.
+
+## Continuation: tenant-aware POS operations after reload
+
+- Latest Core Commerce app candidate now uses the authenticated tenant membership role for UI affordances: cashier order/payment available; manager-only Menu writes and Daily Close controls are hidden or disabled. Backend and SQL RPC permissions remain authoritative.
+- `GET /api/app/commerce-open-orders?storeId=<UUID>`: newly added read-only server handler, scoped by `tenant_id`, `store_id`, `status=eq.open`, descending creation date, limit 20, and Commerce write-role requirement. Uses authenticated PostgREST read under existing RLS, not the service role. No new Vercel API function or migration.
+- UI recovery button lists server-persisted open POS orders; selecting one re-reads the server order status and total before enabling payment. An unsent cart is intentionally ephemeral; if present, resume requests explicit confirmation before clearing it. Existing payment RPC serializes and prevents a second charge of a paid order.
+- Unit/HTTP tests cover permitted cashier and rejected viewer, tenant/store query filters, malformed responses, role-scoped controls, and reopened order guard. **Real authenticated UI/API E2E and rendered browser QA remain NOT_RUN.**
+- The staging pgTAP count remains **28/28 PASS** from the rollback-only audit and is not a substitute for remote HTTP/browser E2E.
+- Ledger drift (8 Git versions vs 7 staging with zero matches) is unchanged; do not run `db push` or bulk `migration repair` until independently reconciled.

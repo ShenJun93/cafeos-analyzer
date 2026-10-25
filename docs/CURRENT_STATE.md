@@ -122,8 +122,11 @@ The product-level discovery gate in issue #11 remains open because real target-I
 
 ## Core Commerce follow-up: checkout recovery and optional reporting
 
-- Candidate `/api/app/commerce-order-status` is read-only, authenticated and tenant-scoped; the POS reconciles an ambiguous payment response by checking server state, without sending a second payment automatically. In-memory order state is still not crash/reload safe.
+- Candidate `/api/app/commerce-order-status` is read-only, authenticated and tenant-scoped; the POS reconciles an ambiguous payment response by checking server state, without sending a second payment automatically. Reload clears ephemeral cart/client-order intent, but committed **open** orders can be recovered from the database using a separate tenant/store-scoped read endpoint.
 - Control Tower reporting failures now degrade that separate pane rather than blocking Menu/POS/Dashboard readiness; core Menu and Dashboard failures remain fatal.
+- Cashier sees POS/Menu read affordances but manager-only Menu edit and Daily Close controls are disabled/hidden; tenant membership role is loaded from the authenticated server. Server/DB authorization remains authoritative.
+- `/api/app/commerce-open-orders`: authenticated cashier-or-higher, read-only GET of up to 20 still-open first-party orders for one selected Store and Tenant. After reload/login, POS can select and revalidate an open order via `commerce-order-status`, then record payment. No JWT, payment details or price authority is saved in browser storage; there is no recovery of an unsubmitted cart.
+- Order recovery is a synthetic candidate with mocked UI/API unit tests; it is not yet a production cashier acceptance or actual browser E2E.
 - Local workflow router now preserves query parameters (including `orderId` and `storeId`); regression tests cover unauthenticated HTTP routes and paid/open response recovery.
 - Staging foundation object survey: 11 related tables present, 11 have RLS enabled. This is not full migration equivalence.
 - Newer exact-head CI, authenticated HTTP E2E, real rendered UI screenshots at 390/1200px, privilege review and migration history reconciliation remain release gates.
