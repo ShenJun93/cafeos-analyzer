@@ -45,6 +45,10 @@ test("history-repair drill is isolated to local synthetic Supabase and checks no
   assert.match(script, /supabase migration repair --db-url "\$DB_URL" --status applied/);
   assert.match(script, /CAFEOS_LOCAL_LEDGER_REPAIR_DRILL_PASS/);
   assert.match(script, /STOP_REVIEW_REQUIRED/);
+  assert.match(script, /_synthetic_local_receipt\.sql/);
+  assert.match(script, /trap cleanup EXIT/);
+  assert.match(script, /Refusing to overwrite a real migration/);
+  assert.match(script, /rm -f -- "\$path"/);
   assert.match(script, /before_schema/);
   assert.match(script, /before_data/);
   assert.doesNotMatch(script, /--linked|supabase link|wjatnyvdygvblirggdcm|SUPABASE_ACCESS_TOKEN|service_role|sb_secret_/i);

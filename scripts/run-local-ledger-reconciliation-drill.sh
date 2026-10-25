@@ -63,6 +63,23 @@ assert_versions "${CANONICAL[@]}"
 before_schema="$(schema_hash)"
 before_data="$(data_hash)"
 
+# CLI repair --status applied requires a local migration file for each version.
+# Create temporary no-op fixture files only in the ephemeral checked-out runner;
+# they NEVER execute. Never commit them or use them for actual staging repair.
+legacy_files=()
+cleanup() {
+  for path in "${legacy_files[@]}"; do
+    rm -f -- "$path"
+  done
+}
+trap cleanup EXIT
+for version in "${LEGACY[@]}"; do
+  path="supabase/migrations/${version}_synthetic_local_receipt.sql"
+  [[ ! -e "$path" ]] || { echo "Refusing to overwrite a real migration: $path" >&2; exit 1; }
+  printf '%s\n' '-- Local-only migration history placeholder; do not execute as schema SQL.' > "$path"
+  legacy_files+=("$path")
+done
+
 # All changes below target the literal 127.0.0.1 scratch DB through --db-url.
 supabase migration repair --db-url "$DB_URL" --status reverted "${CANONICAL[@]}"
 assert_versions
