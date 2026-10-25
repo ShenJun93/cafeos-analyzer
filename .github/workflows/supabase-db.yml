@@ -8,6 +8,7 @@ on:
       - "supabase/restore-fixtures/**"
       - "scripts/run-supabase-restore-drill.sh"
       - "scripts/run-local-ledger-reconciliation-drill.sh"
+      - "scripts/run-local-greenpath-ledger-drill.sh"
       - "scripts/sql/cafeos-staging-post-repair-readonly-gate.sql"
       - ".github/workflows/supabase-db.yml"
   pull_request:
@@ -17,6 +18,7 @@ on:
       - "supabase/restore-fixtures/**"
       - "scripts/run-supabase-restore-drill.sh"
       - "scripts/run-local-ledger-reconciliation-drill.sh"
+      - "scripts/run-local-greenpath-ledger-drill.sh"
       - "scripts/sql/cafeos-staging-post-repair-readonly-gate.sql"
       - ".github/workflows/supabase-db.yml"
 
@@ -66,6 +68,9 @@ jobs:
 
       - name: Test history-only repair on disposable localhost
         run: bash scripts/run-local-ledger-reconciliation-drill.sh
+
+      - name: Prove post-repair GREEN and guarded upgrade on disposable localhost
+        run: bash scripts/run-local-greenpath-ledger-drill.sh
 
       - name: Show migration state
         if: always()

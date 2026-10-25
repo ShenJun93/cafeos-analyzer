@@ -54,3 +54,21 @@ test("history-repair drill is isolated to local synthetic Supabase and checks no
   assert.doesNotMatch(script, /--linked|supabase link|wjatnyvdygvblirggdcm|SUPABASE_ACCESS_TOKEN|service_role|sb_secret_/i);
   assert.doesNotMatch(script, /db push|supabase db reset|rm -rf|curl|https?:\/\/(?!(?:127\.0\.0\.1|localhost))/i);
 });
+
+
+test("greenpath reconciliation acceptance never targets staging or production", async () => {
+  const script = await readFile(
+    new URL("../scripts/run-local-greenpath-ledger-drill.sh", import.meta.url), "utf8"
+  );
+  assert.match(script, /readonly DB_URL="postgresql:\/\/postgres:postgres@127\.0\.0\.1:54322\/postgres"/);
+  assert.match(script, /supabase db reset --local --no-seed --version/);
+  assert.match(script, /supabase migration repair --db-url "\$DB_URL" --status reverted/);
+  assert.match(script, /supabase migration repair --db-url "\$DB_URL" --status applied/);
+  assert.match(script, /supabase migration up --db-url "\$DB_URL"/);
+  assert.match(script, /HISTORY_READY_GUARDS_PENDING_OWNER_APPROVAL/);
+  assert.match(script, /PRE_REPAIR_NO_GO/);
+  assert.match(script, /STOP_REVIEW_REQUIRED/);
+  assert.match(script, /CAFEOS_LOCAL_GREENPATH_PASS/);
+  assert.match(script, /trap cleanup EXIT/);
+  assert.doesNotMatch(script, /--linked|supabase link|wjatnyvdygvblirggdcm|SUPABASE_ACCESS_TOKEN|service_role|sb_secret_/i);
+});
