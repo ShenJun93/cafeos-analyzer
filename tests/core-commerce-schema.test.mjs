@@ -198,6 +198,8 @@ test("staging reconciliation transition gate is read-only and never grants migra
     "guards_marked_applied=0",
     "commerce_rls_tables=6",
     "guarded_rpc_grants=3",
+    "untrusted_schema_creates_blocked",
+    "search_path=pg_catalog, public, private, pg_temp",
     "COMMERCE_CLOSE_FUTURE_DATE",
     "v_snapshot_items"
   ]) {
