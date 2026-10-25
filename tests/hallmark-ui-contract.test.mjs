@@ -148,3 +148,41 @@ test("Control Tower E1 uses bounded Glass Control Room macrostructure", async ()
   assert.equal(html.includes("status-resolution-panel"), true);
   assert.equal(html.includes("measurement-create-panel"), true);
 });
+
+
+test("Hallmark final gate keeps responsive, accessible and non-generic frontend contracts", async () => {
+  const css = await readFile(new URL("../public/cafeos-ui.css", import.meta.url), "utf8");
+  const pages = [
+    "../public/index.html",
+    "../public/analyzer.html",
+    "../public/feedback.html",
+    "../web/control-tower-e1.html"
+  ];
+
+  assert.match(css, /min-height:\s*44px/);
+  assert.match(css, /:focus-visible/);
+  assert.match(css, /prefers-reduced-motion:\s*reduce/);
+  assert.match(css, /@media[^{]*max-width:\s*720px/);
+  assert.doesNotMatch(css, /purple|pink|#[a-f0-9]{0,2}(?:ff00ff|c026d3|a855f7)/i);
+
+  for (const file of pages) {
+    const html = await readFile(new URL(file, import.meta.url), "utf8");
+    assert.match(html, /<link rel="stylesheet" href="\/cafeos-ui\.css">/);
+    assert.doesNotMatch(html, /google-analytics|googletagmanager|segment\.com|mixpanel|posthog/i);
+  }
+
+  const analyzer = await readFile(new URL("../public/analyzer.html", import.meta.url), "utf8");
+  const control = await readFile(new URL("../web/control-tower-e1.html", import.meta.url), "utf8");
+  assert.equal(analyzer.includes("queue-board"), false);
+  assert.equal(control.includes("metric-band"), false);
+
+  const feedback = await readFile(new URL("../public/feedback.html", import.meta.url), "utf8");
+  const controlIds=[...feedback.matchAll(/<(?:select|input)\s+id="([^"]+)"/g)].map(match=>match[1]);
+  for (const id of controlIds) {
+    assert.equal(
+      feedback.includes('for="' + id + '"'),
+      true,
+      "feedback control must have an explicit label association: " + id
+    );
+  }
+});
