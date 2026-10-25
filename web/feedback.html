@@ -1,24 +1,74 @@
-<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CafeOS validation feedback</title><style>:root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#1c1917;background:#f5f5f4}*{box-sizing:border-box}body{margin:0}.wrap{max-width:760px;margin:auto;padding:44px 20px}.card{background:#fff;border:1px solid #e7e5e4;border-radius:16px;padding:22px}.row{margin:14px 0}.hidden{display:none}label{display:block;font-weight:600;margin-bottom:6px}select,input{font:inherit;width:100%;padding:10px;border:1px solid #d6d3d1;border-radius:8px}button{font:inherit;background:#1c1917;color:#fff;border:0;border-radius:9px;padding:11px 14px;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.muted{color:#78716c;font-size:14px}.e1{margin-top:18px}.e1 a{display:inline-block;background:#fff;color:#1c1917;border:1px solid #1c1917;border-radius:9px;padding:10px 13px;text-decoration:none;font-weight:600}</style></head><body><main class="wrap"><h1>Validation feedback</h1><p class="muted">Không yêu cầu tên, email hay số điện thoại. Quyền đưa evidence ẩn danh vào validation bên dưới tách biệt với quyền xử lý file đã diễn ra ở bước Analyzer; checkbox này không cấp quyền hồi tố cho dữ liệu merchant.</p><form id="f" class="card">
-<div class="row"><label>POS/source</label><select id="source" required><option value="" disabled selected>Chọn…</option><option value="kiotviet">KiotViet</option><option value="cukcuk">CUKCUK</option><option value="sapo_fnb">Sapo FnB</option><option value="ipos">iPOS</option><option value="pos365">POS365</option><option value="generic_excel_csv">Excel/CSV chung</option><option value="other_pos">POS khác</option><option value="unknown">Không rõ</option></select></div>
-<div class="row"><label>Số cửa hàng</label><input id="stores" type="number" min="1" value="" required></div>
-<div class="row"><label>Vai trò người tham gia</label><select id="role" required><option value="" disabled selected>Chọn…</option><option value="owner_operator">Chủ/quản lý vận hành</option><option value="other">Vai trò khác</option></select></div>
-<div class="row"><label>Cho phép đưa record ẩn danh này vào validation evidence?</label><select id="permission" required><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-<div class="row"><label>Đã thử import vào Analyzer?</label><select id="importAttempted"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-<div class="row hidden" id="row-importSucceeded"><label>Import Analyzer thành công?</label><select id="importSucceeded"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-<div class="row hidden" id="row-reconciliationAttempted"><label>Đã đối chiếu orders/net sales với POS?</label><select id="reconciliationAttempted"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-<div class="row hidden" id="row-metricTrusted"><label>Sau đối chiếu, có tin các metric?</label><select id="metricTrusted"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-<div class="row hidden" id="row-insightReviewed"><label>Đã review ít nhất một insight?</label><select id="insightReviewed"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-<div class="row hidden" id="row-usefulNewInsight"><label>Insight đã review có mới và hữu ích?</label><select id="usefulNewInsight"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-<div class="row"><label>Đã hỏi họ có muốn dùng lại?</label><select id="repeatUseAsked"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-<div class="row hidden" id="row-repeatUseIntent"><label>Họ có muốn dùng lại?</label><select id="repeatUseIntent"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-<div class="row"><label>Đã hỏi họ có muốn auto-sync liên tục?</label><select id="continuousSyncAsked"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-<div class="row hidden" id="row-continuousSyncIntent"><label>Họ có muốn auto-sync liên tục?</label><select id="continuousSyncIntent"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-<div class="row"><label>Đã chứng minh giá trị vận hành cụ thể?</label><select id="valueDemonstrated"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-<div class="row hidden" id="row-wtpAsked"><label>Đã hỏi willingness-to-pay mà chưa đưa khoảng giá trước?</label><select id="wtpAsked"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-<div class="row hidden" id="row-willingnessToPay"><label>Họ có sẵn sàng trả tiền?</label><select id="willingnessToPay"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-<div class="row hidden" id="row-band"><label>Khoảng giá/tháng (tùy chọn, chỉ sau câu trả lời WTP)</label><select id="band"><option value="">Không ghi band</option><option value="<500k">&lt;500K</option><option value="500k-1m">500K–1M</option><option value="1m-2m">1M–2M</option><option value="2m+">2M+</option></select></div>
-<button id="download" type="submit" disabled>Tải validation record JSON</button>
-</form><section class="card e1" aria-labelledby="e1-title"><h2 id="e1-title">Muốn thử Control Tower E1?</h2><p class="muted">Đây là bước opt-in riêng, không thay đổi validation record ở trên. E1 giữ file merchant trong Analyzer local/transient và chỉ dùng dữ liệu synthetic cho Control Tower. GitHub issue là công khai: không đăng tên, email, số điện thoại, tên merchant/store, file dữ liệu, transaction/customer data hay credentials.</p><a href="https://github.com/ShenJun93/cafeos-analyzer/issues/new?template=control-tower-e1-interest.yml" rel="noopener noreferrer">Đăng ký quan tâm E1 trên GitHub</a></section></main><script>
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/cafeos-ui.css">
+<title>CafeOS validation feedback</title>
+</head>
+<body>
+<main class="page-shell feedback-shell">
+  <header class="masthead">
+    <div><div class="brand-mark">CafeOS Research</div><div class="kicker">Validation evidence</div></div>
+    <a class="btn ghost" href="/analyzer">Về Analyzer</a>
+  </header>
+
+  <section class="privacy-intro">
+    <div class="section-label">Privacy first</div>
+    <h1 class="display-title">Validation feedback, không phải contact form.</h1>
+    <p class="lede">Không yêu cầu tên, email hay số điện thoại. Quyền đưa evidence ẩn danh vào validation bên dưới tách biệt với quyền xử lý file đã diễn ra ở bước Analyzer; checkbox này <strong>không cấp quyền hồi tố</strong> cho dữ liệu merchant.</p>
+  </section>
+
+  <form id="f" class="feedback-form">
+<fieldset class="evidence-stage evidence-stage-context">
+  <legend><span>01 · Context</span>Ai đang đánh giá và dữ liệu đến từ đâu?</legend>
+  <div class="row"><label>POS/source</label><select id="source" required><option value="" disabled selected>Chọn…</option><option value="kiotviet">KiotViet</option><option value="cukcuk">CUKCUK</option><option value="sapo_fnb">Sapo FnB</option><option value="ipos">iPOS</option><option value="pos365">POS365</option><option value="generic_excel_csv">Excel/CSV chung</option><option value="other_pos">POS khác</option><option value="unknown">Không rõ</option></select></div>
+  <div class="row"><label>Số cửa hàng</label><input id="stores" type="number" min="1" value="" required></div>
+  <div class="row"><label>Vai trò người tham gia</label><select id="role" required><option value="" disabled selected>Chọn…</option><option value="owner_operator">Chủ/quản lý vận hành</option><option value="other">Vai trò khác</option></select></div>
+  <div class="row"><label>Cho phép đưa record ẩn danh này vào validation evidence?</label><select id="permission" required><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+</fieldset>
+<fieldset class="evidence-stage evidence-stage-trust">
+  <legend><span>02 · Import & trust</span>File có vào được Analyzer và số có đáng tin?</legend>
+  <div class="row"><label>Đã thử import vào Analyzer?</label><select id="importAttempted"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-importSucceeded"><label>Import Analyzer thành công?</label><select id="importSucceeded"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-reconciliationAttempted"><label>Đã đối chiếu orders/net sales với POS?</label><select id="reconciliationAttempted"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-metricTrusted"><label>Sau đối chiếu, có tin các metric?</label><select id="metricTrusted"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+</fieldset>
+<fieldset class="evidence-stage evidence-stage-insight">
+  <legend><span>03 · Insight</span>Có insight nào thực sự được review và hữu ích?</legend>
+  <div class="row hidden" id="row-insightReviewed"><label>Đã review ít nhất một insight?</label><select id="insightReviewed"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-usefulNewInsight"><label>Insight đã review có mới và hữu ích?</label><select id="usefulNewInsight"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+</fieldset>
+<fieldset class="evidence-stage evidence-stage-intent">
+  <legend><span>04 · Repeat / sync</span>Operator có muốn lặp lại workflow này?</legend>
+  <div class="row"><label>Đã hỏi họ có muốn dùng lại?</label><select id="repeatUseAsked"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-repeatUseIntent"><label>Họ có muốn dùng lại?</label><select id="repeatUseIntent"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row"><label>Đã hỏi họ có muốn auto-sync liên tục?</label><select id="continuousSyncAsked"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-continuousSyncIntent"><label>Họ có muốn auto-sync liên tục?</label><select id="continuousSyncIntent"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+</fieldset>
+<fieldset class="evidence-stage evidence-stage-value">
+  <legend><span>05 · Value / WTP</span>Chỉ hỏi willingness-to-pay sau khi value đã được chứng minh.</legend>
+  <div class="row"><label>Đã chứng minh giá trị vận hành cụ thể?</label><select id="valueDemonstrated"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-wtpAsked"><label>Đã hỏi willingness-to-pay mà chưa đưa khoảng giá trước?</label><select id="wtpAsked"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-willingnessToPay"><label>Họ có sẵn sàng trả tiền?</label><select id="willingnessToPay"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-band"><label>Khoảng giá/tháng (tùy chọn, chỉ sau câu trả lời WTP)</label><select id="band"><option value="">Không ghi band</option><option value="<500k">&lt;500K</option><option value="500k-1m">500K–1M</option><option value="1m-2m">1M–2M</option><option value="2m+">2M+</option></select></div>
+</fieldset>
+<div class="feedback-conclusion">
+  <div><div class="section-label">Local evidence artifact</div><strong>Tải record JSON khi các dependency hợp lệ.</strong></div>
+  <button id="download" type="submit" disabled>Tải validation record JSON</button>
+</div>
+</form>
+
+  <section class="e1-research-invite" aria-labelledby="e1-title">
+    <div>
+      <div class="section-label">Next research layer</div>
+      <h2 id="e1-title">Muốn thử Control Tower E1?</h2>
+      <p class="muted">Đây là bước opt-in riêng, không thay đổi validation record ở trên. E1 giữ file merchant trong Analyzer local/transient và chỉ dùng dữ liệu synthetic cho Control Tower. GitHub issue là công khai: không đăng tên, email, số điện thoại, tên merchant/store, file dữ liệu, transaction/customer data hay credentials.</p>
+    </div>
+    <a class="btn secondary" href="https://github.com/ShenJun93/cafeos-analyzer/issues/new?template=control-tower-e1-interest.yml" rel="noopener noreferrer">Đăng ký quan tâm E1 trên GitHub</a>
+  </section>
+</main>
+<script>
 const q=new URLSearchParams(location.search);
 const byId=id=>document.getElementById(id);
 const bool=id=>byId(id).value===''?null:byId(id).value==='true';
@@ -125,4 +175,6 @@ byId('f').onsubmit=e=>{
   a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 };
-</script></html>
+</script>
+</body>
+</html>
