@@ -2,58 +2,96 @@
 
 ## Product mission
 
-Build the operating and customer-intelligence layer for multi-location café brands.
+Build **CafeOS as a full café operating ecosystem** for café owners and multi-location brands.
 
-CafeOS should help an owner or HQ team answer and act on four recurring questions:
+CafeOS should be able to own a merchant's first-party operating core where useful, while still integrating with an existing POS or other systems when replacing them is unnecessary.
 
-1. **What is happening across the business?**
-2. **Why is it happening, with evidence?**
-3. **Which customers, stores, products or dayparts need attention?**
-4. **What action should the team take, and did that action improve the outcome?**
+The product should help an operator repeatedly answer and execute five jobs:
 
-CafeOS is designed to sit **above existing POS and operational systems**, not to require a café to replace them.
+1. **SELL** — capture an order and settlement record correctly.
+2. **OPERATE** — run stores, people, inventory, customers and daily close.
+3. **UNDERSTAND** — know what is happening and why, with deterministic evidence.
+4. **ACT** — turn evidence into bounded operational or commercial action.
+5. **MEASURE** — determine what changed after the action.
+
+CafeOS is one product ecosystem, not a collection of unrelated dashboards.
+
+## Deployment modes
+
+CafeOS must support both:
+
+### CafeOS-native operation
+
+CafeOS owns first-party commerce execution such as Menu, CafeOS POS orders, payment records and daily close. Later modules may own inventory, loyalty, staff and additional operational workflows.
+
+### Integrated operation
+
+A merchant can keep an external POS or digital system. Analyzer/connectors ingest and reconcile that source into CafeOS without requiring replacement.
+
+The canonical model and Control Tower must ultimately work across both modes.
 
 ## Initial ICP
 
-Primary validation ICP: café brands with roughly **3–15 locations** that already use a POS or digital ordering system but lack a unified, evidence-backed control layer across stores and customers.
+Primary validation ICP remains café brands with roughly **3–15 locations**.
 
-The architecture may later support larger chains, but product sequencing must be validated against the initial ICP first.
+The architecture may support single-store operators and larger chains later, but sequencing should continue to optimize for owner/HQ operators who need one coherent operating system across locations.
 
-## Core product loop
+## Core product loops
 
-`CONNECT → UNIFY → UNDERSTAND → ACT → MEASURE`
+### First-party commerce loop
 
-- **CONNECT:** ingest data from POS, ordering, loyalty, payment and other systems.
-- **UNIFY:** map stores, products, transactions and customer identities into a canonical model.
-- **UNDERSTAND:** produce deterministic business metrics, customer/store health and evidence-backed anomalies.
-- **ACT:** turn insight into a bounded action, task, segment or experiment.
-- **MEASURE:** determine whether the action changed business outcomes.
+\`MENU → ORDER → PAYMENT RECORD → DAILY CLOSE → DASHBOARD\`
 
-## Product pillars
+### Intelligence/action loop
 
-1. **Data Foundation** — connectors, canonical model, identity, privacy, tenancy and evidence.
-2. **HQ / Owner Control Tower** — daily brief, store health, anomalies, multi-store comparison and decision queue.
-3. **Customer Intelligence** — Customer 360, lifecycle, frequency, retention, at-risk customers and segments.
-4. **Growth & Experimentation** — campaign/offer planning, treatment/control design and incremental outcome measurement.
-5. **Store Operations** — exception workflows, tasks, checklists, standards and cross-store follow-through.
-6. **Customer Experience** — membership, personalized offers, order-ahead/pickup and related guest-facing capabilities only when justified by evidence and integration feasibility.
+\`CONNECT → UNIFY → UNDERSTAND → ACT → MEASURE\`
 
-## What CafeOS is not
+First-party CafeOS transactions and integrated external transactions must eventually converge in a common deterministic read-model without fabricating source lineage.
 
-CafeOS is **not initially**:
+## Product modules
 
-- a replacement POS;
-- a payment processor;
-- a full accounting/payroll/ERP suite;
-- a generic BI dashboard builder;
-- an AI spreadsheet assistant;
-- a loyalty points clone with no measurement layer.
+1. **Platform Core** — auth, tenancy, RBAC, auditability, settings, privacy, APIs, backup/restore and billing.
+2. **Core Commerce / CafeOS POS** — menu, first-party orders, payment records, daily close and store sales execution.
+3. **Store Operations** — checklists, issue follow-up, standards and recurring execution workflows.
+4. **Inventory** — ingredients, recipes, receipts, transfers, depletion, variance and stock visibility.
+5. **Customers & Loyalty** — deterministic identity, membership, points/benefits, lifecycle and retention.
+6. **Staff** — staff directory, roles, shifts, attendance and operational accountability.
+7. **Finance & Reconciliation** — close, payment reconciliation, COGS/margin and bounded operating expense views.
+8. **Analyzer** — file import, onboarding, compatibility, reconciliation and legacy/external POS bridge.
+9. **Control Tower** — Daily Brief, Store Health, Attention, Action and Measurement.
+10. **Integrations** — external POS, ordering, loyalty, payment, accounting and delivery systems.
 
-Existing systems may continue to own transaction capture, kitchen/bar execution, payment, inventory and accounting. CafeOS should integrate with them and own the cross-system intelligence/action loop.
+## Trust model
+
+CafeOS follows these rules across every module:
+
+1. **Numbers are deterministic.** LLM output must not create or alter business metrics, prices, totals, balances or inventory truth.
+2. **Insights show evidence.** Scope, comparison baseline, coverage and supporting evidence must be inspectable.
+3. **Missing data degrades capability explicitly.** Do not fabricate precision.
+4. **Tenant isolation is a release blocker.**
+5. **System-of-record boundaries stay explicit.** CafeOS-native facts and imported facts must preserve provenance.
+
+## What is not complete in Core Commerce v1
+
+The full ecosystem is the canonical direction, but the first commerce slice does **not** claim completion of:
+
+- payment acquiring or card-token processing;
+- refunds/split payment;
+- KDS/bar routing;
+- modifiers/toppings/combos;
+- full inventory/recipe depletion;
+- loyalty execution;
+- payroll;
+- full accounting/ERP;
+- e-invoicing;
+- delivery dispatch;
+- offline-first native POS.
+
+These are deferred/later modules or slices, not rejected directions.
 
 ## Role of CafeOS Analyzer
 
-**CafeOS Analyzer is a module and wedge, not the mission.**
+**CafeOS Analyzer is a module and wedge, not the CafeOS product.**
 
 Its jobs are:
 
@@ -62,27 +100,45 @@ Its jobs are:
 - compatibility discovery;
 - deterministic metric validation;
 - data-quality/reconciliation;
-- proving that the CafeOS intelligence layer can create trusted value.
+- migration bridge from existing POS systems;
+- fallback import path.
 
 Analyzer must never redefine CafeOS as “an Excel upload product.”
+
+## Role of Control Tower
+
+Control Tower is the cross-store decision layer above both CafeOS-native and integrated operating data.
+
+It owns:
+
+- Daily Brief;
+- Store Health;
+- Attention;
+- Action;
+- Measurement;
+- evidence and source-boundary communication.
+
+It must not silently mix first-party and imported facts until the read-model preserves lineage and comparable metric semantics.
 
 ## Decision hierarchy
 
 For product-level decisions, authority order is:
 
-1. `MISSION.md`
-2. `docs/PRODUCT_ARCHITECTURE.md`
-3. `docs/ROADMAP.md`
-4. product/module PRDs
+1. \`MISSION.md\`
+2. \`docs/PRODUCT_ARCHITECTURE.md\`
+3. \`docs/ROADMAP.md\`
+4. product/module PRDs and approved design specs
 5. implementation docs/tests
 
 A module PRD may narrow implementation scope, but it may not silently replace the CafeOS product mission.
 
 ## Anti-drift rules
 
-- Validation exists to reduce uncertainty about the mission; it must not become the mission by default.
+- Do not confuse the current shipped slice with the whole CafeOS vision.
 - Do not add features merely because they are easy to build.
-- Do not clone commodity POS functionality unless evidence proves it is strategically necessary.
+- Analyzer remains narrow even though CafeOS grows broader.
+- First-party execution belongs in explicit CafeOS modules, not inside Analyzer.
+- Prefer integration where it lowers risk/cost, but do not forbid first-party execution when it is core to CafeOS.
 - Do not let AI-generated analysis own numeric business truth.
-- Every new module must identify the job, evidence, system of record, action owner and measurable business outcome.
-- Primary distribution must remain pull/inbound; the business must not depend on cold outbound sales.
+- Every new module must identify the job, evidence, system-of-record boundary, action owner and measurable outcome.
+- Primary distribution must remain **pull/inbound**; CafeOS must not depend on cold outbound sales.
