@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(41);
+select plan(42);
 
 insert into public.tenants (id,name) values
  ('71000000-0000-4000-8000-000000000011','Commerce A'),
@@ -230,6 +230,17 @@ select results_eq(
  'Dashboard reports first-party paid sales'
 );
 
+-- The synthetic price-race order is paid at its original snapshot amount,
+-- not at the Menu price after the test-trigger change.
+select lives_ok(
+ $select public.commerce_capture_payment(
+ '71000000-0000-4000-8000-000000000011',
+ (select id from public.pos_orders where client_order_key='receipt-price-change'),
+ 'cash',70000,null
+ )$,
+ 'Price-changed Menu still settles the original trusted order amount'
+);
+
 select lives_ok(
  $$select public.commerce_create_order(
  '71000000-0000-4000-8000-000000000011',
@@ -278,7 +289,7 @@ select lives_ok(
 
 select results_eq(
  $$select sales_total from public.daily_closes$$,
- array[105000::numeric],
+ array[175000::numeric],
  'Daily close freezes deterministic sales snapshot'
 );
 
@@ -304,7 +315,7 @@ select lives_ok(
 
 select results_eq(
  $$select count(*) from public.pos_orders$$,
- array[2::bigint],
+ array[3::bigint],
  'Retry after close never creates a new order'
 );
 
