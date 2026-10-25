@@ -140,3 +140,55 @@ textarea{min-height:110px;resize:vertical}
   .operator-proof article+article{border-left:0;border-top:1px solid var(--line);padding-left:0}
   .landing-final{align-items:flex-start;flex-direction:column}
 }
+
+
+/* Analyzer — Operational Editorial */
+.analyzer-shell{padding-top:18px}
+.analyzer-commandbar{padding-bottom:22px;border-bottom:1px solid var(--line)}
+.analyzer-commandbar a{text-decoration:none}
+.intake-stage{display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,.72fr);gap:clamp(36px,7vw,90px);align-items:end;padding:62px 0 42px}
+.intake-copy .display-title{font-size:clamp(44px,6vw,76px);max-width:12ch;margin:10px 0 20px}
+.intake-panel{padding:24px 0 0;border-top:2px solid var(--espresso)}
+.file-control{display:grid;gap:10px;cursor:pointer}
+.file-control strong{font-family:var(--font-display);font-size:28px}
+.file-control input{margin-top:8px}
+.intake-actions{margin:16px 0 10px}
+.intake-actions a{font-size:14px}
+.report-stage{padding-top:48px}
+.report-heading{display:flex;justify-content:space-between;align-items:end;gap:24px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.report-heading h2{font-family:var(--font-display);font-size:clamp(30px,4vw,48px);margin:4px 0 0;line-height:1}
+.report-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(300px,.6fr);gap:42px;padding:32px 0 54px}
+.metric-band{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--line)}
+.metric-band .card{background:transparent;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:20px 16px 20px 0}
+.metric-band .card b{display:block;font-family:var(--font-display);font-size:clamp(32px,4vw,58px);line-height:1;margin-top:8px;letter-spacing:-.04em}
+.metric-band .card:nth-child(n+4){grid-column:span 3;display:grid;grid-template-columns:1fr auto;align-items:center}
+.metric-band .card:nth-child(n+4) b{font-family:var(--font-ui);font-size:18px}
+.evidence-rail{border-left:1px solid var(--line);padding-left:26px}
+.diagnostic-strip{display:grid;gap:0}
+.diagnostic-strip .card{border:0;border-radius:0;background:transparent;padding:14px 0;border-top:1px solid var(--line)}
+.diagnostic-strip .card b{display:block;font-size:22px;margin-top:4px}
+.diagnostic-strip .warn{border-left:4px solid var(--amber);padding-left:12px}
+.diagnostic-strip .bad{color:var(--danger)}
+.diagnostic-strip .ok{color:var(--verified)}
+.attention-stage{padding:54px 0;border-top:1px solid var(--line)}
+.attention-list{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(260px,.65fr);gap:16px}
+.attention-list .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);padding:22px}
+.attention-list .card:first-child{grid-row:span 2;padding:28px}
+.attention-list .card b{font-family:var(--font-display);font-size:36px;display:block;margin:10px 0}
+.attention-list .high{border-left:5px solid var(--danger)}
+.attention-list .warn{border-left:5px solid var(--amber)}
+.technical-evidence{padding:28px 0;border-top:1px solid var(--line)}
+.technical-evidence h2{font-family:var(--font-display);font-size:30px;margin:6px 0 18px}
+.technical-evidence .card{background:transparent;border:0;border-radius:0;padding:0}
+.technical-evidence table{width:100%;border-collapse:collapse}
+.technical-evidence th,.technical-evidence td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line)}
+.research-action{display:flex;align-items:end;justify-content:space-between;gap:28px;margin-top:42px;padding:30px;background:var(--paper-strong)}
+.research-action h2{font-family:var(--font-display);font-size:34px;margin:4px 0 6px}
+@media (max-width:720px){
+  .intake-stage,.report-grid,.attention-list{grid-template-columns:1fr}
+  .report-heading,.research-action{align-items:flex-start;flex-direction:column}
+  .metric-band{grid-template-columns:1fr}
+  .metric-band .card:nth-child(n+4){grid-column:auto}
+  .evidence-rail{border-left:0;border-top:1px solid var(--line);padding-left:0;padding-top:20px}
+  .attention-list .card:first-child{grid-row:auto}
+}
