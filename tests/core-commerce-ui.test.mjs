@@ -140,6 +140,7 @@ test("shared Hallmark CSS has a dedicated responsive commerce application layout
     ".pos-layout",
     ".menu-catalog",
     ".cart-panel",
+    ".open-order-list",
     ".commerce-metrics",
     ".daily-close-panel"
   ]) assert.equal(css.includes(marker), true, "missing CSS marker " + marker);
