@@ -38,7 +38,8 @@ export async function supabaseJson(path, {
   fetchImpl = globalThis.fetch,
   method = 'GET',
   body,
-  headers = {}
+  headers = {},
+  mapError
 } = {}) {
   if (typeof fetchImpl !== 'function') throw new AppHttpError(500, 'FETCH_UNAVAILABLE', 'Server fetch is unavailable');
   const { url, publishableKey } = appConfig(env);
@@ -73,8 +74,8 @@ export async function supabaseJson(path, {
     if (authRejected) {
       throw new AppHttpError(401, 'AUTH_INVALID', 'Session is invalid or expired');
     }
-    if (typeof arguments[1]?.mapError === 'function') {
-      const mapped = arguments[1].mapError({ status: response.status, payload });
+    if (typeof mapError === 'function') {
+      const mapped = mapError({ status: response.status, payload });
       if (mapped) throw mapped;
     }
     throw new AppHttpError(502, 'SUPABASE_UPSTREAM', 'Control Tower data service returned an error');
