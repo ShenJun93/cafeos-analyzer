@@ -192,3 +192,27 @@ textarea{min-height:110px;resize:vertical}
   .evidence-rail{border-left:0;border-top:1px solid var(--line);padding-left:0;padding-top:20px}
   .attention-list .card:first-child{grid-row:auto}
 }
+
+
+/* Feedback — Warm research form */
+.feedback-shell{width:min(860px,calc(100% - 40px));padding-top:18px}
+.feedback-shell .masthead a{text-decoration:none}
+.privacy-intro{padding:58px 0 40px}
+.privacy-intro .display-title{font-size:clamp(44px,7vw,72px);max-width:11ch;margin:10px 0 18px}
+.feedback-form{border-top:1px solid var(--line)}
+.evidence-stage{margin:0;padding:32px 0;border:0;border-bottom:1px solid var(--line);min-inline-size:0}
+.evidence-stage legend{display:grid;gap:4px;width:100%;font-family:var(--font-display);font-size:28px;line-height:1.15;margin-bottom:18px;padding:0}
+.evidence-stage legend span{font-family:var(--font-ui);font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--clay-deep)}
+.evidence-stage .row{display:grid;grid-template-columns:minmax(220px,.72fr) minmax(260px,1fr);gap:22px;align-items:center;padding:14px 0}
+.evidence-stage .row label{margin:0;font-weight:720}
+.evidence-stage .row select,.evidence-stage .row input{margin:0}
+.feedback-conclusion{display:flex;justify-content:space-between;align-items:center;gap:24px;padding:30px 0}
+.e1-research-invite{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:34px;align-items:end;margin-top:24px;padding:28px;background:var(--paper-strong);border-left:4px solid var(--clay)}
+.e1-research-invite h2{font-family:var(--font-display);font-size:34px;margin:5px 0 8px}
+.e1-research-invite a{text-decoration:none}
+@media (max-width:720px){
+  .feedback-shell{width:min(100% - 28px,860px)}
+  .evidence-stage .row{grid-template-columns:1fr;gap:7px}
+  .feedback-conclusion,.e1-research-invite{grid-template-columns:1fr;align-items:start}
+  .feedback-conclusion{flex-direction:column}
+}
