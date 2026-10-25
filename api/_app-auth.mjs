@@ -73,6 +73,10 @@ export async function supabaseJson(path, {
     if (authRejected) {
       throw new AppHttpError(401, 'AUTH_INVALID', 'Session is invalid or expired');
     }
+    if (typeof arguments[1]?.mapError === 'function') {
+      const mapped = arguments[1].mapError({ status: response.status, payload });
+      if (mapped) throw mapped;
+    }
     throw new AppHttpError(502, 'SUPABASE_UPSTREAM', 'Control Tower data service returned an error');
   }
   return payload;
@@ -166,6 +170,20 @@ export function requestJsonObject(req) {
 export function requireOperatorRole(ctx) {
   if (!['owner', 'admin', 'analyst'].includes(ctx?.tenant?.role)) {
     throw new AppHttpError(403, 'ROLE_FORBIDDEN', 'This workflow requires an operator role');
+  }
+  return ctx;
+}
+
+export function requireCommerceWriteRole(ctx) {
+  if (!['owner', 'admin', 'manager', 'cashier'].includes(ctx?.tenant?.role)) {
+    throw new AppHttpError(403, 'COMMERCE_ROLE_FORBIDDEN', 'This commerce workflow requires a commerce write role');
+  }
+  return ctx;
+}
+
+export function requireCommerceManagerRole(ctx) {
+  if (!['owner', 'admin', 'manager'].includes(ctx?.tenant?.role)) {
+    throw new AppHttpError(403, 'COMMERCE_MANAGER_FORBIDDEN', 'This commerce workflow requires a manager role');
   }
   return ctx;
 }
