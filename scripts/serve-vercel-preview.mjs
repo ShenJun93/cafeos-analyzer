@@ -144,7 +144,7 @@ export function createVercelShapePreviewServer({
           req.body = await parseJsonBody(req);
         }
         const originalUrl = req.url;
-        req.url = `/api/app/workflow?route=${encodeURIComponent(workflowRoute)}${url.search}`;
+        req.url = `/api/app/workflow?route=${encodeURIComponent(workflowRoute)}${url.search ? "&" + url.search.slice(1) : ""}`;
         try {
           return await dispatchWorkflow(req, res, deps);
         } finally {
