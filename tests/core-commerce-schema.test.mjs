@@ -145,3 +145,20 @@ test("service role keeps explicit maintenance access", () => {
     has(new RegExp("grant select, insert, update, delete on table public\\." + table + "\\s+to service_role;", "i"));
   }
 });
+
+
+test("incremental future-date close guard is Store-timezone aware and retains RPC role/privilege checks", async () => {
+  const patch = await readFile(
+    new URL("../db/contracts/core_commerce_future_close_guard.sql", import.meta.url), "utf8"
+  );
+  assert.match(patch, /create or replace function public\.commerce_close_day\(/i);
+  assert.match(patch, /security definer/i);
+  assert.match(patch, /auth\.uid\(\)[\s\S]*has_tenant_role\([\s\S]*'owner','admin','manager'/i);
+  assert.match(patch, /v_business_date\s*>\s*\(clock_timestamp\(\) at time zone v_timezone\)::date[\s\S]*COMMERCE_CLOSE_FUTURE_DATE/i);
+  assert.ok(
+    patch.indexOf("COMMERCE_CLOSE_FUTURE_DATE") < patch.indexOf("pg_advisory_xact_lock"),
+    "the future-date guard must execute before locking or creating a daily close"
+  );
+  assert.match(patch, /revoke all on function public\.commerce_close_day\(uuid, uuid, date\)[\s\S]*from public, anon, authenticated/i);
+  assert.match(patch, /grant execute on function public\.commerce_close_day\(uuid, uuid, date\)[\s\S]*to authenticated, service_role/i);
+});

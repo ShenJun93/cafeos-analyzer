@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(37);
+select plan(38);
 
 insert into public.tenants (id,name) values
  ('71000000-0000-4000-8000-000000000011','Commerce A'),
@@ -295,6 +295,19 @@ select ok(
 select ok(
  not has_function_privilege('anon','public.commerce_close_day(uuid,uuid,date)','EXECUTE'),
  'Anonymous users cannot invoke privileged daily-close RPC'
+);
+
+-- Prevent a manager from closing a future Store-local date,
+-- which would otherwise block every future order for that business date.
+set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000101';
+select throws_ok(
+ $$select public.commerce_close_day(
+    '71000000-0000-4000-8000-000000000011',
+    '71100000-0000-4000-8000-000000000011',
+    ((clock_timestamp() at time zone 'Asia/Ho_Chi_Minh')::date + 7)
+  )$$,
+ '22023','COMMERCE_CLOSE_FUTURE_DATE',
+ 'Future-dated Daily Close must not lock a day before it begins'
 );
 
 select * from finish();
