@@ -515,6 +515,15 @@ async function submitOrder() {
     });
     currentOrder = payload.order;
     pendingOrderSubmission = null;
+    if (currentOrder.status === "paid") {
+      const paidNumber = currentOrder.orderNumber;
+      cartState.clear();
+      currentOrder = null;
+      renderCart();
+      await loadDashboard();
+      setStatus("Order " + paidNumber + " đã được thanh toán từ lần trước.", "ok");
+      return;
+    }
     setStatus("Order " + currentOrder.orderNumber + " đã được tạo. Server total " + money(currentOrder.total) + ".", "ok");
   } catch (error) {
     // A request may have reached the server even when the response was lost.
@@ -532,21 +541,45 @@ async function capturePayment() {
   el("capturePayment").disabled = true;
   setStatus("Đang ghi payment record…");
   try {
-    const payload = await appFetch("/api/app/commerce-payment", {
-      method: "POST",
-      body: {
-        orderId: currentOrder.id,
-        method: el("paymentMethod").value,
-        amount: Number(currentOrder.total),
-        reference: el("paymentReference").value.trim() || null
+    const attemptedOrderId = currentOrder.id;
+    let recovered = false;
+    try {
+      await appFetch("/api/app/commerce-payment", {
+        method: "POST",
+        body: {
+          orderId: attemptedOrderId,
+          method: el("paymentMethod").value,
+          amount: Number(currentOrder.total),
+          reference: el("paymentReference").value.trim() || null
+        }
+      });
+    } catch (paymentError) {
+      // A lost response is not proof of a failed write. Reconcile tenant-scoped server state.
+      try {
+        const status = await appFetch(
+          "/api/app/commerce-order-status?orderId=" + encodeURIComponent(attemptedOrderId)
+        );
+        recovered = status.order?.id === attemptedOrderId
+          && status.order?.storeId === currentStoreId
+          && status.order?.status === "paid";
+      } catch {
+        // Unknown outcome: preserve this order for further reconciliation.
       }
-    });
-    currentOrder.status = payload.status;
+      if (!recovered) throw new Error(
+        "Chưa xác minh được payment. Đơn được giữ để kiểm tra/retry; " + paymentError.message
+      );
+    }
+    currentOrder.status = "paid";
     el("paymentPanel").classList.add("hidden");
-    setStatus("Payment record đã captured. Order đã paid.", "ok");
     cartState.clear();
     currentOrder = null;
     renderCart();
+    setStatus(
+      recovered
+        ? "Đã xác nhận payment thành công từ trạng thái server sau lỗi phản hồi."
+        : "Payment record đã captured. Order đã paid.",
+      "ok"
+    );
     await loadDashboard();
   } finally {
     paymentSubmitInFlight = false;

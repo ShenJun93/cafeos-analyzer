@@ -76,6 +76,7 @@ test("app shell uses the fixed authenticated endpoints", async () => {
     "/api/app/commerce-menu",
     "/api/app/commerce-order",
     "/api/app/commerce-payment",
+    "/api/app/commerce-order-status",
     "/api/app/commerce-dashboard",
     "/api/app/commerce-daily-close",
     "/api/app/brief"
@@ -97,6 +98,7 @@ test("app route is wired into Vercel, local preview, and deploy artifact", async
     "/api/app/commerce-menu",
     "/api/app/commerce-order",
     "/api/app/commerce-payment",
+    "/api/app/commerce-order-status",
     "/api/app/commerce-dashboard",
     "/api/app/commerce-daily-close"
   ]) assert.equal(preview.includes(path), true, "local preview missing " + path);
@@ -268,4 +270,67 @@ test("Control Tower outage degrades reporting but does not block POS; Menu outag
 
   runInContext('loadMenu = async () => { throw new Error("menu offline"); }', context);
   await assert.rejects(runInContext("refreshStore()", context), /menu offline/);
+});
+
+test("lost payment response reconciles paid order and preserves an open order", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const script = html.split("<script>")[1]?.split("</script>")[0];
+  assert.ok(script);
+  const nodes = new Map();
+  function elem(id) {
+    if (!nodes.has(id)) nodes.set(id, {
+      value: "", textContent: "", dataset: {}, disabled: false,
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener() {}, replaceChildren() {}, append() {}, reset() {}
+    });
+    return nodes.get(id);
+  }
+  const context = createContext({
+    document: {
+      getElementById: elem,
+      querySelectorAll: () => [],
+      createElement: () => elem("created_" + nodes.size)
+    },
+    window: { confirm: () => false },
+    fetch: async () => ({
+      ok: true, status: 200,
+      json: async () => ({ supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test" })
+    }),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "synthetic-key" }
+  });
+  runInContext(script, context);
+  elem("paymentMethod").value = "cash";
+  runInContext(`
+    sessionToken = "fake-jwt";
+    currentTenantId = "tenant-1";
+    currentStoreId = "store-1";
+    currentOrder = { id: "order-1", status: "open", total: 50000 };
+    let statusResult = "paid";
+    let statusChecks = 0;
+    let payments = 0;
+    let dashboardRefreshes = 0;
+    loadDashboard = async () => { dashboardRefreshes += 1; };
+    appFetch = async (path) => {
+      if (path === "/api/app/commerce-payment") {
+        payments += 1; throw new Error("network response lost");
+      }
+      if (path.startsWith("/api/app/commerce-order-status?orderId=")) {
+        statusChecks += 1;
+        return { order: { id: "order-1", storeId: "store-1", status: statusResult } };
+      }
+      throw new Error("unexpected route " + path);
+    };
+  `, context);
+  await runInContext("capturePayment()", context);
+  assert.equal(runInContext("currentOrder", context), null);
+  assert.equal(runInContext("statusChecks", context), 1);
+  assert.equal(runInContext("dashboardRefreshes", context), 1);
+  assert.match(elem("status").textContent, /xác nhận payment thành công/i);
+
+  runInContext('currentOrder = { id: "order-1", status: "open", total: 50000 }; statusResult = "open";', context);
+  await assert.rejects(runInContext("capturePayment()", context), /Chưa xác minh được payment/);
+  assert.equal(runInContext("currentOrder.status", context), "open");
+  assert.equal(runInContext("statusChecks", context), 2);
+  assert.equal(runInContext("dashboardRefreshes", context), 1);
 });

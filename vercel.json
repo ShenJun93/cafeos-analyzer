@@ -20,6 +20,10 @@
       "destination": "/api/app/workflow?route=commerce-payment"
     },
     {
+      "source": "/api/app/commerce-order-status",
+      "destination": "/api/app/workflow?route=commerce-order-status"
+    },
+    {
       "source": "/api/app/commerce-dashboard",
       "destination": "/api/app/workflow?route=commerce-dashboard"
     },

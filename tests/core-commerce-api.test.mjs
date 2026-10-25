@@ -10,6 +10,7 @@ import { handle as clientConfigHandle } from "../server/commerce/client-config.m
 import { handle as menuHandle } from "../server/commerce/menu.mjs";
 import { handle as orderHandle } from "../server/commerce/order.mjs";
 import { handle as paymentHandle } from "../server/commerce/payment.mjs";
+import { handle as orderStatusHandle } from "../server/commerce/order-status.mjs";
 import { handle as dashboardHandle } from "../server/commerce/dashboard.mjs";
 import { handle as dailyCloseHandle } from "../server/commerce/daily-close.mjs";
 
@@ -239,6 +240,7 @@ test("workflow dispatcher maps commerce routes without adding another Vercel API
     "commerce-menu",
     "commerce-order",
     "commerce-payment",
+    "commerce-order-status",
     "commerce-dashboard",
     "commerce-daily-close"
   ]) {
@@ -251,6 +253,7 @@ test("workflow dispatcher maps commerce routes without adding another Vercel API
     ["/api/app/commerce-menu", "/api/app/workflow?route=commerce-menu"],
     ["/api/app/commerce-order", "/api/app/workflow?route=commerce-order"],
     ["/api/app/commerce-payment", "/api/app/workflow?route=commerce-payment"],
+    ["/api/app/commerce-order-status", "/api/app/workflow?route=commerce-order-status"],
     ["/api/app/commerce-dashboard", "/api/app/workflow?route=commerce-dashboard"],
     ["/api/app/commerce-daily-close", "/api/app/workflow?route=commerce-daily-close"]
   ]);
@@ -285,4 +288,38 @@ test("workflow dispatch can call a commerce handler through the single applicati
     { "commerce-dashboard": async () => { seen.push("commerce-dashboard"); } }
   );
   assert.deepEqual(seen, ["commerce-dashboard"]);
+});
+
+test("order status endpoint is authenticated, GET-only, tenant-scoped and read-only", async () => {
+  const calls = [];
+  const response = res();
+  await orderStatusHandle(req(authHeaders, "GET", "/api/app/commerce-order-status?orderId=" + ORDER_A),
+    response, { env, fetchImpl: authFetch("cashier", async (url) => {
+      calls.push(url);
+      return jsonResponse([{ id: ORDER_A, store_id: STORE_A, status: "paid", total: 100000 }]);
+    }) });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(parsed(response).order, {
+    id: ORDER_A, storeId: STORE_A, status: "paid", total: 100000
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].pathname, "/rest/v1/pos_orders");
+  assert.equal(calls[0].searchParams.get("tenant_id"), "eq." + TENANT_A);
+  assert.equal(calls[0].searchParams.get("id"), "eq." + ORDER_A);
+  assert.equal(calls[0].searchParams.get("select"), "id,store_id,status,total");
+
+  const absent = res();
+  await orderStatusHandle(req(authHeaders, "GET", "/api/app/commerce-order-status?orderId=" + ORDER_A),
+    absent, { env, fetchImpl: authFetch("cashier") });
+  assert.equal(absent.statusCode, 404);
+
+  const noAuth = res();
+  await orderStatusHandle(req({}, "GET", "/api/app/commerce-order-status?orderId=" + ORDER_A),
+    noAuth, { env, fetchImpl: authFetch("cashier") });
+  assert.equal(noAuth.statusCode, 401);
+
+  const post = res();
+  await orderStatusHandle(req(authHeaders, "POST", "/api/app/commerce-order-status?orderId=" + ORDER_A),
+    post, { env, fetchImpl: authFetch("cashier") });
+  assert.equal(post.statusCode, 405);
 });

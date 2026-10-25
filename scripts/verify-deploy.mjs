@@ -25,6 +25,7 @@ const required = [
   'server/commerce/menu.mjs',
   'server/commerce/order.mjs',
   'server/commerce/payment.mjs',
+  'server/commerce/order-status.mjs',
   'server/commerce/dashboard.mjs',
   'server/commerce/daily-close.mjs',
   'public/cafeos-ui.css',
