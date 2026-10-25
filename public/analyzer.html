@@ -1,10 +1,98 @@
-<!doctype html><html lang="vi"><head><meta charset="utf-8"><link rel="canonical" href="https://cafeos-analyzer.vercel.app/analyzer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CafeOS Analyzer</title><style>
-:root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#1c1917;background:#f5f5f4}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1080px;margin:auto;padding:40px 20px 80px}h1{font-size:38px;margin:0}.sub{color:#78716c;margin:6px 0 28px}.drop{background:#fff;border:2px dashed #d6d3d1;border-radius:18px;padding:32px;text-align:center}.drop input{margin-top:12px}.status{margin:18px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.card{background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:16px}.card b{font-size:25px;display:block;margin-top:4px}.warn{border-left:5px solid #b45309}.high{border-left:5px solid #991b1b}.ok{color:#166534}.bad{color:#991b1b}.hidden{display:none}button,select{font:inherit;padding:9px 12px;border-radius:9px;border:1px solid #d6d3d1;background:#fff}button{cursor:pointer;background:#1c1917;color:#fff}.sheet-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}.mapping{display:grid;grid-template-columns:minmax(150px,1fr) 2fr;gap:10px;align-items:center;margin:12px 0}.mapping label{font-weight:600}h2{margin-top:32px}.muted{color:#78716c;font-size:14px}table{width:100%;border-collapse:collapse}td,th{padding:8px;border-bottom:1px solid #e7e5e4;text-align:left}</style></head><body><main class="wrap">
-<h1>CafeOS Analyzer</h1><p class="sub">Public validation preview · CSV/XLSX → deterministic metrics → evidence-backed insights.</p>
-<div class="drop"><strong>Chọn file bán hàng</strong><div class="muted">CSV hoặc XLSX, tối đa 4MB trên public preview. File được xử lý transient trong request và không được lưu vào database/object storage.</div><input id="file" type="file" accept=".csv,.xlsx"><div class="sheet-row"><button id="downloadProfile" type="button">Tải compatibility profile</button><a href="https://github.com/ShenJun93/cafeos-analyzer/issues/new?template=compatibility-report.yml" target="_blank" rel="noopener">Gửi compatibility profile</a><a href="/sample-report">Báo cáo mẫu</a></div><div class="muted">Compatibility profile chỉ chứa schema/header/count, không chứa row values.</div></div>
-<div id="sheetPicker" class="card hidden"></div><div id="mappingPanel" class="card hidden"></div><div id="status" class="status muted"></div>
-<div id="report" class="hidden"><h2>Executive metrics</h2><div id="metrics" class="grid"></div><h2>Data health</h2><div id="health" class="grid"></div><h2>Attention</h2><div id="insights" class="grid"></div><h2>Workbook</h2><div id="workbook"></div><div class="card" style="margin-top:24px"><strong>Giúp kiểm chứng CafeOS</strong><p class="muted">Feedback record không yêu cầu tên, email hoặc số điện thoại.</p><a id="feedbackLink" href="/feedback"><button type="button">Tạo validation feedback</button></a></div></div>
-</main><script>
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<link rel="canonical" href="https://cafeos-analyzer.vercel.app/analyzer">
+<link rel="stylesheet" href="/cafeos-ui.css">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CafeOS Analyzer</title>
+</head>
+<body>
+<main class="page-shell page-shell--wide analyzer-shell">
+  <header class="commandbar analyzer-commandbar">
+    <div>
+      <div class="brand-mark">CafeOS Analyzer</div>
+      <div class="kicker">Public validation preview</div>
+    </div>
+    <div class="cluster">
+      <a class="btn secondary" href="/sample-report">Báo cáo mẫu</a>
+      <a class="btn ghost" href="/">Về CafeOS</a>
+    </div>
+  </header>
+
+  <section class="intake-stage" aria-labelledby="analyzer-title">
+    <div class="intake-copy">
+      <div class="section-label">CSV/XLSX → evidence</div>
+      <h1 id="analyzer-title" class="display-title">Đọc file bán hàng như một báo cáo vận hành, không như một dashboard trang trí.</h1>
+      <p class="lede">Deterministic metrics trước; data-health và evidence sau; insight chỉ xuất hiện khi dữ liệu đủ để nói điều có ích.</p>
+    </div>
+    <div class="intake-panel">
+      <label class="file-control" for="file">
+        <span class="section-label">Input</span>
+        <strong>Chọn file bán hàng</strong>
+        <span class="muted">CSV hoặc XLSX, tối đa 4MB trên public preview. File được xử lý transient trong request và không được lưu vào database/object storage.</span>
+        <input id="file" type="file" accept=".csv,.xlsx">
+      </label>
+      <div class="cluster intake-actions">
+        <button id="downloadProfile" type="button" class="secondary">Tải compatibility profile</button>
+        <a href="https://github.com/ShenJun93/cafeos-analyzer/issues/new?template=compatibility-report.yml" target="_blank" rel="noopener">Gửi compatibility profile</a>
+      </div>
+      <div class="muted">Compatibility profile chỉ chứa schema/header/count, không chứa row values.</div>
+    </div>
+  </section>
+
+  <div id="sheetPicker" class="technical-evidence hidden"></div>
+  <div id="mappingPanel" class="technical-evidence hidden"></div>
+  <div id="status" class="status-strip muted" aria-live="polite"></div>
+
+  <section id="report" class="report-stage hidden">
+    <header class="report-heading">
+      <div>
+        <div class="section-label">Executive read</div>
+        <h2>Nhìn số chính trước, rồi kiểm evidence.</h2>
+      </div>
+      <span class="muted">Không có metric nào được AI tự suy ra.</span>
+    </header>
+
+    <div class="report-grid">
+      <section aria-labelledby="metrics-title">
+        <div class="section-label" id="metrics-title">Primary metrics</div>
+        <div id="metrics" class="metric-band"></div>
+      </section>
+      <aside class="evidence-rail" aria-labelledby="health-title">
+        <div class="section-label" id="health-title">Data health</div>
+        <div id="health" class="diagnostic-strip"></div>
+      </aside>
+    </div>
+
+    <section class="attention-stage" aria-labelledby="attention-title">
+      <div class="section-head">
+        <div>
+          <div class="section-label">Attention</div>
+          <h2 id="attention-title">Điểm cần nhìn trước</h2>
+        </div>
+        <span class="muted">Evidence dates và baseline được giữ cạnh insight.</span>
+      </div>
+      <div id="insights" class="attention-list"></div>
+    </section>
+
+    <section class="technical-evidence" aria-labelledby="workbook-title">
+      <div class="section-label">Technical evidence</div>
+      <h2 id="workbook-title">Workbook / source mapping</h2>
+      <div id="workbook"></div>
+    </section>
+
+    <section class="research-action">
+      <div>
+        <div class="section-label">Research action</div>
+        <h2>Giúp kiểm chứng CafeOS</h2>
+        <p class="muted">Feedback record không yêu cầu tên, email hoặc số điện thoại.</p>
+      </div>
+      <a id="feedbackLink" class="btn" href="/feedback">Tạo validation feedback</a>
+    </section>
+  </section>
+</main>
+<script>
 const REQUIRED=['transaction_id','occurred_at','store','product','quantity','net_amount'];const FIELDS=[...REQUIRED,'customer_phone'];const LABELS={transaction_id:'Transaction ID',occurred_at:'Date/time',store:'Store',product:'Product',quantity:'Quantity',net_amount:'Net amount',customer_phone:'Customer phone (optional)'};
 const fileInput=document.querySelector('#file'),statusEl=document.querySelector('#status'),report=document.querySelector('#report'),sheetPicker=document.querySelector('#sheetPicker'),mappingPanel=document.querySelector('#mappingPanel');let currentFile;
 const money=n=>new Intl.NumberFormat('vi-VN').format(n)+' ₫',pct=n=>new Intl.NumberFormat('vi-VN',{style:'percent',maximumFractionDigits:1}).format(n),card=(label,value,cls='')=>`<div class="card ${cls}"><span>${label}</span><b>${value}</b></div>`;
@@ -17,4 +105,6 @@ function escHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<'
 document.querySelector('#downloadProfile').onclick=async()=>{if(!currentFile){statusEl.textContent='Chọn file trước khi tạo compatibility profile.';return}statusEl.textContent='Đang tạo compatibility profile…';const {r,data}=await post('/api/profile?filename='+encodeURIComponent(currentFile.name),currentFile);if(!r.ok){statusEl.textContent='Lỗi: '+(data.error||r.statusText);return}const blob=new Blob([JSON.stringify(data,null,2)+'\n'],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='cafeos-compatibility-profile.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);statusEl.textContent='Đã tạo compatibility profile không chứa row values.'};
 const qs=new URLSearchParams(location.search);const feedback=document.querySelector('#feedbackLink');for(const k of ['utm_source','utm_medium','utm_campaign'])if(qs.get(k))feedback.href += (feedback.href.includes('?')?'&':'?')+k+'='+encodeURIComponent(qs.get(k));
 fileInput.onchange=()=>{currentFile=fileInput.files?.[0];if(currentFile)inspect(currentFile)};
-</script></body></html>
+</script>
+</body>
+</html>
