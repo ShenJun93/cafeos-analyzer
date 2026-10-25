@@ -118,7 +118,7 @@ The product-level discovery gate in issue #11 remains open because real target-I
 - All six Commerce tables have RLS enabled on **cafeos-staging** (`wjatnyvdygvblirggdcm`). **Full migration-history drift:** initially 8 Git migration versions and 7 staging versions with zero timestamp intersections; now 9 Git candidates after adding an **unapplied** future-close guard migration; Commerce SQL is byte-identical (29,843 characters) despite different timestamps, but two foundation migrations are not recorded in staging history. See `docs/research/2026-10-25-core-commerce-staging-migration-differential.md`. Never blindly reapply or bulk-repair.
 - Direct staging pgTAP result: **37/37 PASS** at the latest synthetic SQL audit. Added nine assertions that authenticated users cannot directly INSERT into trusted Order/Order Items/Payment/Daily Close tables or UPDATE Order/Payment, and `anon` cannot invoke create-order/payment/close privileged RPCs (test-source commit `32f0b8d`). Earlier cases cover tenant-isolated reads, role-denied writes, idempotency, exact payment and daily close. Test transaction **ROLLED BACK**; staging synthetic tenant/order/payment/close counts returned zero.
 - Security Advisor reports three `authenticated_security_definer_function_executable` warnings for intentional order/payment/close RPCs; live SQL confirms `anon` cannot execute, `authenticated` can execute, and functions check `auth.uid()` and role through `private.has_tenant_role`. These are **warnings to review**, not an independently completed security sign-off. Leaked-password protection is separately disabled.
-- Exact-head GitHub CI and Supabase DB CI must both pass after each branch update. Local/browser visual QA at 390px and 1200px, authenticated real-transport synthetic E2E and independent security review are **not yet accepted**. Neither PR merge nor production DB/application promotion is authorized.
+- Exact-head GitHub CI and Supabase DB CI must both pass after each branch update. **Chromium visual QA with synthetic API fixtures at 390px/1200px has now PASSed** (see latest visual QA checkpoint below). Authenticated real-transport staging E2E, independent security review and migration reconciliation remain **NOT_RUN / BLOCKED**. Neither PR merge nor production DB/application promotion is authorized.
 
 ## Core Commerce follow-up: checkout recovery and optional reporting
 
@@ -129,7 +129,7 @@ The product-level discovery gate in issue #11 remains open because real target-I
 - Order recovery is a synthetic candidate with mocked UI/API unit tests; it is not yet a production cashier acceptance or actual browser E2E.
 - Local workflow router now preserves query parameters (including `orderId` and `storeId`); regression tests cover unauthenticated HTTP routes and paid/open response recovery.
 - Staging foundation object survey: all 11 expected tables have RLS enabled. A separate read-only Git-vs-live catalog reconciliation found **11/11 baseline tables, 17/17 policies, 14/14 indexes, 3/3 functions and 1/1 trigger** by object name. Existence is not SQL definition equivalence nor repaired migration history.
-- Newer exact-head CI, authenticated HTTP E2E, real rendered UI screenshots at 390/1200px, privilege review and migration history reconciliation remain release gates.
+- Newer exact-head CI, authenticated *real staging* HTTP E2E, privilege review and migration history reconciliation remain release gates. Rendered Chromium screenshots at 390px/1200px were obtained later with synthetic API fixtures (not a real staging user).
 
 ## Real HTTP integration milestone (synthetic transport)
 
@@ -161,6 +161,15 @@ The product-level discovery gate in issue #11 remains open because real target-I
 - Owner-controlled plan with full version mapping, receipt fingerprints, backup/compensation steps and staged gates: `docs/research/2026-10-25-cafeos-staging-ledger-reconciliation-runbook.md` (`a6f96b0`). **No history repair, `db push`, staging guard deployment or production change has occurred.**
 - Existing foundation constraints observed in the live catalog: 22/22 explicitly named baseline constraints found (excluding the `DROP CONSTRAINT IF EXISTS` phrase). This does **not** prove equivalence of all unnamed CHECK/FK and managed-schema objects; independent review required.
 - Git has 9 migration candidate files; staging has 7 old receipt versions with zero timestamp intersections. The proposed history repair would map 7 old receipts to 8 canonical historically materialized migrations, leaving the ninth future-close patch **PENDING**, but **must not be executed without explicit owner-approved backup and review**.
+
+## Chromium-rendered visual QA and mobile navigation fix (2026-10-25)
+
+- `.github/workflows/cafeos-visual-qa.yml` runs **pinned Playwright Chromium 1.64.1** against the real local `/app` HTML/CSS with **only the Auth/API transport mocked**. No real Supabase credentials, staging writes, merchant records, or Vercel-protected preview session.
+- `scripts/visual-qa-core-commerce.mjs` performs sign-in, manager POS item selection/cart, create-order/payment, Menu, Dashboard, Daily Close reject-confirm/accept-confirm, Control Tower, and cashier-only control restrictions at **390×844 and 1200×800**. Every screenshot asserts zero horizontal *page* overflow.
+- Browser captured **20 synthetic screenshots**, uploaded as GitHub Actions artifact `12600214260` on run `40197858463`, exact source commit `2ab98f6`. This artifact is short-lived (7 days); regenerate via workflow when needed. Browser screenshots were independently inspected at 390/1200.
+- The first Chromium run detected an **audit assertion bug**, not an app crash: manager-only form was correctly inside an inactive hidden Menu workspace. The test now checks the form's own `.hidden` state instead of viewport visibility. That revision PASSed at `cf4b2a8`.
+- Independent screenshot review found the original mobile tab strip cut off Daily Close / Control Tower / Analyzer on 390px. **Fixed** with two-row visible six-module navigation at <=720px and added bounding-box assertions that every module tab is on-screen. Run `40197858463` **PASS** and subsequent run `40197862580` **PASS** on `2ab98f6`. Main CI `40197862307` and Supabase DB CI `40197862301` also **PASS** at that exact source.
+- This closes **synthetic-rendered visual QA**, *not* authenticated live staging/browser E2E. Preview uses Vercel Authentication. PR #74 stays **DRAFT / NO_GO**; future-close guard still unapplied on staging.
 
 ## Next engineering action
 
