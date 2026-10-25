@@ -40,19 +40,28 @@ inventory as (
      'public.commerce_capture_payment(uuid,uuid,text,numeric,text)'::regprocedure,
      'public.commerce_close_day(uuid,uuid,date)'::regprocedure
    )
-   and p.prosecdef and not has_function_privilege('anon',p.oid,'EXECUTE')
+   and p.prosecdef
+   and p.proconfig @> array['search_path=pg_catalog, public, private, pg_temp']::text[]
+   and position('private.has_tenant_role' in pg_get_functiondef(p.oid)) > 0
+   and not has_function_privilege('anon',p.oid,'EXECUTE')
    and has_function_privilege('authenticated',p.oid,'EXECUTE')
- ) as guarded_rpc_grants
+ ) as guarded_rpc_grants,
+ (not has_schema_privilege('anon','public','CREATE') and
+  not has_schema_privilege('authenticated','public','CREATE') and
+  not has_schema_privilege('anon','private','CREATE') and
+  not has_schema_privilege('authenticated','private','CREATE')) as untrusted_schema_creates_blocked
 )
 select *,
  case
  when ledger_total=7 and canonical_present=0 and legacy_present=7
       and guards_marked_applied=0 and not future_guard_live and not price_guard_live
       and commerce_rls_tables=6 and guarded_rpc_grants=3
+      and untrusted_schema_creates_blocked
    then 'PRE_REPAIR_NO_GO'
  when ledger_total=8 and canonical_present=8 and legacy_present=0
       and guards_marked_applied=0 and not future_guard_live and not price_guard_live
       and commerce_rls_tables=6 and guarded_rpc_grants=3
+      and untrusted_schema_creates_blocked
    then 'HISTORY_READY_GUARDS_PENDING_OWNER_APPROVAL'
  else 'STOP_REVIEW_REQUIRED'
  end as audit_phase
