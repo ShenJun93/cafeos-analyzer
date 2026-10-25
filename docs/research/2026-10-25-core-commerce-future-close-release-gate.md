@@ -37,3 +37,9 @@ The live create-order RPC blocks new orders for any `business_date` recorded in 
 | Direct staging pgTAP before patch | 37/37 PASS; not testing future-date guard |
 | Staging migration ledger | **BLOCKED** |
 | Production merge / schema / release | **HOLD** |
+
+## Read-only ledger reconciliation evidence
+
+At checkpoint `f4dfca0`, a live staging execution of the committed query `scripts/sql/cafeos-staging-legacy-ledger-readonly-preflight.sql` returned: `matching_ledger=7`, `ledger_total=7`, `matching_columns=107`, `matching_indexes=14`, `matching_policies=17`, `matching_functions=3`, `matching_grants_rls=11`, `expected_trigger_enabled=1`, `future_guard_not_deployed=true`. A read-only constraint inventory found all 22 explicitly named baseline constraints. No schema/ledger mutation occurred.
+
+The detailed mapping and stop/rollback gates are recorded at `docs/research/2026-10-25-cafeos-staging-ledger-reconciliation-runbook.md`. The SQL is deliberately pinned to the seven historical receipts, so it will fail after an authorized ledger rewrite; do not mistake that expected change for a new schema regression.

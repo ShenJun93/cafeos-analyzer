@@ -154,6 +154,14 @@ The product-level discovery gate in issue #11 remains open because real target-I
 - This new migration increases candidate Git migration files to **9**, while staging remains at **7** different history versions. No staging/production migration was applied or repaired. Live staging stays **NO_GO** for real merchant writes pending ledger reconciliation, controlled deployment, and reread acceptance.
 - Reproduction and rollout gate: `docs/research/2026-10-25-core-commerce-future-close-release-gate.md`.
 
+## Migration ledger reconciliation preflight — 2026-10-25
+
+- Repeatable **READ-ONLY** staging audit: `scripts/sql/cafeos-staging-legacy-ledger-readonly-preflight.sql` verified **7/7 original migration receipts**, **107/107 baseline columns/types**, **14/14 index definitions**, **17/17 RLS policy definitions**, **3/3 private function bodies**, **11/11 baseline grant/RLS profiles**, and the enabled history trigger. All checks PASS on staging before repair. The function bodies were separately compared against Git after whitespace normalization (3/3 exact).
+- The script also confirms `COMMERCE_CLOSE_FUTURE_DATE` is **absent** from the live staging RPC; it must be absent until the unapplied migration is deliberately deployed.
+- Owner-controlled plan with full version mapping, receipt fingerprints, backup/compensation steps and staged gates: `docs/research/2026-10-25-cafeos-staging-ledger-reconciliation-runbook.md` (`a6f96b0`). **No history repair, `db push`, staging guard deployment or production change has occurred.**
+- Existing foundation constraints observed in the live catalog: 22/22 explicitly named baseline constraints found (excluding the `DROP CONSTRAINT IF EXISTS` phrase). This does **not** prove equivalence of all unnamed CHECK/FK and managed-schema objects; independent review required.
+- Git has 9 migration candidate files; staging has 7 old receipt versions with zero timestamp intersections. The proposed history repair would map 7 old receipts to 8 canonical historically materialized migrations, leaving the ninth future-close patch **PENDING**, but **must not be executed without explicit owner-approved backup and review**.
+
 ## Next engineering action
 
 1. Confirm exact-head CI + blank-database pgTAP on PR #74; record failures at the actual HEAD, not at earlier commits.
