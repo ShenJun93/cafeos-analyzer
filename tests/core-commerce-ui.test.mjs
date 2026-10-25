@@ -142,3 +142,14 @@ test("shared Hallmark CSS has a dedicated responsive commerce application layout
 
   assert.match(css, /@media \(max-width:720px\)[\s\S]*\.pos-layout/);
 });
+
+
+test("POS create-order retries reuse an intent key and lock the cart while request is uncertain", async () => {
+  const html=await readFile(new URL("../public/app.html", import.meta.url),"utf8");
+  assert.match(html,/let pendingOrderSubmission = null;/);
+  assert.match(html,/let orderSubmitInFlight = false;/);
+  assert.match(html,/clientOrderKey: pendingOrderSubmission\.clientOrderKey/);
+  assert.match(html,/if \(!pendingOrderSubmission\)[\s\S]*?crypto\.randomUUID\(\)/);
+  assert.match(html,/finally\s*\{[\s\S]*?orderSubmitInFlight = false;/);
+  assert.match(html,/renderCart\(\);[\s\S]*?submitOrder/);
+});
