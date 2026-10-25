@@ -25,9 +25,9 @@ test("Core Commerce creates the six bounded first-party commerce tables", () => 
     "pos_payments",
     "daily_closes"
   ]) {
-    has(new RegExp("create table if not exists public\\\\." + table + "\\\\s*\\\\(", "i"), "missing " + table);
-    has(new RegExp("alter table public\\\\." + table + " enable row level security;", "i"), "RLS missing " + table);
-    has(new RegExp("revoke all on table public\\\\." + table + " from anon, authenticated;", "i"), "explicit revoke missing " + table);
+    has(new RegExp("create table if not exists public\\." + table + "\\s*\\(", "i"), "missing " + table);
+    has(new RegExp("alter table public\\." + table + "\\s+enable row level security;", "i"), "RLS missing " + table);
+    has(new RegExp("revoke all on table public\\." + table + "\\s+from anon, authenticated;", "i"), "explicit revoke missing " + table);
   }
 });
 
@@ -58,14 +58,14 @@ test("commerce relationships stay tenant scoped and foreign-key hot paths are in
 test("menu writes are manager bounded while commerce facts are raw read-only to authenticated users", () => {
   has(/grant select, insert on table public\.menu_categories to authenticated;/i);
   has(/grant select, insert on table public\.menu_items to authenticated;/i);
-  has(/menu_categories_manager_insert[\s\S]*has_tenant_role\(tenant_id, array\['owner','admin','manager'\]/i);
-  has(/menu_items_manager_insert[\s\S]*has_tenant_role\(tenant_id, array\['owner','admin','manager'\]/i);
+  has(/menu_categories_manager_insert[\s\S]*has_tenant_role\(\s*tenant_id\s*,\s*array\['owner','admin','manager'\]/i);
+  has(/menu_items_manager_insert[\s\S]*has_tenant_role\(\s*tenant_id\s*,\s*array\['owner','admin','manager'\]/i);
 
   for (const table of ["pos_orders", "pos_order_items", "pos_payments", "daily_closes"]) {
-    has(new RegExp("grant select on table public\\\\." + table + " to authenticated;", "i"));
+    has(new RegExp("grant select on table public\\." + table + "\\s+to authenticated;", "i"));
     assert.doesNotMatch(
       sql,
-      new RegExp("grant\\\\s+[^;]*(insert|update|delete)[^;]*on table public\\\\." + table + "\\\\s+to authenticated", "i"),
+      new RegExp("grant\\s+[^;]*(insert|update|delete)[^;]*on table public\\." + table + "\\s+to authenticated", "i"),
       table + " must not have direct authenticated writes"
     );
   }
@@ -85,7 +85,7 @@ test("order model is idempotent and all trusted totals are constrained", () => {
 test("order RPC is atomic, role checked, derives menu price, and detects conflicting retries", () => {
   has(/create or replace function public\.commerce_create_order\(/i);
   has(/security definer/i);
-  has(/auth\.uid\(\)[\s\S]*has_tenant_role\(p_tenant_id, array\['owner','admin','manager','cashier'\]/i);
+  has(/auth\.uid\(\)[\s\S]*has_tenant_role\(\s*p_tenant_id\s*,\s*array\['owner','admin','manager','cashier'\]/i);
   has(/jsonb_array_elements\(p_items\)/i);
   has(/from public\.menu_items/i);
   has(/mi\.price/i);
@@ -128,8 +128,8 @@ test("commerce RPC execution is explicitly revoked from public/anon and granted 
     "commerce_daily_dashboard\\(uuid, uuid, date\\)",
     "commerce_close_day\\(uuid, uuid, date\\)"
   ]) {
-    has(new RegExp("revoke all on function public\\\\." + signature + " from public, anon", "i"));
-    has(new RegExp("grant execute on function public\\\\." + signature + " to authenticated, service_role", "i"));
+    has(new RegExp("revoke all on function public\\." + signature + "\\s+from public, anon", "i"));
+    has(new RegExp("grant execute on function public\\." + signature + "\\s+to authenticated, service_role", "i"));
   }
 });
 
@@ -142,6 +142,6 @@ test("service role keeps explicit maintenance access", () => {
     "pos_payments",
     "daily_closes"
   ]) {
-    has(new RegExp("grant select, insert, update, delete on table public\\\\." + table + " to service_role;", "i"));
+    has(new RegExp("grant select, insert, update, delete on table public\\." + table + "\\s+to service_role;", "i"));
   }
 });
