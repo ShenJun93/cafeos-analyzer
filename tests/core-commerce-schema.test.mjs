@@ -91,7 +91,7 @@ test("order RPC is atomic, role checked, derives menu price, and detects conflic
   has(/mi\.price/i);
   has(/mi\.name/i);
   has(/request_fingerprint/i);
-  has(/client_order_key = p_client_order_key/i);
+  has(/client_order_key = v_client_order_key/i);
   has(/COMMERCE_IDEMPOTENCY_CONFLICT/i);
   assert.doesNotMatch(sql, /p_(?:unit_)?price/i);
   assert.doesNotMatch(sql, /p_(?:sub)?total/i);
