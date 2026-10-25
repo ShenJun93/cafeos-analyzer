@@ -334,3 +334,27 @@ test("lost payment response reconciles paid order and preserves an open order", 
   assert.equal(runInContext("statusChecks", context), 2);
   assert.equal(runInContext("dashboardRefreshes", context), 1);
 });
+
+test("local workflow router keeps orderId/storeId query params and denies anonymous reads", async () => {
+  const server = createVercelShapePreviewServer({
+    root: new URL("..", import.meta.url).pathname,
+    env: { SUPABASE_URL: "https://example.supabase.co", SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test" }
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  try {
+    const port = server.address().port;
+    const order = await fetch("http://127.0.0.1:" + port +
+      "/api/app/commerce-order-status?orderId=16000000-0000-4000-8000-000000000001");
+    assert.equal(order.status, 401);
+    assert.equal((await order.json()).error.code, "AUTH_REQUIRED");
+
+    const dashboard = await fetch("http://127.0.0.1:" + port +
+      "/api/app/commerce-dashboard?storeId=11000000-0000-4000-8000-000000000001&businessDate=2026-10-25");
+    assert.equal(dashboard.status, 401);
+    assert.equal((await dashboard.json()).error.code, "AUTH_REQUIRED");
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
+});
