@@ -20,6 +20,7 @@ const required = [
   'server/app/action-status.mjs',
   'server/app/measurement-window.mjs',
   'server/app/action-detail.mjs',
+  'public/cafeos-ui.css',
   'public/index.html',
   'public/analyzer.html',
   'public/sample-report.html',
