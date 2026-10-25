@@ -68,7 +68,34 @@ test("greenpath reconciliation acceptance never targets staging or production", 
   assert.match(script, /HISTORY_READY_GUARDS_PENDING_OWNER_APPROVAL/);
   assert.match(script, /PRE_REPAIR_NO_GO/);
   assert.match(script, /STOP_REVIEW_REQUIRED/);
+  assert.match(script, /POST_GUARDS_NOT_READY_REVIEW/);
+  assert.match(script, /POST_GUARDS_READY_FOR_AUTH_E2E/);
+  assert.match(script, /cafeos-staging-post-guards-readonly-gate\.sql/);
   assert.match(script, /CAFEOS_LOCAL_GREENPATH_PASS/);
   assert.match(script, /trap cleanup EXIT/);
   assert.doesNotMatch(script, /--linked|supabase link|wjatnyvdygvblirggdcm|SUPABASE_ACCESS_TOKEN|service_role|sb_secret_/i);
+});
+
+test("post-guard acceptance checks canonical ledger, SQL protections and financial invariants without writes", async () => {
+  const source = await readFile(
+    new URL("../scripts/sql/cafeos-staging-post-guards-readonly-gate.sql", import.meta.url),
+    "utf8"
+  );
+  const sql = source.split("\n").filter(line => !/^\s*--/.test(line)).join("\n");
+  assert.match(sql.trimStart(), /^with\s+/i);
+  assert.equal((sql.match(/;/g) || []).length, 1);
+  assert.doesNotMatch(sql, /\b(?:create\s+(?:or\s+replace\s+)?(?:table|function)|alter\s+table|insert\s+into|update\s+\w+\s+set|delete\s+from|drop\s+(?:table|function)|grant\s+|revoke\s+|truncate\s+)\b/i);
+  for (const key of [
+    "POST_GUARDS_READY_FOR_AUTH_E2E",
+    "POST_GUARDS_NOT_READY_REVIEW",
+    "canonical_present=10",
+    "legacy_present=0",
+    "COMMERCE_CLOSE_FUTURE_DATE",
+    "v_snapshot_items",
+    "rls_tables=6",
+    "guarded_rpc_grants=3",
+    "bad_order_subtotals=0",
+    "bad_payment_states=0",
+    "bad_daily_closes=0"
+  ]) assert.ok(sql.includes(key), "post-guard assertion missing: " + key);
 });

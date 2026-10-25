@@ -27,6 +27,9 @@ guards_present() {
 phase() {
   psql "$DB_URL" -Atq -f scripts/sql/cafeos-staging-post-repair-readonly-gate.sql | awk -F '|' 'NF { print $NF }' | tail -n 1
 }
+post_guard_phase() {
+  psql "$DB_URL" -Atq -f scripts/sql/cafeos-staging-post-guards-readonly-gate.sql | awk -F '|' 'NF { print $NF }' | tail -n 1
+}
 fingerprint() {
   psql "$DB_URL" -Atq -c "select md5(pg_get_functiondef('public.commerce_create_order(uuid,uuid,text,text,jsonb)'::regprocedure) || pg_get_functiondef('public.commerce_close_day(uuid,uuid,date)'::regprocedure) || pg_get_functiondef('public.commerce_capture_payment(uuid,uuid,text,numeric,text)'::regprocedure) || (select count(*)::text from public.tenants) || (select count(*)::text from public.pos_orders))"
 }
@@ -36,6 +39,7 @@ supabase db reset --local --no-seed --version "$HISTORICAL_LAST"
 assert_versions "${HISTORICAL[@]}"
 [[ "$(guards_present)" == "f" ]]
 [[ "$(phase)" == "HISTORY_READY_GUARDS_PENDING_OWNER_APPROVAL" ]]
+[[ "$(post_guard_phase)" == "POST_GUARDS_NOT_READY_REVIEW" ]]
 baseline="$(fingerprint)"
 
 # Old-version placeholders live ONLY in the disposable runner checkout.
@@ -72,5 +76,7 @@ supabase migration up --db-url "$DB_URL"
 assert_versions "${FULL[@]}"
 [[ "$(guards_present)" == "t" ]]
 [[ "$(phase)" == "STOP_REVIEW_REQUIRED" ]]
+[[ "$(post_guard_phase)" == "POST_GUARDS_READY_FOR_AUTH_E2E" ]]
 supabase test db
+[[ "$(post_guard_phase)" == "POST_GUARDS_READY_FOR_AUTH_E2E" ]]
 echo "CAFEOS_LOCAL_GREENPATH_PASS: pre=8 legacy=7 reconciled=8 guarded=10"
