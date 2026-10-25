@@ -31,3 +31,21 @@ test("restore drill never uploads or preserves the logical dump bundle", async (
   assert.match(script, /rm -rf "\$bundle_dir"/);
   assert.doesNotMatch(script, /upload-artifact/i);
 });
+
+
+test("history-repair drill is isolated to local synthetic Supabase and checks no schema/data change", async () => {
+  const script = await readFile(
+    new URL("../scripts/run-local-ledger-reconciliation-drill.sh", import.meta.url), "utf8"
+  );
+  assert.match(script, /readonly DB_URL="postgresql:\/\/postgres:postgres@127\.0\.0\.1:54322\/postgres"/);
+  assert.match(script, /pg_isready -h 127\.0\.0\.1 -p 54322/);
+  assert.match(script, /inet_server_addr\(\).*inet_server_port\(\)/s);
+  assert.match(script, /supabase migration repair --db-url "\$DB_URL" --status reverted/);
+  assert.match(script, /supabase migration repair --db-url "\$DB_URL" --status applied/);
+  assert.match(script, /CAFEOS_LOCAL_LEDGER_REPAIR_DRILL_PASS/);
+  assert.match(script, /STOP_REVIEW_REQUIRED/);
+  assert.match(script, /before_schema/);
+  assert.match(script, /before_data/);
+  assert.doesNotMatch(script, /--linked|supabase link|wjatnyvdygvblirggdcm|SUPABASE_ACCESS_TOKEN|service_role|sb_secret_/i);
+  assert.doesNotMatch(script, /db push|supabase db reset|rm -rf|curl|https?:\/\/(?!(?:127\.0\.0\.1|localhost))/i);
+});
