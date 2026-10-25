@@ -101,3 +101,14 @@ GitHub CI runs `40191235831` and `40191231740` completed **PASS** at commit `c08
 - Read-only live privilege survey: all 6 Commerce tables RLS ON; `anon` no table SELECT/INSERT; `authenticated` can SELECT, can INSERT to `menu_categories`/`menu_items` subject to manager RLS, and has **no direct INSERT/UPDATE on `pos_orders`, `pos_order_items`, `pos_payments`, `daily_closes`**.
 - Nine SQL privilege cases were added to `supabase/tests/database/core_commerce_v1.test.sql`; live staging pgTAP now **37/37 PASS, 0 FAIL**, in one rolled-back transaction. Synthetic tenant/order/payment/close counts remained 0 afterwards. New test source commit `32f0b8d`.
 - Advisor still reports 3 intentional authenticated-executable SECURITY DEFINER RPC warnings plus leaked-password protection disabled. Do not infer complete security sign-off or repair migration history from the test count.
+
+## New candidate-only incremental future-date close guard
+
+A read/write-in-transaction synthetic probe on **2026-10-25** showed that `public.commerce_close_day` accepts **2026-11-01** as a closed date. The probe returned the same future business date; transaction `ROLLBACK` left **zero** test tenant/close records. This is a release-blocking business invariant violation: the create-order RPC checks that a day is not closed and could then refuse all future orders for that date.
+
+A new **unapplied** migration has been committed:
+`supabase/migrations/20261025130000_core_commerce_future_close_guard.sql`, text-equivalent to `db/contracts/core_commerce_future_close_guard.sql`. It preserves the current SECURITY DEFINER role checks/grants but prevents close when `v_business_date > (clock_timestamp() at time zone v_timezone)::date`. New pgTAP case asserts SQLSTATE 22023 and `COMMERCE_CLOSE_FUTURE_DATE` for synthetic future close (plan 38).
+
+**Ledger inventory changed:** the original comparison was 8 Git migration filenames versus 7 staging records; it is now **9 Git candidate filenames versus the same 7 staging entries**. The new one is never to be counted as applied on staging merely because a GitHub scratch-DB test passes. No ledger change or DDL was run on staging in this batch.
+
+See `docs/research/2026-10-25-core-commerce-future-close-release-gate.md` before releasing.
