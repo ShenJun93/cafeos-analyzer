@@ -153,3 +153,68 @@ test("POS create-order retries reuse an intent key and lock the cart while reque
   assert.match(html,/finally\s*\{[\s\S]*?orderSubmitInFlight = false;/);
   assert.match(html,/renderCart\(\);[\s\S]*?submitOrder/);
 });
+
+
+test("unfinished POS checkout prevents Store/Tenant refresh from losing the idempotency key", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const script = html.match(/<script>([\\s\\S]*?)<\\/script>/)?.[1];
+  assert.ok(script, "inline app controller must exist");
+
+  const elements = new Map();
+  function element(id) {
+    if (!elements.has(id)) {
+      elements.set(id, {
+        value: "", textContent: "", dataset: {}, disabled: false,
+        classList: { add() {}, remove() {}, toggle() {} },
+        addEventListener() {}, replaceChildren() {}, append() {}, reset() {}
+      });
+    }
+    return elements.get(id);
+  }
+  const requests = [];
+  const context = createContext({
+    document: {
+      getElementById: element,
+      querySelectorAll: () => [],
+      createElement: () => element("created_" + elements.size)
+    },
+    window: { confirm: () => false },
+    fetch: async (url) => {
+      requests.push(String(url));
+      return {
+        ok: true, status: 200,
+        json: async () => ({ supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test" })
+      };
+    },
+    URLSearchParams, Intl, crypto: { randomUUID: () => "fixed-order-key" }
+  });
+  runInContext(script, context);
+  await runInContext('Promise.resolve()', context);
+  runInContext(`
+    sessionToken = "test-token";
+    currentTenantId = "tenant-A";
+    currentStoreId = "store-A";
+    pendingOrderSubmission = { clientOrderKey: "order-locked", storeId: "store-A", channel: "counter", items: [] };
+    cartState.set("coffee", { item: { id: "coffee", name: "Coffee", price: 25000 }, quantity: 1 });
+  `, context);
+  element("tenant").value = "tenant-B";
+  element("store").value = "store-B";
+  const requestCount = requests.length;
+  await runInContext("loadTenant()", context);
+  assert.equal(element("tenant").value, "tenant-A", "tenant switch must roll back");
+  assert.equal(element("store").value, "store-A", "store selection must roll back");
+  assert.equal(runInContext("pendingOrderSubmission.clientOrderKey", context), "order-locked");
+  assert.equal(runInContext("cartState.size", context), 1);
+  assert.equal(requests.length, requestCount, "blocked tenant change must not fetch");
+  await runInContext("refreshStore()", context);
+  assert.equal(runInContext("pendingOrderSubmission.clientOrderKey", context), "order-locked");
+  assert.equal(requests.length, requestCount, "refresh must not drop an ambiguous order");
+
+  runInContext('pendingOrderSubmission = null; currentOrder = { id: "unpaid", status: "open" }', context);
+  element("store").value = "store-B";
+  await runInContext("refreshStore()", context);
+  assert.equal(runInContext("currentOrder.id", context), "unpaid", "unpaid order must stay payable");
+  assert.equal(element("store").value, "store-A");
+  assert.equal(requests.length, requestCount);
+});
