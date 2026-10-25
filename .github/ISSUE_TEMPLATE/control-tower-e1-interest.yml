@@ -1,0 +1,71 @@
+name: Control Tower E1 validation interest
+description: Opt in to a permissioned E1 session using your local Analyzer data plus synthetic Control Tower data.
+title: "[E1 interest] Control Tower validation"
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is public.
+
+        **Do not post** your name, email, phone number, merchant/brand/store name, raw CSV/XLSX export, customer data, transaction IDs, credentials, API keys, screenshots containing merchant data, or private interview notes.
+
+        E1 keeps your merchant export in the approved local/transient Analyzer path. The Control Tower portion uses **synthetic data**, clearly labeled as not your store data.
+
+        Opening this issue is only an inbound signal that you want to participate. It does not authorize CafeOS to process or persist merchant operational data in Control Tower.
+
+  - type: dropdown
+    id: participant_role
+    attributes:
+      label: Your role class
+      description: Choose the closest bounded classification. Do not add a personal job title.
+      options:
+        - Owner / operator
+        - HQ decision-maker
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: store_count_bucket
+    attributes:
+      label: Number of locations
+      options:
+        - 1
+        - 2
+        - 3–5
+        - 6–10
+        - 11–15
+        - 16+
+    validations:
+      required: true
+
+  - type: dropdown
+    id: transaction_source
+    attributes:
+      label: Main POS / transaction-source class
+      description: Choose only a normalized source class. Do not enter account IDs, merchant names, report filenames, or store names.
+      options:
+        - KiotViet F&B
+        - Sapo FnB
+        - CUKCUK
+        - POS365
+        - iPOS
+        - Haravan
+        - Generic Excel / CSV
+        - Other POS
+        - Unknown
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: public_privacy_ack
+    attributes:
+      label: Public privacy acknowledgement
+      options:
+        - label: I understand this GitHub issue is public and I will not post merchant/contact identity, raw merchant files, customer data, transaction IDs, credentials, or private notes.
+          required: true
+        - label: I understand E1 uses my merchant export only in the approved local/transient Analyzer path and uses synthetic Control Tower data.
+          required: true
+        - label: I am explicitly opting in to receive public-safe next-step instructions for a permissioned E1 validation session.
+          required: true

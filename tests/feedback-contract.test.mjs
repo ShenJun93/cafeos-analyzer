@@ -64,3 +64,38 @@ test("feedback attribution is bounded and evidence permission is not retroactive
   assert.doesNotMatch(script, /referrer/i);
   assert.match(html, /không cấp quyền hồi tố/i);
 });
+
+
+test("E1 inbound opt-in is public-safe, bounded and separate from Analyzer evidence", async () => {
+  const template = await readFile(
+    new URL("../.github/ISSUE_TEMPLATE/control-tower-e1-interest.yml", import.meta.url),
+    "utf8"
+  );
+  const publicHtml = await readFile(new URL("../public/feedback.html", import.meta.url), "utf8");
+  const localHtml = await readFile(new URL("../web/feedback.html", import.meta.url), "utf8");
+
+  const ids = [...template.matchAll(/^\s+id:\s*([a-z0-9_]+)\s*$/gmi)].map(match => match[1]);
+  assert.deepEqual(ids, [
+    "participant_role",
+    "store_count_bucket",
+    "transaction_source",
+    "public_privacy_ack"
+  ]);
+
+  assert.doesNotMatch(template, /^\s*- type:\s*(?:input|textarea)\s*$/gmi);
+  assert.match(template, /This issue is public/);
+  assert.match(template, /Do not post/);
+  assert.match(template, /local\/transient Analyzer path/);
+  assert.match(template, /synthetic data/i);
+  assert.match(template, /does not authorize CafeOS to process or persist merchant operational data/i);
+
+  const cta = "issues/new?template=control-tower-e1-interest.yml";
+  for (const html of [publicHtml, localHtml]) {
+    assert.equal(html.includes(cta), true);
+    assert.ok(
+      html.indexOf("</form>") < html.indexOf(cta),
+      "E1 interest CTA must remain outside the Analyzer validation evidence form"
+    );
+    assert.match(html, /không đăng tên, email, số điện thoại/i);
+  }
+});
