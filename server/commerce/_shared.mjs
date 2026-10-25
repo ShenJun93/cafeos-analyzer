@@ -48,3 +48,21 @@ export function commerceUpstreamError({ payload }) {
   }
   return new AppHttpError(400, code, "Commerce request was rejected");
 }
+
+// Decimal validation must not multiply binary floats by 100. Valid inputs such
+// as 0.29 / 2.55 are not always exactly representable in IEEE-754.
+export function parseCommerceMoney(value, { code, message, max, allowZero = false }) {
+  if ((typeof value !== "number" && typeof value !== "string")
+      || (typeof value === "number" && !Number.isFinite(value))) {
+    throw new AppHttpError(400, code, message);
+  }
+  const decimal = String(value).trim();
+  if (!/^(?:0|[1-9][0-9]*)(?:[.][0-9]{1,2})?$/.test(decimal)) {
+    throw new AppHttpError(400, code, message);
+  }
+  const amount = Number(decimal);
+  if (!Number.isFinite(amount) || amount > max || (!allowZero && amount <= 0)) {
+    throw new AppHttpError(400, code, message);
+  }
+  return amount;
+}

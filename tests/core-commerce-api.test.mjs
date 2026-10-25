@@ -420,3 +420,55 @@ test("open-order recovery paginates older orders without unbounded reads", async
     assert.equal(parsed(failed).error.code, "COMMERCE_OPEN_ORDERS_OFFSET_INVALID");
   }
 });
+
+test("Menu accepts exact two-decimal prices rejected by binary-float multiplication", async () => {
+  const accepted = [0.07, 0.29, 2.55, 19999.99, "0.29", 0, 35000];
+  for (const price of accepted) {
+    let transmitted;
+    const response = res();
+    await menuHandle(req(authHeaders, "POST", "/api/app/commerce-menu", {
+      kind: "item", name: "Decimal menu regression", price
+    }), response, {
+      env,
+      fetchImpl: authFetch("manager", async (url, init) => {
+        assert.equal(url.pathname, "/rest/v1/menu_items");
+        transmitted = JSON.parse(init.body).price;
+        return jsonResponse([{ id: ITEM_A, price: transmitted }], 201);
+      })
+    });
+    assert.equal(response.statusCode, 201, "Menu should accept: " + price);
+    assert.equal(transmitted, Number(price));
+  }
+  for (const price of [null, true, [1], -1, 0.001, 2.555, "0.290", "1e3", 1000000000.01]) {
+    const response = res();
+    await menuHandle(req(authHeaders, "POST", "/api/app/commerce-menu", {
+      kind: "item", name: "Invalid precision", price
+    }), response, { env, fetchImpl: authFetch("manager") });
+    assert.equal(response.statusCode, 400, "Menu must reject: " + String(price));
+    assert.equal(parsed(response).error.code, "MENU_ITEM_PRICE_INVALID");
+  }
+});
+
+test("Payment amount rejects invalid scale/types but accepts common floating-decimal cent values", async () => {
+  for (const amount of [0.07, 0.29, 2.55, 19999.99, "2.55", 35000]) {
+    let transmitted;
+    const response = res();
+    await paymentHandle(req(authHeaders, "POST", "/api/app/commerce-payment", {
+      orderId: ORDER_A, method: "cash", amount
+    }), response, { env, fetchImpl: authFetch("cashier", async (url, init) => {
+      assert.equal(url.pathname, "/rest/v1/rpc/commerce_capture_payment");
+      transmitted = JSON.parse(init.body).p_amount;
+      return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { amount: transmitted } });
+    }) });
+    assert.equal(response.statusCode, 201, "Payment should accept: " + amount);
+    assert.equal(transmitted, Number(amount));
+  }
+  for (const amount of [null, true, [], [1], -1, 0, 0.001, 2.555, "0.290", "1e3", 1000000000000.01]) {
+    const response = res();
+    await paymentHandle(req(authHeaders, "POST", "/api/app/commerce-payment", {
+      orderId: ORDER_A, method: "cash", amount
+    }), response, { env, fetchImpl: authFetch("cashier") });
+    assert.equal(response.statusCode, 400, "Payment must reject: " + String(amount));
+    assert.equal(parsed(response).error.code, "COMMERCE_PAYMENT_AMOUNT_INVALID");
+  }
+});

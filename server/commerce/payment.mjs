@@ -11,7 +11,8 @@ import {
 import {
   commerceUpstreamError,
   requiredUuid,
-  strictFields
+  strictFields,
+  parseCommerceMoney
 } from "./_shared.mjs";
 
 const ALLOWED_FIELDS = new Set(["orderId", "method", "amount", "reference"]);
@@ -29,10 +30,11 @@ export async function handle(req, res, deps = {}) {
     if (!METHODS.has(method)) {
       throw new AppHttpError(400, "COMMERCE_PAYMENT_METHOD_INVALID", "Payment method is invalid");
     }
-    const amount = Number(body.amount);
-    if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000000000 || Math.round(amount * 100) !== amount * 100) {
-      throw new AppHttpError(400, "COMMERCE_PAYMENT_AMOUNT_INVALID", "Payment amount is invalid");
-    }
+    const amount = parseCommerceMoney(body.amount, {
+      code: "COMMERCE_PAYMENT_AMOUNT_INVALID",
+      message: "Payment amount is invalid",
+      max: 1000000000000
+    });
     const reference = body.reference === undefined || body.reference === null || String(body.reference).trim() === ""
       ? null
       : String(body.reference).trim();

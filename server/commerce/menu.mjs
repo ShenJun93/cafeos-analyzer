@@ -7,7 +7,7 @@ import {
   requireCommerceManagerRole,
   supabaseJson
 } from "../../api/_app-auth.mjs";
-import { UUID_RE, strictFields } from "./_shared.mjs";
+import { UUID_RE, strictFields, parseCommerceMoney } from "./_shared.mjs";
 
 const CATEGORY_FIELDS = new Set(["kind", "name", "sortOrder"]);
 const ITEM_FIELDS = new Set(["kind", "categoryId", "sku", "name", "price"]);
@@ -52,10 +52,12 @@ function itemBody(body, tenantId) {
     max: 100,
     nullable: true
   });
-  const price = Number(body.price);
-  if (!Number.isFinite(price) || price < 0 || price > 1000000000 || Math.round(price * 100) !== price * 100) {
-    throw new AppHttpError(400, "MENU_ITEM_PRICE_INVALID", "Menu item price is invalid");
-  }
+  const price = parseCommerceMoney(body.price, {
+    code: "MENU_ITEM_PRICE_INVALID",
+    message: "Menu item price is invalid",
+    max: 1000000000,
+    allowZero: true
+  });
   return { tenant_id: tenantId, category_id: categoryId, sku, name, price, active: true };
 }
 
