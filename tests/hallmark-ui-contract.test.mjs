@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { once } from "node:events";
+import { createVercelShapePreviewServer } from "../scripts/serve-vercel-preview.mjs";
 
 test("Hallmark shared stylesheet defines CafeOS tokens and accessibility guards", async () => {
   const css = await readFile(new URL("../public/cafeos-ui.css", import.meta.url), "utf8");
@@ -185,4 +187,29 @@ test("Hallmark final gate keeps responsive, accessible and non-generic frontend 
       "feedback control must have an explicit label association: " + id
     );
   }
+});
+
+
+test("shared stylesheet is served by the real local preview path", async () => {
+  const server=createVercelShapePreviewServer({root:process.cwd()});
+  server.listen(0,"127.0.0.1");
+  await once(server,"listening");
+  try {
+    const address=server.address();
+    const response=await fetch("http://127.0.0.1:"+address.port+"/cafeos-ui.css");
+    assert.equal(response.status,200);
+    assert.match(response.headers.get("content-type")||"",/^text\/css;\s*charset=utf-8/i);
+    assert.match(await response.text(),/--paper:/);
+  } finally {
+    server.close();
+    await once(server,"close");
+  }
+});
+
+test("keyboard focus has a non-color-mix fallback before enhanced focus styling", async () => {
+  const css = await readFile(new URL("../public/cafeos-ui.css", import.meta.url), "utf8");
+  assert.match(
+    css,
+    /:focus-visible\{outline:3px solid var\(--clay\);outline:3px solid color-mix/
+  );
 });
