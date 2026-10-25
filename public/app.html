@@ -189,6 +189,7 @@ let currentDashboard = null;
 let pendingOrderSubmission = null;
 let orderSubmitInFlight = false;
 let paymentSubmitInFlight = false;
+let closeSubmitInFlight = false;
 let menuState = { categories: [], items: [] };
 const cartState = new Map();
 
@@ -286,6 +287,12 @@ function hasUnfinishedCheckout() {
 }
 
 function preventUnsafeContextReset() {
+  if (closeSubmitInFlight) {
+    el("tenant").value = currentTenantId || "";
+    el("store").value = currentStoreId || "";
+    setStatus("Daily Close đang xử lý. Không đổi Tenant/Store cho tới khi có kết quả.", "error");
+    return true;
+  }
   if (!hasUnfinishedCheckout()) return false;
   el("tenant").value = currentTenantId || "";
   el("store").value = currentStoreId || "";
@@ -297,8 +304,8 @@ function preventUnsafeContextReset() {
 }
 
 function signOut() {
-  if (orderSubmitInFlight || paymentSubmitInFlight) {
-    return setStatus("Yêu cầu POS đang xử lý; không đăng xuất khi chưa có kết quả.", "error");
+  if (orderSubmitInFlight || paymentSubmitInFlight || closeSubmitInFlight) {
+    return setStatus("Yêu cầu POS/Daily Close đang xử lý; không đăng xuất khi chưa có kết quả.", "error");
   }
   if (hasUnfinishedCheckout() && !window.confirm(
     "Đơn chưa hoàn tất. Đăng xuất sẽ xóa bộ nhớ retry/payment trong trình duyệt. Tiếp tục?"
@@ -313,6 +320,7 @@ function signOut() {
   pendingOrderSubmission = null;
   orderSubmitInFlight = false;
   paymentSubmitInFlight = false;
+  closeSubmitInFlight = false;
   cartState.clear();
   el("openOrderList").replaceChildren();
   el("appPanel").classList.add("hidden");
@@ -778,28 +786,43 @@ function renderClosePreview() {
     money(currentDashboard.salesTotal) + " sales · " +
     currentDashboard.openOrderCount + " open orders" +
     (currentDashboard.closed ? " · CLOSED" : " · OPEN");
-  el("closeDay").disabled = !canManageCommerce() || Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
+  el("closeDay").disabled = !canManageCommerce() || closeSubmitInFlight || Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
 }
 
 async function closeBusinessDay() {
   if (!canManageCommerce()) throw new Error("Manager role required for Daily Close");
-  if (!currentStoreId || !currentDashboard) return;
+  if (!currentStoreId || !currentDashboard || closeSubmitInFlight
+      || currentDashboard.closed || Number(currentDashboard.openOrderCount) > 0) return;
+  const selectedStore = currentStoreId;
+  const businessDate = currentDashboard.businessDate;
+  const question = "Xác nhận đóng ngày " + businessDate +
+    " với " + currentDashboard.orderCount + " đơn đã thanh toán và " +
+    money(currentDashboard.salesTotal) +
+    " doanh thu? Sau khi đóng, Store này không thể tạo đơn mới cho ngày đó.";
+  if (!window.confirm(question)) return;
+  closeSubmitInFlight = true;
+  el("closeDay").disabled = true;
   setStatus("Đang đóng business day…");
-  const payload = await appFetch("/api/app/commerce-daily-close", {
-    method: "POST",
-    body: {
-      storeId: currentStoreId,
-      businessDate: currentDashboard.businessDate
-    }
-  });
-  const receipt = el("closeReceipt");
-  receipt.textContent =
-    "Close " + payload.close.businessDate +
-    " · " + payload.close.orderCount + " orders · " +
-    money(payload.close.salesTotal) + " sales · " +
-    money(payload.close.paymentTotal) + " payments";
-  setStatus("Daily Close hoàn tất.", "ok");
-  await loadDashboard();
+  try {
+    const payload = await appFetch("/api/app/commerce-daily-close", {
+      method: "POST",
+      body: {
+        storeId: selectedStore,
+        businessDate
+      }
+    });
+    const receipt = el("closeReceipt");
+    receipt.textContent =
+      "Close " + payload.close.businessDate +
+      " · " + payload.close.orderCount + " orders · " +
+      money(payload.close.salesTotal) + " sales · " +
+      money(payload.close.paymentTotal) + " payments";
+    setStatus("Daily Close hoàn tất.", "ok");
+    await loadDashboard();
+  } finally {
+    closeSubmitInFlight = false;
+    renderClosePreview();
+  }
 }
 
 async function loadOptionalControlTower() {

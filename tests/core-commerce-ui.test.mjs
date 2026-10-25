@@ -498,3 +498,82 @@ test("POS recovers a server-owned open order without trusted price edit or brows
   await assert.rejects(runInContext('resumeOpenOrder("order-A")', context), /không thuộc Store/);
   assert.equal(runInContext("currentOrder", context), null);
 });
+
+test("Daily Close requires an explicit summary confirmation and blocks duplicate submissions and context changes", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const script = html.split("<script>")[1]?.split("</script>")[0];
+  assert.ok(script);
+  const dom = new Map();
+  function node(id) {
+    if (!dom.has(id)) dom.set(id, {
+      value: "", textContent: "", dataset: {}, disabled: false,
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener() {}, replaceChildren() {}, append() {}, reset() {}
+    });
+    return dom.get(id);
+  }
+  let confirmed = false;
+  let question = "";
+  const context = createContext({
+    document: {
+      getElementById: node,
+      querySelectorAll: () => [],
+      createElement: () => node("new_" + dom.size)
+    },
+    window: { confirm: value => { question = value; return confirmed; } },
+    fetch: async () => ({ ok: true, status: 200, json: async () => ({
+      supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test"
+    }) }),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "key" }
+  });
+  runInContext(script, context);
+  runInContext(`
+    sessionToken = "synthetic-token";
+    currentTenantId = "tenant-A";
+    currentStoreId = "store-A";
+    currentTenantRole = "manager";
+    currentDashboard = {
+      businessDate: "2026-10-25", orderCount: 2, openOrderCount: 0,
+      salesTotal: 70000, closed: false
+    };
+    let closeCalls = 0;
+    let resolveClose;
+    appFetch = async (path, options) => {
+      if (path !== "/api/app/commerce-daily-close") throw new Error("unexpected path");
+      closeCalls += 1;
+      if (options.body.storeId !== "store-A") throw new Error("wrong Store");
+      return new Promise(resolve => { resolveClose = resolve; });
+    };
+    loadDashboard = async () => {
+      currentDashboard.closed = true;
+      renderClosePreview();
+    };
+    renderClosePreview();
+  `, context);
+  await runInContext("closeBusinessDay()", context);
+  assert.equal(runInContext("closeCalls", context), 0, "cancelled confirmation must not write");
+  assert.match(question, /2026-10-25/);
+  assert.match(question, /70/);
+  assert.match(question, /không thể tạo đơn mới/);
+
+  confirmed = true;
+  const pending = runInContext("closeBusinessDay()", context);
+  assert.equal(runInContext("closeSubmitInFlight", context), true);
+  assert.equal(node("closeDay").disabled, true);
+  assert.equal(runInContext("closeCalls", context), 1);
+  node("tenant").value = "tenant-B";
+  node("store").value = "store-B";
+  await runInContext("loadTenant()", context);
+  assert.equal(node("tenant").value, "tenant-A");
+  assert.equal(node("store").value, "store-A");
+  await runInContext("closeBusinessDay()", context);
+  assert.equal(runInContext("closeCalls", context), 1, "no duplicate close request");
+  runInContext(`resolveClose({
+    close: { businessDate: "2026-10-25", orderCount: 2, salesTotal: 70000, paymentTotal: 70000 }
+  })`, context);
+  await pending;
+  assert.equal(runInContext("closeSubmitInFlight", context), false);
+  assert.equal(node("closeDay").disabled, true, "successfully closed day cannot close again");
+  assert.match(node("closeReceipt").textContent, /Close 2026-10-25/);
+});
