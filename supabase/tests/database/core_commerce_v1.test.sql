@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(28);
+select plan(37);
 
 insert into public.tenants (id,name) values
  ('71000000-0000-4000-8000-000000000011','Commerce A'),
@@ -257,6 +257,44 @@ select results_eq(
  $$select count(*) from public.pos_orders$$,
  array[2::bigint],
  'Retry after close never creates a new order'
+);
+
+-- Raw trusted Commerce tables and privileged RPCs must remain least-privilege.
+select ok(
+ not has_table_privilege('authenticated','public.pos_orders','INSERT'),
+ 'Authenticated POS clients cannot insert trusted orders outside the fixed RPC'
+);
+select ok(
+ not has_table_privilege('authenticated','public.pos_order_items','INSERT'),
+ 'Authenticated clients cannot insert trusted order price snapshots'
+);
+select ok(
+ not has_table_privilege('authenticated','public.pos_payments','INSERT'),
+ 'Authenticated clients cannot insert captured payments outside fixed RPC'
+);
+select ok(
+ not has_table_privilege('authenticated','public.daily_closes','INSERT'),
+ 'Authenticated clients cannot insert daily closes outside fixed RPC'
+);
+select ok(
+ not has_table_privilege('authenticated','public.pos_orders','UPDATE'),
+ 'Authenticated clients cannot mutate paid order status directly'
+);
+select ok(
+ not has_table_privilege('authenticated','public.pos_payments','UPDATE'),
+ 'Authenticated clients cannot modify captured payment history'
+);
+select ok(
+ not has_function_privilege('anon','public.commerce_create_order(uuid,uuid,text,text,jsonb)','EXECUTE'),
+ 'Anonymous users cannot invoke privileged create-order RPC'
+);
+select ok(
+ not has_function_privilege('anon','public.commerce_capture_payment(uuid,uuid,text,numeric,text)','EXECUTE'),
+ 'Anonymous users cannot invoke privileged payment RPC'
+);
+select ok(
+ not has_function_privilege('anon','public.commerce_close_day(uuid,uuid,date)','EXECUTE'),
+ 'Anonymous users cannot invoke privileged daily-close RPC'
 );
 
 select * from finish();
