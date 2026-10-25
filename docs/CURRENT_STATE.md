@@ -115,10 +115,18 @@ The product-level discovery gate in issue #11 remains open because real target-I
 ## Core Commerce candidate checkpoint (2026-10-25)
 
 - PR #74 `feat/cafeos-core-commerce-v1` is **draft/unmerged**. First-party Menu → POS Order → Payment Record → Daily Close → Dashboard → Control Tower handoff is implemented as a candidate, not promoted to production.
-- The Core Commerce migration is present on **cafeos-staging** (`wjatnyvdygvblirggdcm`); all six Commerce tables have RLS enabled. The staging migration record uses version `20261025103648`, while Git has `20261025094352`. Their applied SQL statement and canonical contract SQL are **byte-identical** (29,843 characters). Reconcile migration history safely before a future CLI promotion; do not blindly reapply.
-- Direct staging pgTAP result: **26/26 PASS** after extending `supabase/tests/database/core_commerce_v1.test.sql` in commit `e6b8cc2`. The test transaction was rolled back; synthetic test tenants were absent afterwards. Assertions cover cross-tenant menu visibility, viewer/payment denial, manager menu authoring, cashier menu/close denial, idempotent orders, exact payment, and daily close.
+- All six Commerce tables have RLS enabled on **cafeos-staging** (`wjatnyvdygvblirggdcm`). **Full migration-history drift:** 8 Git migration versions and 7 staging versions with zero timestamp intersections; Commerce SQL is byte-identical (29,843 characters) despite different timestamps, but two foundation migrations are not recorded in staging history. See `docs/research/2026-10-25-core-commerce-staging-migration-differential.md`. Never blindly reapply or bulk-repair.
+- Direct staging pgTAP result: **28/28 PASS** at the latest synthetic SQL audit. Assertions include tenant-isolated POS order/payment reads, role-denied writes, idempotency, exact payment, and daily close. Test transaction **ROLLED BACK**; staging synthetic tenant/order/payment/close counts returned zero. Test source commit `3760419`.
 - Security Advisor reports three `authenticated_security_definer_function_executable` warnings for intentional order/payment/close RPCs; live SQL confirms `anon` cannot execute, `authenticated` can execute, and functions check `auth.uid()` and role through `private.has_tenant_role`. These are **warnings to review**, not an independently completed security sign-off. Leaked-password protection is separately disabled.
 - Exact-head GitHub CI and Supabase DB CI must both pass after each branch update. Local/browser visual QA at 390px and 1200px, authenticated real-transport synthetic E2E and independent security review are **not yet accepted**. Neither PR merge nor production DB/application promotion is authorized.
+
+## Core Commerce follow-up: checkout recovery and optional reporting
+
+- Candidate `/api/app/commerce-order-status` is read-only, authenticated and tenant-scoped; the POS reconciles an ambiguous payment response by checking server state, without sending a second payment automatically. In-memory order state is still not crash/reload safe.
+- Control Tower reporting failures now degrade that separate pane rather than blocking Menu/POS/Dashboard readiness; core Menu and Dashboard failures remain fatal.
+- Local workflow router now preserves query parameters (including `orderId` and `storeId`); regression tests cover unauthenticated HTTP routes and paid/open response recovery.
+- Staging foundation object survey: 11 related tables present, 11 have RLS enabled. This is not full migration equivalence.
+- Newer exact-head CI, authenticated HTTP E2E, real rendered UI screenshots at 390/1200px, privilege review and migration history reconciliation remain release gates.
 
 ## Next engineering action
 

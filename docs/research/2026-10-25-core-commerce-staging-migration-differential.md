@@ -47,3 +47,12 @@ Official guidance: https://supabase.com/docs/guides/deployment/database-migratio
 - Rendered browser QA at mobile 390px and desktop 1200px; cashier controls; loaded cart; errors and focus behavior; authenticated synthetic API/UI end-to-end; tenant isolation on HTTP transport; and recovery of unpaid orders across full reload remain unverified.
 - Client-side memory-only pending order protects in-session refresh/context switching but not tab crashes or explicit signout. Do not advertise crash-safe checkout.
 - **PR #74 DRAFT · PRODUCTION MERGE/DB/RELEASE HOLD.**
+
+## 2026-10-25 continuation: payment-result reconciliation / tenant RLS
+
+- `api/app/workflow.mjs` dispatches `commerce-order-status` to `server/commerce/order-status.mjs` (GET-only, Supabase user + tenant membership check, tenant-scoped PostgREST SELECT and underlying RLS). This is not a privileged RPC, nor a new Vercel API function.
+- Browser controller queries that endpoint after an ambiguous payment response. A verified `paid` response clears the checkout; a non-paid/unverified result preserves the order for manual inspection or retry. A paid idempotent order replay also ends checkout rather than sticking on a completed order.
+- `scripts/serve-vercel-preview.mjs` now joins workflow query parameters with `&`, fixing previously malformed local GET routes. CI includes local HTTP GET unauthenticated regression and mocked paid/open network-outcome tests.
+- Live staging (project `wjatnyvdygvblirggdcm`) SQL pgTAP **28/28 PASS** in one rollback transaction, with two new assertions that Tenant B owner cannot see Tenant A POS orders or payment records. Added to canonical test source commit `3760419`. Post-run fixture check: **0 test tenants, 0 POS orders, 0 payments, 0 closes**.
+- Foundation catalog survey (read-only): `tenants`, `tenant_members`, `imports`, `transaction_line_items`, `stores`, `customers`, `customer_identifiers`, `attention_items`, `actions`, `action_status_history`, `measurement_windows` all exist with RLS enabled. Their full SQL/permissions and missing staging migration history records are **not** yet proved equivalent.
+- Security Advisor rerun still reports 3 authenticated SECURITY DEFINER warnings and leaked-password protection disabled. Independent waiver/security review remains **OPEN**. The drift and release hold remain unchanged.
