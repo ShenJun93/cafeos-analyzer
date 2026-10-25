@@ -1,10 +1,10 @@
 # Current state
 
-Canonical authority: this repository's `main` branch, tests, CI, and technical specifications. Product-level mission authority is defined by `MISSION.md`.
+Canonical authority: the repository's `main` branch for released code, approved product specs, PR branch evidence, tests, CI, and actual staging verification. Product-level mission authority is defined by `MISSION.md`. An open PR is not a production release.
 
 ## Product mission state
 
-CafeOS is the **operating and customer-intelligence layer for multi-location café brands** above existing POS/order/payment/loyalty systems. CafeOS Analyzer remains a module/wedge, not the whole product.
+CafeOS is a **full café operating ecosystem**. It supports CafeOS-native Core Commerce/POS and integration with merchants' existing POS systems. Analyzer remains the acquisition/onboarding and external-data module; Control Tower remains the decision layer. The complete ecosystem is a product direction, **not** a claim that every module is shipped.
 
 ## Verified Analyzer technical state
 
@@ -90,7 +90,7 @@ These controls do **not** authorize real merchant data by themselves; production
 
 ## Product boundary
 
-Do not build a generic POS clone. CafeOS owns the cross-system canonical model, evidence, HQ/customer intelligence, action history and measurement loop.
+Build the first-party Core Commerce operating spine while preserving the cross-system canonical model, source lineage, deterministic metrics, and Control Tower. Avoid an all-at-once POS/ERP clone: inventory, payroll, loyalty, and full accounting are later slices. CafeOS must continue to support existing external POS deployments.
 
 ## Still prohibited
 
@@ -112,12 +112,20 @@ The technical `CONNECT → UNIFY → UNDERSTAND` path is now materially implemen
 
 The product-level discovery gate in issue #11 remains open because real target-ICP workflow evidence is still required.
 
+## Core Commerce candidate checkpoint (2026-10-25)
+
+- PR #74 `feat/cafeos-core-commerce-v1` is **draft/unmerged**. First-party Menu → POS Order → Payment Record → Daily Close → Dashboard → Control Tower handoff is implemented as a candidate, not promoted to production.
+- The Core Commerce migration is present on **cafeos-staging** (`wjatnyvdygvblirggdcm`); all six Commerce tables have RLS enabled. The staging migration record uses version `20261025103648`, while Git has `20261025094352`. Their applied SQL statement and canonical contract SQL are **byte-identical** (29,843 characters). Reconcile migration history safely before a future CLI promotion; do not blindly reapply.
+- Direct staging pgTAP result: **26/26 PASS** after extending `supabase/tests/database/core_commerce_v1.test.sql` in commit `e6b8cc2`. The test transaction was rolled back; synthetic test tenants were absent afterwards. Assertions cover cross-tenant menu visibility, viewer/payment denial, manager menu authoring, cashier menu/close denial, idempotent orders, exact payment, and daily close.
+- Security Advisor reports three `authenticated_security_definer_function_executable` warnings for intentional order/payment/close RPCs; live SQL confirms `anon` cannot execute, `authenticated` can execute, and functions check `auth.uid()` and role through `private.has_tenant_role`. These are **warnings to review**, not an independently completed security sign-off. Leaked-password protection is separately disabled.
+- Exact-head GitHub CI and Supabase DB CI must both pass after each branch update. Local/browser visual QA at 390px and 1200px, authenticated real-transport synthetic E2E and independent security review are **not yet accepted**. Neither PR merge nor production DB/application promotion is authorized.
+
 ## Next engineering action
 
-Follow `docs/ROADMAP.md` and issue #11:
-
-1. implement **Store Health** by reusing the same deterministic metric/timezone/order semantics rather than creating a second metric definition;
-2. then add one bounded `Attention → Action → Measurement` workflow path;
-3. only after the thin loop is usable, collect permissioned target-ICP evidence for usefulness, action conversion, return/review behavior and repeat-use intent.
+1. Confirm exact-head CI + blank-database pgTAP on PR #74; record failures at the actual HEAD, not at earlier commits.
+2. Verify authenticated synthetic-user API/UI flow on a staging/preview endpoint and review `/app` at 390px and 1200px, including no horizontal overflow, cashier affordances and source labels.
+3. Reconcile Supabase staging migration version with the repository's canonical migration through a supported migration-history workflow before any production promotion.
+4. Independently audit privileged RPC role checks, tenant isolation, idempotency, payment correctness and daily-close locking; address advisor findings or record their verified exception rationale.
+5. Keep PR #74 draft and production writes disabled until the staged release checklist is complete.
 
 Primary distribution remains pull/inbound; no dependency on cold outbound sales.
