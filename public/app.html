@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<link rel="stylesheet" href="/cafeos-ui.css">
+<title>CafeOS · Core Commerce</title>
+</head>
+<body class="commerce-body">
+<main class="page-shell page-shell--wide cafeos-app-shell">
+  <header class="app-masthead">
+    <div>
+      <div class="brand-mark">CafeOS</div>
+      <div class="kicker">Core Commerce v1</div>
+    </div>
+    <div class="cluster">
+      <span id="identity" class="muted">Chưa đăng nhập</span>
+      <button id="signOut" class="secondary hidden" type="button">Đăng xuất</button>
+    </div>
+  </header>
+
+  <section id="authPanel" class="app-auth glass-surface">
+    <div>
+      <div class="section-label">One operating system</div>
+      <h1 class="display-title">Bán hàng, đóng ngày và xem vận hành trong cùng CafeOS.</h1>
+      <p class="lede">Đăng nhập bằng tài khoản synthetic/staging. Session token chỉ giữ trong memory của tab.</p>
+    </div>
+    <div class="stack">
+      <label class="field-group">Email<input id="email" type="email" autocomplete="username"></label>
+      <label class="field-group">Password<input id="password" type="password" autocomplete="current-password"></label>
+      <button id="signIn" type="button">Đăng nhập</button>
+    </div>
+  </section>
+
+  <div id="status" class="status-strip muted" aria-live="polite">Đang tải cấu hình CafeOS…</div>
+
+  <section id="appPanel" class="hidden">
+    <section class="app-contextbar">
+      <label class="field-group"><span>Tenant</span><select id="tenant"></select></label>
+      <label class="field-group"><span>Store</span><select id="store"></select></label>
+      <button id="refreshApp" class="secondary" type="button">Làm mới</button>
+    </section>
+
+    <nav class="app-nav" aria-label="CafeOS modules">
+      <button class="app-nav-item active" type="button" data-view="posWorkspace">POS</button>
+      <button class="app-nav-item" type="button" data-view="menuWorkspace">Menu</button>
+      <button class="app-nav-item" type="button" data-view="dashboardWorkspace">Dashboard</button>
+      <button class="app-nav-item" type="button" data-view="closeWorkspace">Daily Close</button>
+      <button class="app-nav-item" type="button" data-view="controlWorkspace">Control Tower</button>
+      <a class="app-nav-link" href="/analyzer">Analyzer</a>
+    </nav>
+
+    <section id="posWorkspace" class="app-workspace">
+      <header class="workspace-heading">
+        <div>
+          <div class="section-label">CafeOS POS</div>
+          <h2>Order capture</h2>
+          <p class="muted">CafeOS POS first-party commerce. Unit price is server-owned; the database snapshots the current menu price when the order is created.</p>
+        </div>
+        <label class="field-group channel-field">Channel
+          <select id="channel">
+            <option value="counter">Tại quầy</option>
+            <option value="takeaway">Mang đi</option>
+            <option value="pickup">Pickup</option>
+            <option value="delivery">Delivery</option>
+          </select>
+        </label>
+      </header>
+
+      <div class="pos-layout">
+        <section>
+          <div class="section-label">Menu catalog</div>
+          <div id="menuCatalog" class="menu-catalog" aria-live="polite"></div>
+        </section>
+
+        <aside class="cart-panel">
+          <div class="section-label">Current order</div>
+          <h3>Cart</h3>
+          <div id="cart" class="cart-lines"></div>
+          <p class="muted">Cart chỉ là intent. Server total được xác nhận sau khi Create Order.</p>
+          <button id="submitOrder" type="button" disabled>Create Order</button>
+
+          <section id="paymentPanel" class="payment-panel hidden">
+            <div class="section-label">Settlement record</div>
+            <div id="serverOrderTotal" class="server-total"></div>
+            <label class="field-group">Payment method
+              <select id="paymentMethod">
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="bank_transfer">Bank transfer</option>
+                <option value="wallet">Wallet</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label class="field-group">Reference (optional)
+              <input id="paymentReference" maxlength="500">
+            </label>
+            <button id="capturePayment" type="button">Record Payment</button>
+            <p class="muted">Payment record only — not payment acquiring or card processing.</p>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <section id="menuWorkspace" class="app-workspace hidden">
+      <header class="workspace-heading">
+        <div>
+          <div class="section-label">Menu system of record</div>
+          <h2>Menu</h2>
+          <p class="muted">Manager-created categories and item prices become trusted menu configuration for future orders.</p>
+        </div>
+      </header>
+
+      <div class="menu-admin-grid">
+        <form id="categoryForm" class="commerce-form">
+          <div class="section-label">New category</div>
+          <label class="field-group">Name<input id="categoryName" maxlength="200" required></label>
+          <label class="field-group">Sort order<input id="categorySort" type="number" value="0" step="1"></label>
+          <button type="submit">Create category</button>
+        </form>
+
+        <form id="itemForm" class="commerce-form">
+          <div class="section-label">New item</div>
+          <label class="field-group">Category<select id="itemCategory"><option value="">No category</option></select></label>
+          <label class="field-group">Name<input id="itemName" maxlength="300" required></label>
+          <label class="field-group">SKU<input id="itemSku" maxlength="100"></label>
+          <label class="field-group">Price<input id="itemAmount" type="number" min="0" step="1000" required></label>
+          <button type="submit">Create item</button>
+        </form>
+      </div>
+
+      <div id="menuAdminList" class="menu-admin-list"></div>
+    </section>
+
+    <section id="dashboardWorkspace" class="app-workspace hidden">
+      <header class="workspace-heading">
+        <div>
+          <div class="section-label">First-party daily truth</div>
+          <h2>Commerce Dashboard</h2>
+          <p class="muted">Source: CafeOS POS first-party paid orders and captured payment records.</p>
+        </div>
+      </header>
+      <div id="commerceMetrics" class="commerce-metrics"></div>
+      <div id="paymentMix" class="payment-mix"></div>
+    </section>
+
+    <section id="closeWorkspace" class="app-workspace hidden">
+      <header class="workspace-heading">
+        <div>
+          <div class="section-label">Daily reconciliation</div>
+          <h2>Daily Close</h2>
+          <p class="muted">CafeOS computes the close snapshot. Client code cannot supply order, sales or payment totals.</p>
+        </div>
+      </header>
+      <div class="daily-close-panel">
+        <div id="closePreview" class="close-preview">Tải dashboard để xem trạng thái đóng ngày.</div>
+        <button id="closeDay" type="button">Close business day</button>
+      </div>
+      <div id="closeReceipt" class="close-receipt"></div>
+    </section>
+
+    <section id="controlWorkspace" class="app-workspace hidden">
+      <header class="workspace-heading">
+        <div>
+          <div class="section-label">Decision layer</div>
+          <h2>Control Tower</h2>
+          <p class="muted"><strong>Source boundary:</strong> Control Tower currently reads imported/integrated transaction facts until the unified read-model explicitly adds CafeOS POS facts with preserved lineage.</p>
+        </div>
+      </header>
+      <div id="controlBrief" class="control-brief"></div>
+    </section>
+  </section>
+</main>
+
+<script>
+let clientConfig = null;
+let sessionToken = null;
+let currentTenantId = null;
+let currentStoreId = null;
+let currentOrder = null;
+let currentDashboard = null;
+let menuState = { categories: [], items: [] };
+const cartState = new Map();
+
+const el = id => document.getElementById(id);
+
+function setStatus(message, state = "") {
+  el("status").textContent = message;
+  if (state) el("status").dataset.state = state;
+  else delete el("status").dataset.state;
+}
+
+function money(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 }).format(Number(value));
+}
+
+async function jsonFetch(url, options = {}) {
+  const response = await fetch(url, options);
+  let payload = null;
+  try { payload = await response.json(); } catch {}
+  if (!response.ok) {
+    const error = new Error(payload?.error?.message || "Request failed");
+    error.code = payload?.error?.code || "REQUEST_FAILED";
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+
+async function appFetch(path, { method = "GET", body, tenant = true } = {}) {
+  if (!sessionToken) throw new Error("Sign in is required");
+  const headers = {
+    authorization: "Bearer " + sessionToken,
+    accept: "application/json"
+  };
+  if (tenant) {
+    if (!currentTenantId) throw new Error("Select a tenant");
+    headers["x-cafeos-tenant-id"] = currentTenantId;
+  }
+  if (body !== undefined) headers["content-type"] = "application/json";
+  return jsonFetch(path, {
+    method,
+    headers,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  });
+}
+
+async function loadClientConfig() {
+  clientConfig = await jsonFetch("/api/app/client-config");
+  setStatus("Sẵn sàng đăng nhập.");
+}
+
+async function signIn() {
+  const email = el("email").value.trim();
+  const password = el("password").value;
+  if (!email || !password) return setStatus("Nhập email và password.", "error");
+  setStatus("Đang đăng nhập…");
+  const payload = await jsonFetch(
+    clientConfig.supabaseUrl + "/auth/v1/token?grant_type=password",
+    {
+      method: "POST",
+      headers: {
+        apikey: clientConfig.publishableKey,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ email, password })
+    }
+  );
+  sessionToken = payload.access_token || null;
+  if (!sessionToken) throw new Error("Auth response did not include an access token");
+  el("identity").textContent = email;
+  el("authPanel").classList.add("hidden");
+  el("appPanel").classList.remove("hidden");
+  el("signOut").classList.remove("hidden");
+  await loadSession();
+}
+
+function signOut() {
+  sessionToken = null;
+  currentTenantId = null;
+  currentStoreId = null;
+  currentOrder = null;
+  currentDashboard = null;
+  cartState.clear();
+  el("appPanel").classList.add("hidden");
+  el("authPanel").classList.remove("hidden");
+  el("signOut").classList.add("hidden");
+  el("identity").textContent = "Chưa đăng nhập";
+  setStatus("Đã đăng xuất.");
+}
+
+function fillSelect(select, rows, { valueKey = "id", labelKey = "name", prefix = "" } = {}) {
+  select.replaceChildren();
+  for (const row of rows) {
+    const option = document.createElement("option");
+    option.value = row[valueKey];
+    option.textContent = prefix + (row[labelKey] ?? row[valueKey]);
+    select.append(option);
+  }
+}
+
+async function loadSession() {
+  const session = await appFetch("/api/app/session", { tenant: false });
+  if (!session.memberships?.length) throw new Error("User has no CafeOS tenant membership");
+  fillSelect(el("tenant"), session.memberships, { valueKey: "tenantId", labelKey: "name" });
+  currentTenantId = el("tenant").value;
+  await loadTenant();
+}
+
+async function loadTenant() {
+  currentTenantId = el("tenant").value;
+  currentStoreId = null;
+  currentOrder = null;
+  currentDashboard = null;
+  cartState.clear();
+
+  const stores = await appFetch("/api/app/stores");
+  const active = (stores.stores || []).filter(store => store.active !== false);
+  if (!active.length) throw new Error("Tenant has no active Store");
+  fillSelect(el("store"), active);
+  currentStoreId = el("store").value;
+  await refreshStore();
+}
+
+async function refreshStore() {
+  currentStoreId = el("store").value;
+  currentOrder = null;
+  cartState.clear();
+  await Promise.all([loadMenu(), loadDashboard(), loadControlTower()]);
+  renderCart();
+  setStatus("CafeOS đã tải Store hiện tại.", "ok");
+}
+
+async function loadMenu() {
+  const payload = await appFetch("/api/app/commerce-menu");
+  menuState = {
+    categories: payload.categories || [],
+    items: payload.items || []
+  };
+  renderMenu();
+}
+
+function renderMenu() {
+  const catalog = el("menuCatalog");
+  catalog.replaceChildren();
+
+  for (const item of menuState.items) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "menu-item-button";
+    const name = document.createElement("strong");
+    name.textContent = item.name;
+    const value = document.createElement("span");
+    value.textContent = money(item.price);
+    button.append(name, value);
+    button.addEventListener("click", () => addToCart(item.id));
+    catalog.append(button);
+  }
+
+  const categorySelect = el("itemCategory");
+  categorySelect.replaceChildren();
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "No category";
+  categorySelect.append(none);
+  for (const category of menuState.categories) {
+    const option = document.createElement("option");
+    option.value = category.id;
+    option.textContent = category.name;
+    categorySelect.append(option);
+  }
+
+  const admin = el("menuAdminList");
+  admin.replaceChildren();
+  for (const item of menuState.items) {
+    const row = document.createElement("div");
+    row.className = "evidence-row";
+    const left = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = item.name;
+    const meta = document.createElement("div");
+    meta.className = "muted";
+    meta.textContent = item.sku ? "SKU " + item.sku : "No SKU";
+    left.append(title, meta);
+    const value = document.createElement("strong");
+    value.textContent = money(item.price);
+    row.append(left, value);
+    admin.append(row);
+  }
+}
+
+function addToCart(menuItemId) {
+  const item = menuState.items.find(row => row.id === menuItemId);
+  if (!item || currentOrder) return;
+  const current = cartState.get(menuItemId) || { item, quantity: 0 };
+  current.quantity += 1;
+  cartState.set(menuItemId, current);
+  renderCart();
+}
+
+function changeQuantity(menuItemId, delta) {
+  const current = cartState.get(menuItemId);
+  if (!current || currentOrder) return;
+  current.quantity += delta;
+  if (current.quantity <= 0) cartState.delete(menuItemId);
+  renderCart();
+}
+
+function renderCart() {
+  const cart = el("cart");
+  cart.replaceChildren();
+
+  if (!cartState.size) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "Chưa có món.";
+    cart.append(empty);
+  }
+
+  for (const [id, row] of cartState) {
+    const line = document.createElement("div");
+    line.className = "cart-line";
+    const detail = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = row.item.name;
+    const price = document.createElement("div");
+    price.className = "muted";
+    price.textContent = money(row.item.price) + " / item";
+    detail.append(title, price);
+
+    const controls = document.createElement("div");
+    controls.className = "quantity-controls";
+    const minus = document.createElement("button");
+    minus.type = "button";
+    minus.className = "secondary";
+    minus.textContent = "−";
+    minus.disabled = Boolean(currentOrder);
+    minus.addEventListener("click", () => changeQuantity(id, -1));
+    const qty = document.createElement("span");
+    qty.textContent = String(row.quantity);
+    const plus = document.createElement("button");
+    plus.type = "button";
+    plus.className = "secondary";
+    plus.textContent = "+";
+    plus.disabled = Boolean(currentOrder);
+    plus.addEventListener("click", () => changeQuantity(id, 1));
+    controls.append(minus, qty, plus);
+    line.append(detail, controls);
+    cart.append(line);
+  }
+
+  el("submitOrder").disabled = !currentStoreId || !cartState.size || Boolean(currentOrder);
+  el("paymentPanel").classList.toggle("hidden", !currentOrder || currentOrder.status !== "open");
+  if (currentOrder) {
+    el("serverOrderTotal").textContent = "Server total · " + money(currentOrder.total);
+  }
+}
+
+async function submitOrder() {
+  if (!currentStoreId || !cartState.size || currentOrder) return;
+  const orderBody = {
+    storeId: currentStoreId,
+    clientOrderKey: crypto.randomUUID(),
+    channel: el("channel").value,
+    items: [...cartState.values()].map(row => ({
+      menuItemId: row.item.id,
+      quantity: row.quantity
+    }))
+  };
+  setStatus("Đang tạo order…");
+  const payload = await appFetch("/api/app/commerce-order", {
+    method: "POST",
+    body: orderBody
+  });
+  currentOrder = payload.order;
+  renderCart();
+  setStatus("Order " + currentOrder.orderNumber + " đã được tạo. Server total " + money(currentOrder.total) + ".", "ok");
+}
+
+async function capturePayment() {
+  if (!currentOrder || currentOrder.status !== "open") return;
+  setStatus("Đang ghi payment record…");
+  const payload = await appFetch("/api/app/commerce-payment", {
+    method: "POST",
+    body: {
+      orderId: currentOrder.id,
+      method: el("paymentMethod").value,
+      amount: Number(currentOrder.total),
+      reference: el("paymentReference").value.trim() || null
+    }
+  });
+  currentOrder.status = payload.status;
+  el("paymentPanel").classList.add("hidden");
+  setStatus("Payment record đã captured. Order đã paid.", "ok");
+  cartState.clear();
+  currentOrder = null;
+  renderCart();
+  await loadDashboard();
+}
+
+async function createCategory(event) {
+  event.preventDefault();
+  setStatus("Đang tạo category…");
+  await appFetch("/api/app/commerce-menu", {
+    method: "POST",
+    body: {
+      kind: "category",
+      name: el("categoryName").value.trim(),
+      sortOrder: Number(el("categorySort").value || 0)
+    }
+  });
+  el("categoryForm").reset();
+  el("categorySort").value = "0";
+  await loadMenu();
+  setStatus("Đã tạo category.", "ok");
+}
+
+async function createItem(event) {
+  event.preventDefault();
+  setStatus("Đang tạo menu item…");
+  await appFetch("/api/app/commerce-menu", {
+    method: "POST",
+    body: {
+      kind: "item",
+      categoryId: el("itemCategory").value || null,
+      sku: el("itemSku").value.trim() || null,
+      name: el("itemName").value.trim(),
+      price: Number(el("itemAmount").value)
+    }
+  });
+  el("itemForm").reset();
+  await loadMenu();
+  setStatus("Đã tạo menu item.", "ok");
+}
+
+function metric(label, value) {
+  const box = document.createElement("div");
+  box.className = "metric-display";
+  const l = document.createElement("span");
+  l.className = "metric-label";
+  l.textContent = label;
+  const v = document.createElement("strong");
+  v.className = "metric-value";
+  v.textContent = value;
+  box.append(l, v);
+  return box;
+}
+
+async function loadDashboard() {
+  if (!currentStoreId) return;
+  const payload = await appFetch("/api/app/commerce-dashboard?storeId=" + encodeURIComponent(currentStoreId));
+  currentDashboard = payload.dashboard;
+
+  const metrics = el("commerceMetrics");
+  metrics.replaceChildren(
+    metric("Sales", money(currentDashboard.salesTotal)),
+    metric("Paid orders", String(currentDashboard.orderCount)),
+    metric("AOV", money(currentDashboard.aov)),
+    metric("Open orders", String(currentDashboard.openOrderCount))
+  );
+
+  const mix = el("paymentMix");
+  mix.replaceChildren();
+  const heading = document.createElement("div");
+  heading.className = "section-label";
+  heading.textContent = "Payment mix · " + currentDashboard.businessDate;
+  mix.append(heading);
+  for (const [method, amount] of Object.entries(currentDashboard.paymentMix || {})) {
+    const row = document.createElement("div");
+    row.className = "evidence-row";
+    const name = document.createElement("span");
+    name.textContent = method;
+    const value = document.createElement("strong");
+    value.textContent = money(amount);
+    row.append(name, value);
+    mix.append(row);
+  }
+  renderClosePreview();
+}
+
+function renderClosePreview() {
+  if (!currentDashboard) return;
+  el("closePreview").textContent =
+    currentDashboard.businessDate +
+    " · " + currentDashboard.orderCount + " paid orders · " +
+    money(currentDashboard.salesTotal) + " sales · " +
+    currentDashboard.openOrderCount + " open orders" +
+    (currentDashboard.closed ? " · CLOSED" : " · OPEN");
+  el("closeDay").disabled = Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
+}
+
+async function closeBusinessDay() {
+  if (!currentStoreId || !currentDashboard) return;
+  setStatus("Đang đóng business day…");
+  const payload = await appFetch("/api/app/commerce-daily-close", {
+    method: "POST",
+    body: {
+      storeId: currentStoreId,
+      businessDate: currentDashboard.businessDate
+    }
+  });
+  const receipt = el("closeReceipt");
+  receipt.textContent =
+    "Close " + payload.close.businessDate +
+    " · " + payload.close.orderCount + " orders · " +
+    money(payload.close.salesTotal) + " sales · " +
+    money(payload.close.paymentTotal) + " payments";
+  setStatus("Daily Close hoàn tất.", "ok");
+  await loadDashboard();
+}
+
+async function loadControlTower() {
+  const payload = await appFetch("/api/app/brief");
+  const root = el("controlBrief");
+  root.replaceChildren();
+  const metrics = document.createElement("div");
+  metrics.className = "commerce-metrics";
+  metrics.append(
+    metric("Imported net sales", money(payload.metrics?.netSales?.current)),
+    metric("Imported orders", String(payload.metrics?.orders?.current ?? "—")),
+    metric("Imported AOV", money(payload.metrics?.aov?.current))
+  );
+  root.append(metrics);
+
+  const attentionLabel = document.createElement("div");
+  attentionLabel.className = "section-label";
+  attentionLabel.textContent = "Attention / unresolved actions";
+  root.append(attentionLabel);
+
+  const note = document.createElement("p");
+  note.className = "muted";
+  note.textContent =
+    (payload.attention?.length || 0) + " attention items · " +
+    (payload.unresolvedActions?.length || 0) + " unresolved actions";
+  root.append(note);
+}
+
+function showWorkspace(id) {
+  for (const workspace of document.querySelectorAll(".app-workspace")) {
+    workspace.classList.toggle("hidden", workspace.id !== id);
+  }
+  for (const button of document.querySelectorAll(".app-nav-item")) {
+    button.classList.toggle("active", button.dataset.view === id);
+  }
+}
+
+async function guarded(action) {
+  try { await action(); }
+  catch (error) {
+    setStatus((error.code ? error.code + " · " : "") + error.message, "error");
+  }
+}
+
+el("signIn").addEventListener("click", () => guarded(signIn));
+el("signOut").addEventListener("click", signOut);
+el("tenant").addEventListener("change", () => guarded(loadTenant));
+el("store").addEventListener("change", () => guarded(refreshStore));
+el("refreshApp").addEventListener("click", () => guarded(refreshStore));
+el("submitOrder").addEventListener("click", () => guarded(submitOrder));
+el("capturePayment").addEventListener("click", () => guarded(capturePayment));
+el("categoryForm").addEventListener("submit", event => guarded(() => createCategory(event)));
+el("itemForm").addEventListener("submit", event => guarded(() => createItem(event)));
+el("closeDay").addEventListener("click", () => guarded(closeBusinessDay));
+for (const button of document.querySelectorAll(".app-nav-item")) {
+  button.addEventListener("click", () => showWorkspace(button.dataset.view));
+}
+
+guarded(loadClientConfig);
+</script>
+</body>
+</html>
