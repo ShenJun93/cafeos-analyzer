@@ -118,3 +118,14 @@ test("Core Commerce future-date close guard migration matches its incremental ca
   );
   assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
 });
+
+
+test("Core Commerce order price snapshot guard CLI migration stays canonical", async () => {
+  const source = await readFile(
+    new URL("../db/contracts/core_commerce_order_price_snapshot_guard.sql", import.meta.url), "utf8"
+  );
+  const migration = await readFile(
+    new URL("../supabase/migrations/20261025140000_core_commerce_order_price_snapshot_guard.sql", import.meta.url), "utf8"
+  );
+  assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
+});

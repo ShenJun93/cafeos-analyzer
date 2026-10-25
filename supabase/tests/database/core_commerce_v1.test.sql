@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(38);
+select plan(41);
 
 insert into public.tenants (id,name) values
  ('71000000-0000-4000-8000-000000000011','Commerce A'),
@@ -24,7 +24,27 @@ insert into public.menu_categories (id,tenant_id,name) values
 
 insert into public.menu_items (id,tenant_id,category_id,name,price) values
  ('71300000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000011','71200000-0000-4000-8000-000000000011','Americano',35000),
- ('72300000-0000-4000-8000-000000000022','72000000-0000-4000-8000-000000000022','72200000-0000-4000-8000-000000000022','Tea',20000);
+ ('72300000-0000-4000-8000-000000000022','72000000-0000-4000-8000-000000000022','72200000-0000-4000-8000-000000000022','Tea',20000),
+ ('71300000-0000-4000-8000-000000000033','71000000-0000-4000-8000-000000000011','71200000-0000-4000-8000-000000000011','Snapshot test',35000);
+
+-- Controlled synthetic price edit runs strictly between order-header and line-item inserts.
+-- Previously header total=70000 but line snapshot could become 72000.
+create or replace function pg_temp.cafeos_snapshot_race_trigger()
+returns trigger language plpgsql security definer
+set search_path = pg_catalog, public, pg_temp
+as $trigger$
+begin
+ if new.client_order_key = 'receipt-price-change' then
+   update public.menu_items set price=36000
+   where tenant_id='71000000-0000-4000-8000-000000000011'
+     and id='71300000-0000-4000-8000-000000000033';
+ end if;
+ return new;
+end;
+$trigger$;
+create trigger cafeos_snapshot_race_probe
+before insert on public.pos_orders
+for each row execute function pg_temp.cafeos_snapshot_race_trigger();
 
 set local role authenticated;
 set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000103';
@@ -94,6 +114,35 @@ select results_eq(
  array[35000::numeric],
  'Order items retain trusted price snapshots'
 );
+
+-- This regression intentionally changes Menu price in the header INSERT trigger.
+-- The second order-item pass must use the price snapshot from the first pass.
+select lives_ok(
+ $$select public.commerce_create_order(
+ '71000000-0000-4000-8000-000000000011',
+ '71100000-0000-4000-8000-000000000011',
+ 'receipt-price-change','counter',
+ '[{"menuItemId":"71300000-0000-4000-8000-000000000033","quantity":2}]'::jsonb
+ )$$,
+ 'Order remains atomic if Menu price changes during insertion'
+);
+select results_eq(
+ $$select o.total = coalesce(sum(oi.line_total),0)
+   from public.pos_orders o join public.pos_order_items oi
+     on oi.tenant_id=o.tenant_id and oi.order_id=o.id
+   where o.client_order_key='receipt-price-change'
+   group by o.id,o.total$$,
+ array[true],
+ 'Order header total must equal sum of line snapshots after Menu price change'
+);
+select results_eq(
+ $$select oi.unit_price from public.pos_order_items oi
+   join public.pos_orders o on o.tenant_id=oi.tenant_id and o.id=oi.order_id
+   where o.client_order_key='receipt-price-change'$$,
+ array[35000::numeric],
+ 'Order-item unit price remains original validated price, not updated Menu price'
+);
+
 
 select lives_ok(
  $$select public.commerce_create_order(

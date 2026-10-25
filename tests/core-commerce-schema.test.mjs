@@ -162,3 +162,20 @@ test("incremental future-date close guard is Store-timezone aware and retains RP
   assert.match(patch, /revoke all on function public\.commerce_close_day\(uuid, uuid, date\)[\s\S]*from public, anon, authenticated/i);
   assert.match(patch, /grant execute on function public\.commerce_close_day\(uuid, uuid, date\)[\s\S]*to authenticated, service_role/i);
 });
+
+
+test("incremental Create Order migration snapshots menu prices once per validated item", async () => {
+  const patch = await readFile(
+    new URL("../db/contracts/core_commerce_order_price_snapshot_guard.sql", import.meta.url), "utf8"
+  );
+  assert.match(patch, /create or replace function public\.commerce_create_order\(/i);
+  assert.match(patch, /security definer[\s\S]*set search_path/i);
+  assert.match(patch, /v_snapshot_items jsonb := '\[\]'::jsonb/i);
+  assert.match(patch, /v_snapshot_items := v_snapshot_items \|\| jsonb_build_array/i);
+  assert.match(patch, /jsonb_array_elements\(v_snapshot_items\)/i);
+  assert.equal((patch.match(/from public\.menu_items mi/g) || []).length, 1,
+    "a second Menu query could break financial price-snapshot consistency");
+  assert.match(patch, /COMMERCE_IDEMPOTENCY_CONFLICT/i);
+  assert.match(patch, /revoke all on function public\.commerce_create_order\(uuid, uuid, text, text, jsonb\)/i);
+  assert.match(patch, /grant execute on function public\.commerce_create_order\(uuid, uuid, text, text, jsonb\)/i);
+});
