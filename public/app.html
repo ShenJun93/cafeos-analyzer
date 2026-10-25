@@ -180,6 +180,9 @@ let currentTenantId = null;
 let currentStoreId = null;
 let currentOrder = null;
 let currentDashboard = null;
+let pendingOrderSubmission = null;
+let orderSubmitInFlight = false;
+let paymentSubmitInFlight = false;
 let menuState = { categories: [], items: [] };
 const cartState = new Map();
 
@@ -263,6 +266,9 @@ function signOut() {
   currentStoreId = null;
   currentOrder = null;
   currentDashboard = null;
+  pendingOrderSubmission = null;
+  orderSubmitInFlight = false;
+  paymentSubmitInFlight = false;
   cartState.clear();
   el("appPanel").classList.add("hidden");
   el("authPanel").classList.remove("hidden");
@@ -294,6 +300,9 @@ async function loadTenant() {
   currentStoreId = null;
   currentOrder = null;
   currentDashboard = null;
+  pendingOrderSubmission = null;
+  orderSubmitInFlight = false;
+  paymentSubmitInFlight = false;
   cartState.clear();
 
   const stores = await appFetch("/api/app/stores");
@@ -307,6 +316,7 @@ async function loadTenant() {
 async function refreshStore() {
   currentStoreId = el("store").value;
   currentOrder = null;
+  pendingOrderSubmission = null;
   cartState.clear();
   await Promise.all([loadMenu(), loadDashboard(), loadControlTower()]);
   renderCart();
@@ -373,7 +383,7 @@ function renderMenu() {
 
 function addToCart(menuItemId) {
   const item = menuState.items.find(row => row.id === menuItemId);
-  if (!item || currentOrder) return;
+  if (!item || currentOrder || pendingOrderSubmission || orderSubmitInFlight) return;
   const current = cartState.get(menuItemId) || { item, quantity: 0 };
   current.quantity += 1;
   cartState.set(menuItemId, current);
@@ -382,7 +392,7 @@ function addToCart(menuItemId) {
 
 function changeQuantity(menuItemId, delta) {
   const current = cartState.get(menuItemId);
-  if (!current || currentOrder) return;
+  if (!current || currentOrder || pendingOrderSubmission || orderSubmitInFlight) return;
   current.quantity += delta;
   if (current.quantity <= 0) cartState.delete(menuItemId);
   renderCart();
@@ -416,7 +426,7 @@ function renderCart() {
     minus.type = "button";
     minus.className = "secondary";
     minus.textContent = "−";
-    minus.disabled = Boolean(currentOrder);
+    minus.disabled = Boolean(currentOrder || pendingOrderSubmission || orderSubmitInFlight);
     minus.addEventListener("click", () => changeQuantity(id, -1));
     const qty = document.createElement("span");
     qty.textContent = String(row.quantity);
@@ -424,14 +434,15 @@ function renderCart() {
     plus.type = "button";
     plus.className = "secondary";
     plus.textContent = "+";
-    plus.disabled = Boolean(currentOrder);
+    plus.disabled = Boolean(currentOrder || pendingOrderSubmission || orderSubmitInFlight);
     plus.addEventListener("click", () => changeQuantity(id, 1));
     controls.append(minus, qty, plus);
     line.append(detail, controls);
     cart.append(line);
   }
 
-  el("submitOrder").disabled = !currentStoreId || !cartState.size || Boolean(currentOrder);
+  el("submitOrder").disabled = !currentStoreId || !cartState.size || Boolean(currentOrder || orderSubmitInFlight);
+  el("capturePayment").disabled = paymentSubmitInFlight;
   el("paymentPanel").classList.toggle("hidden", !currentOrder || currentOrder.status !== "open");
   if (currentOrder) {
     el("serverOrderTotal").textContent = "Server total · " + money(currentOrder.total);
@@ -439,45 +450,74 @@ function renderCart() {
 }
 
 async function submitOrder() {
-  if (!currentStoreId || !cartState.size || currentOrder) return;
+  if (!currentStoreId || !cartState.size || currentOrder || orderSubmitInFlight) return;
+
+  // Ambiguous network retries must preserve the exact same intent and key.
+  if (!pendingOrderSubmission) {
+    pendingOrderSubmission = {
+      clientOrderKey: crypto.randomUUID(),
+      storeId: currentStoreId,
+      channel: el("channel").value,
+      items: [...cartState.values()].map(row => ({
+        menuItemId: row.item.id,
+        quantity: row.quantity
+      }))
+    };
+  }
+
   const orderBody = {
-    storeId: currentStoreId,
-    clientOrderKey: crypto.randomUUID(),
-    channel: el("channel").value,
-    items: [...cartState.values()].map(row => ({
-      menuItemId: row.item.id,
-      quantity: row.quantity
-    }))
+    storeId: pendingOrderSubmission.storeId,
+    clientOrderKey: pendingOrderSubmission.clientOrderKey,
+    channel: pendingOrderSubmission.channel,
+    items: pendingOrderSubmission.items
   };
-  setStatus("Đang tạo order…");
-  const payload = await appFetch("/api/app/commerce-order", {
-    method: "POST",
-    body: orderBody
-  });
-  currentOrder = payload.order;
+  orderSubmitInFlight = true;
   renderCart();
-  setStatus("Order " + currentOrder.orderNumber + " đã được tạo. Server total " + money(currentOrder.total) + ".", "ok");
+  setStatus("Đang tạo order…");
+  try {
+    const payload = await appFetch("/api/app/commerce-order", {
+      method: "POST",
+      body: orderBody
+    });
+    currentOrder = payload.order;
+    pendingOrderSubmission = null;
+    setStatus("Order " + currentOrder.orderNumber + " đã được tạo. Server total " + money(currentOrder.total) + ".", "ok");
+  } catch (error) {
+    // A request may have reached the server even when the response was lost.
+    // Freeze the cart until the exact same request can be retried.
+    throw new Error("Không thể xác nhận đơn. Nhấn Create Order để retry cùng request, không tạo đơn mới. " + error.message);
+  } finally {
+    orderSubmitInFlight = false;
+    renderCart();
+  }
 }
 
 async function capturePayment() {
-  if (!currentOrder || currentOrder.status !== "open") return;
+  if (!currentOrder || currentOrder.status !== "open" || paymentSubmitInFlight) return;
+  paymentSubmitInFlight = true;
+  el("capturePayment").disabled = true;
   setStatus("Đang ghi payment record…");
-  const payload = await appFetch("/api/app/commerce-payment", {
-    method: "POST",
-    body: {
-      orderId: currentOrder.id,
-      method: el("paymentMethod").value,
-      amount: Number(currentOrder.total),
-      reference: el("paymentReference").value.trim() || null
-    }
-  });
-  currentOrder.status = payload.status;
-  el("paymentPanel").classList.add("hidden");
-  setStatus("Payment record đã captured. Order đã paid.", "ok");
-  cartState.clear();
-  currentOrder = null;
-  renderCart();
-  await loadDashboard();
+  try {
+    const payload = await appFetch("/api/app/commerce-payment", {
+      method: "POST",
+      body: {
+        orderId: currentOrder.id,
+        method: el("paymentMethod").value,
+        amount: Number(currentOrder.total),
+        reference: el("paymentReference").value.trim() || null
+      }
+    });
+    currentOrder.status = payload.status;
+    el("paymentPanel").classList.add("hidden");
+    setStatus("Payment record đã captured. Order đã paid.", "ok");
+    cartState.clear();
+    currentOrder = null;
+    renderCart();
+    await loadDashboard();
+  } finally {
+    paymentSubmitInFlight = false;
+    el("capturePayment").disabled = false;
+  }
 }
 
 async function createCategory(event) {
