@@ -14,13 +14,19 @@ export async function handle(req, res, deps = {}) {
     const storeId = requiredUuid(
       url.searchParams.get("storeId"), "COMMERCE_STORE_INVALID", "Invalid Store"
     );
+    const requestedOffset = url.searchParams.get("offset") ?? "0";
+    if (!/^(0|[1-9][0-9]{0,4})$/.test(requestedOffset) || Number(requestedOffset) > 10000) {
+      throw new AppHttpError(400, "COMMERCE_OPEN_ORDERS_OFFSET_INVALID", "Invalid open-orders offset");
+    }
+    const offset = Number(requestedOffset);
     const params = new URLSearchParams({
       select: "id,order_number,store_id,status,total,created_at,channel",
       tenant_id: "eq." + ctx.tenant.id,
       store_id: "eq." + storeId,
       status: "eq.open",
-      order: "created_at.desc",
-      limit: "20"
+      order: "created_at.desc,id.desc",
+      limit: "21",
+      offset: String(offset)
     });
     const payload = await supabaseJson("/rest/v1/pos_orders?" + params, {
       token: ctx.token, ...deps
@@ -28,7 +34,8 @@ export async function handle(req, res, deps = {}) {
     if (!Array.isArray(payload)) {
       throw new AppHttpError(502, "SUPABASE_UPSTREAM", "Open order service returned an error");
     }
-    const orders = payload.map(row => {
+    const hasMore = payload.length > 20;
+    const orders = payload.slice(0, 20).map(row => {
       if (!row?.id || row.store_id !== storeId || row.status !== "open") {
         throw new AppHttpError(502, "SUPABASE_UPSTREAM", "Open order service returned invalid data");
       }
@@ -42,7 +49,11 @@ export async function handle(req, res, deps = {}) {
         channel: row.channel
       };
     });
-    return appJson(res, 200, { tenant: ctx.tenant, orders });
+    return appJson(res, 200, {
+      tenant: ctx.tenant,
+      orders,
+      nextOffset: hasMore ? offset + 20 : null
+    });
   } catch (error) {
     return appError(res, error);
   }

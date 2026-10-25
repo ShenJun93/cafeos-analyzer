@@ -348,8 +348,10 @@ test("cashier can list bounded open orders for own tenant/store; viewer, wrong s
   assert.equal(calls[0].searchParams.get("tenant_id"), "eq." + TENANT_A);
   assert.equal(calls[0].searchParams.get("store_id"), "eq." + STORE_A);
   assert.equal(calls[0].searchParams.get("status"), "eq.open");
-  assert.equal(calls[0].searchParams.get("limit"), "20");
-  assert.equal(calls[0].searchParams.get("order"), "created_at.desc");
+  assert.equal(calls[0].searchParams.get("limit"), "21");
+  assert.equal(calls[0].searchParams.get("order"), "created_at.desc,id.desc");
+  assert.equal(calls[0].searchParams.get("offset"), "0");
+  assert.equal(parsed(response).nextOffset, null);
 
   const viewer = res();
   await openOrdersHandle(req(authHeaders, "GET",
@@ -376,4 +378,45 @@ test("cashier can list bounded open orders for own tenant/store; viewer, wrong s
     "/api/app/commerce-open-orders?storeId=" + STORE_A), anonymous,
     { env, fetchImpl: authFetch("cashier") });
   assert.equal(anonymous.statusCode, 401);
+});
+
+// Recovery pagination is server-bounded: one extra row is fetched to detect more pages.
+test("open-order recovery paginates older orders without unbounded reads", async () => {
+  const offsets = [];
+  const sample = Array.from({ length: 21 }, (_, i) => ({
+    id: `16000000-0000-4000-8000-${String(i+1).padStart(12, "0")}`,
+    store_id: STORE_A, order_number: "C-" + i, status: "open", total: 1000
+  }));
+  const deps = {
+    env,
+    fetchImpl: authFetch("cashier", async (url) => {
+      if (url.pathname !== "/rest/v1/pos_orders") return jsonResponse({}, 500);
+      offsets.push(url.searchParams.get("offset"));
+      assert.equal(url.searchParams.get("limit"), "21");
+      assert.equal(url.searchParams.get("order"), "created_at.desc,id.desc");
+      return jsonResponse(sample);
+    })
+  };
+  const first = res();
+  await openOrdersHandle(req(authHeaders, "GET",
+    "/api/app/commerce-open-orders?storeId=" + STORE_A), first, deps);
+  assert.equal(first.statusCode, 200);
+  assert.equal(parsed(first).orders.length, 20);
+  assert.equal(parsed(first).nextOffset, 20);
+
+  const second = res();
+  await openOrdersHandle(req(authHeaders, "GET",
+    "/api/app/commerce-open-orders?storeId=" + STORE_A + "&offset=20"), second, deps);
+  assert.equal(second.statusCode, 200);
+  assert.equal(parsed(second).nextOffset, 40);
+  assert.deepEqual(offsets, ["0", "20"]);
+
+  for (const invalidOffset of ["-1", "10001", "0.5", "foo", "0003"]) {
+    const failed = res();
+    await openOrdersHandle(req(authHeaders, "GET",
+      "/api/app/commerce-open-orders?storeId=" + STORE_A + "&offset=" + invalidOffset),
+      failed, deps);
+    assert.equal(failed.statusCode, 400);
+    assert.equal(parsed(failed).error.code, "COMMERCE_OPEN_ORDERS_OFFSET_INVALID");
+  }
 });

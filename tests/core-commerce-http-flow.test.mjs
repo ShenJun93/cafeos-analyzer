@@ -102,7 +102,7 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
       }
       assert.equal(url.searchParams.get("status"), "eq.open");
       assert.equal(url.searchParams.get("store_id"), "eq." + STORE);
-      return json(order?.status === "open"
+      return json(order?.status === "open" && url.searchParams.get("offset") !== "20"
         ? [{
           id: ORDER, store_id: STORE, order_number: "C-0001", channel: "counter",
           status: "open", total: order.total, created_at: DATE + "T07:00:00Z"
@@ -220,6 +220,10 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
     const open = await call("/api/app/commerce-open-orders?storeId=" + STORE);
     assert.equal(open.status, 200);
     assert.deepEqual(open.body.orders.map(x => x.id), [ORDER]);
+    assert.equal(open.body.nextOffset, null);
+    const paged = await call("/api/app/commerce-open-orders?storeId=" + STORE + "&offset=20");
+    assert.equal(paged.status, 200);
+    assert.equal(paged.body.nextOffset, null);
     const viewDenied = await call("/api/app/commerce-open-orders?storeId=" + STORE, "viewer-token");
     assert.equal(viewDenied.status, 403);
 

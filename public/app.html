@@ -617,29 +617,53 @@ async function capturePayment() {
   }
 }
 
-async function loadOpenOrdersForRecovery() {
-  if (!canWriteCommerce() || !currentStoreId) return;
+let openOrdersLoadInFlight = false;
+
+async function loadOpenOrdersForRecovery(offset = 0) {
+  if (!canWriteCommerce() || !currentStoreId || openOrdersLoadInFlight) return;
   if (hasUnfinishedCheckout()) {
     return setStatus("Hoàn tất hoặc xác minh đơn hiện tại trước khi khôi phục đơn khác.", "error");
   }
-  const payload = await appFetch(
-    "/api/app/commerce-open-orders?storeId=" + encodeURIComponent(currentStoreId)
-  );
+  const selectedTenant = currentTenantId;
+  const selectedStore = currentStoreId;
+  openOrdersLoadInFlight = true;
   const root = el("openOrderList");
-  root.replaceChildren();
-  if (!payload.orders?.length) {
-    root.textContent = "Không có đơn mở cần khôi phục.";
-    return;
+  try {
+    const payload = await appFetch(
+      "/api/app/commerce-open-orders?storeId=" + encodeURIComponent(selectedStore) +
+      "&offset=" + offset
+    );
+    // Ignore a response if context changed while the page was fetching.
+    if (currentTenantId !== selectedTenant || currentStoreId !== selectedStore) return;
+    if (offset === 0) root.replaceChildren();
+    else {
+      const more = root.querySelector(".open-order-more");
+      if (more) more.remove();
+    }
+    if (!payload.orders?.length && offset === 0) {
+      root.textContent = "Không có đơn mở cần khôi phục.";
+      return;
+    }
+    for (const order of payload.orders || []) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary";
+      button.textContent = (order.orderNumber || order.id) + " · " + money(order.total);
+      button.addEventListener("click", () => guarded(() => resumeOpenOrder(order.id)));
+      root.append(button);
+    }
+    if (payload.nextOffset !== null && payload.nextOffset !== undefined) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "secondary open-order-more";
+      more.textContent = "Xem thêm đơn cũ";
+      more.addEventListener("click", () => guarded(() => loadOpenOrdersForRecovery(payload.nextOffset)));
+      root.append(more);
+    }
+    setStatus("Chọn đơn mở để tiếp tục ghi Payment.", "ok");
+  } finally {
+    openOrdersLoadInFlight = false;
   }
-  for (const order of payload.orders) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "secondary";
-    button.textContent = (order.orderNumber || order.id) + " · " + money(order.total);
-    button.addEventListener("click", () => guarded(() => resumeOpenOrder(order.id)));
-    root.append(button);
-  }
-  setStatus("Chọn đơn mở để tiếp tục ghi Payment.", "ok");
 }
 
 async function resumeOpenOrder(orderId) {
@@ -839,7 +863,7 @@ el("store").addEventListener("change", () => guarded(refreshStore));
 el("refreshApp").addEventListener("click", () => guarded(refreshStore));
 el("submitOrder").addEventListener("click", () => guarded(submitOrder));
 el("capturePayment").addEventListener("click", () => guarded(capturePayment));
-el("recoverOpenOrders").addEventListener("click", () => guarded(loadOpenOrdersForRecovery));
+el("recoverOpenOrders").addEventListener("click", () => guarded(() => loadOpenOrdersForRecovery()));
 el("categoryForm").addEventListener("submit", event => guarded(() => createCategory(event)));
 el("itemForm").addEventListener("submit", event => guarded(() => createItem(event)));
 el("closeDay").addEventListener("click", () => guarded(closeBusinessDay));
