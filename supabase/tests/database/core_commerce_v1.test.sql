@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(21);
+select plan(26);
 
 insert into public.tenants (id,name) values
  ('71000000-0000-4000-8000-000000000011','Commerce A'),
@@ -11,19 +11,37 @@ insert into public.tenant_members (tenant_id,user_id,role) values
  ('71000000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000101','owner'),
  ('71000000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000102','cashier'),
  ('71000000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000103','viewer'),
- ('72000000-0000-4000-8000-000000000022','72000000-0000-4000-8000-000000000201','owner');
+ ('72000000-0000-4000-8000-000000000022','72000000-0000-4000-8000-000000000201','owner'),
+ ('71000000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000104','manager');
 
 insert into public.stores (id,tenant_id,source_namespace,external_key,name,timezone) values
  ('71100000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000011','synthetic','store-a','Commerce Store A','Asia/Ho_Chi_Minh'),
  ('72100000-0000-4000-8000-000000000022','72000000-0000-4000-8000-000000000022','synthetic','store-b','Commerce Store B','Asia/Ho_Chi_Minh');
 
 insert into public.menu_categories (id,tenant_id,name) values
- ('71200000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000011','Coffee');
+ ('71200000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000011','Coffee'),
+ ('72200000-0000-4000-8000-000000000022','72000000-0000-4000-8000-000000000022','Tea');
 
 insert into public.menu_items (id,tenant_id,category_id,name,price) values
- ('71300000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000011','71200000-0000-4000-8000-000000000011','Americano',35000);
+ ('71300000-0000-4000-8000-000000000011','71000000-0000-4000-8000-000000000011','71200000-0000-4000-8000-000000000011','Americano',35000),
+ ('72300000-0000-4000-8000-000000000022','72000000-0000-4000-8000-000000000022','72200000-0000-4000-8000-000000000022','Tea',20000);
 
 set local role authenticated;
+set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000103';
+select results_eq(
+ $$select count(*) from public.menu_items where tenant_id = '72000000-0000-4000-8000-000000000022'$$,
+ array[0::bigint],
+ 'Tenant A viewer cannot read existing Tenant B menu items'
+);
+select throws_ok(
+ $$select public.commerce_capture_payment('72000000-0000-4000-8000-000000000022','72100000-0000-4000-8000-000000000022','cash',20000,null)$$,
+ '42501','COMMERCE_ROLE_FORBIDDEN','Viewer cannot capture a payment across tenants'
+);
+set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000104';
+select lives_ok(
+ $$insert into public.menu_items (tenant_id,category_id,name,price) values ('71000000-0000-4000-8000-000000000011','71200000-0000-4000-8000-000000000011','Manager item',25000)$$,
+ 'Manager may create a menu item through its RLS policy'
+);
 set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000103';
 
 select throws_ok(
@@ -37,6 +55,11 @@ select throws_ok(
 );
 
 set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000102';
+select throws_ok(
+ $$insert into public.menu_items (tenant_id,category_id,name,price) values ('71000000-0000-4000-8000-000000000011','71200000-0000-4000-8000-000000000011','Cashier item',25000)$$,
+ '42501','new row violates row-level security policy for table "menu_items"',
+ 'Cashier cannot create menu items'
+);
 
 select throws_ok(
  $$select public.commerce_create_order(
@@ -153,6 +176,10 @@ select lives_ok(
  'Cashier can open a second order'
 );
 
+select throws_ok(
+ $$select public.commerce_close_day('71000000-0000-4000-8000-000000000011','71100000-0000-4000-8000-000000000011',null)$$,
+ '42501','COMMERCE_CLOSE_ROLE_FORBIDDEN','Cashier cannot close a business day'
+);
 set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000101';
 
 select throws_ok(
