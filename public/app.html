@@ -341,9 +341,20 @@ async function refreshStore() {
   currentOrder = null;
   pendingOrderSubmission = null;
   cartState.clear();
-  await Promise.all([loadMenu(), loadDashboard(), loadControlTower()]);
+  // Control Tower reports on imported facts and must not block first-party sales.
+  // Menu and daily dashboard remain required; their failures still fail closed.
+  const [, , controlTowerReady] = await Promise.all([
+    loadMenu(),
+    loadDashboard(),
+    loadOptionalControlTower()
+  ]);
   renderCart();
-  setStatus("CafeOS đã tải Store hiện tại.", "ok");
+  setStatus(
+    controlTowerReady
+      ? "CafeOS đã tải Store hiện tại."
+      : "POS và Commerce Dashboard sẵn sàng; Control Tower hiện không tải được.",
+    controlTowerReady ? "ok" : "warning"
+  );
 }
 
 async function loadMenu() {
@@ -652,6 +663,18 @@ async function closeBusinessDay() {
     money(payload.close.paymentTotal) + " payments";
   setStatus("Daily Close hoàn tất.", "ok");
   await loadDashboard();
+}
+
+async function loadOptionalControlTower() {
+  try {
+    await loadControlTower();
+    return true;
+  } catch (error) {
+    const root = el("controlBrief");
+    root.replaceChildren();
+    root.textContent = "Control Tower chưa khả dụng: " + error.message;
+    return false;
+  }
 }
 
 async function loadControlTower() {
