@@ -92,3 +92,12 @@ An additional catalog check found RLS enabled on all 11 baseline tables. This re
 Synthetic flow checks: a read-only menu, manager-only creation, cashier order creation with server-owned price, idempotent retry, open-order list, reject close while open, exact payment and reject duplicate, server order status, first-party commerce dashboard, manager close, and an intentionally separate imported Control Tower brief. It also asserts missing JWT, cross-tenant ID, cashier menu write, cashier close and viewer open-orders denial.
 
 GitHub CI runs `40191235831` and `40191231740` completed **PASS** at commit `c08e663`. **This does not access real Supabase Auth/PostgREST or Vercel preview protection, and must never be labeled 'authenticated live HTTP E2E'.** The last direct staging SQL pgTAP result remains **28/28 PASS**, rollback-only.
+
+## Open-order backlog pagination and SQL privilege regression
+
+- `GET /api/app/commerce-open-orders?storeId=...&offset=...` is bounded to 20 returned rows, fetches 21 to signal a following page, uses `created_at.desc,id.desc` ordering, and accepts only decimal offsets 0–10000.
+- UI supports `Xem thêm đơn cũ`. It guards against concurrent duplicate loading and discards stale responses after Tenant/Store change. This is not a durable resumption of an unsubmitted shopping cart.
+- HTTP synthetic flow now checks a nonzero offset and API tests cover page boundaries and invalid offset values. Real staging HTTP JWT acceptance and rendered QA are still NOT_RUN.
+- Read-only live privilege survey: all 6 Commerce tables RLS ON; `anon` no table SELECT/INSERT; `authenticated` can SELECT, can INSERT to `menu_categories`/`menu_items` subject to manager RLS, and has **no direct INSERT/UPDATE on `pos_orders`, `pos_order_items`, `pos_payments`, `daily_closes`**.
+- Nine SQL privilege cases were added to `supabase/tests/database/core_commerce_v1.test.sql`; live staging pgTAP now **37/37 PASS, 0 FAIL**, in one rolled-back transaction. Synthetic tenant/order/payment/close counts remained 0 afterwards. New test source commit `32f0b8d`.
+- Advisor still reports 3 intentional authenticated-executable SECURITY DEFINER RPC warnings plus leaked-password protection disabled. Do not infer complete security sign-off or repair migration history from the test count.

@@ -116,7 +116,7 @@ The product-level discovery gate in issue #11 remains open because real target-I
 
 - PR #74 `feat/cafeos-core-commerce-v1` is **draft/unmerged**. First-party Menu → POS Order → Payment Record → Daily Close → Dashboard → Control Tower handoff is implemented as a candidate, not promoted to production.
 - All six Commerce tables have RLS enabled on **cafeos-staging** (`wjatnyvdygvblirggdcm`). **Full migration-history drift:** 8 Git migration versions and 7 staging versions with zero timestamp intersections; Commerce SQL is byte-identical (29,843 characters) despite different timestamps, but two foundation migrations are not recorded in staging history. See `docs/research/2026-10-25-core-commerce-staging-migration-differential.md`. Never blindly reapply or bulk-repair.
-- Direct staging pgTAP result: **28/28 PASS** at the latest synthetic SQL audit. Assertions include tenant-isolated POS order/payment reads, role-denied writes, idempotency, exact payment, and daily close. Test transaction **ROLLED BACK**; staging synthetic tenant/order/payment/close counts returned zero. Test source commit `3760419`.
+- Direct staging pgTAP result: **37/37 PASS** at the latest synthetic SQL audit. Added nine assertions that authenticated users cannot directly INSERT into trusted Order/Order Items/Payment/Daily Close tables or UPDATE Order/Payment, and `anon` cannot invoke create-order/payment/close privileged RPCs (test-source commit `32f0b8d`). Earlier cases cover tenant-isolated reads, role-denied writes, idempotency, exact payment and daily close. Test transaction **ROLLED BACK**; staging synthetic tenant/order/payment/close counts returned zero.
 - Security Advisor reports three `authenticated_security_definer_function_executable` warnings for intentional order/payment/close RPCs; live SQL confirms `anon` cannot execute, `authenticated` can execute, and functions check `auth.uid()` and role through `private.has_tenant_role`. These are **warnings to review**, not an independently completed security sign-off. Leaked-password protection is separately disabled.
 - Exact-head GitHub CI and Supabase DB CI must both pass after each branch update. Local/browser visual QA at 390px and 1200px, authenticated real-transport synthetic E2E and independent security review are **not yet accepted**. Neither PR merge nor production DB/application promotion is authorized.
 
@@ -137,6 +137,13 @@ The product-level discovery gate in issue #11 remains open because real target-I
 - Coverage: unauthorized and cross-tenant request failures, manager menu authoring, cashier price-authority rejection, create-order idempotency, listing of open orders, exact-payment/duplicate rejection, dashboard source label, daily-close open-order guard and manager close, and Control Tower's separate imported-data source.
 - GitHub CI PASS at test commit `c08e663` (runs `40191235831`, `40191231740`). This is **HTTP integration with a fake Supabase upstream**, not live authenticated staging HTTP E2E or rendered screenshot QA. Never conflate the two evidence levels.
 - Supabase DB CI must be revalidated at each subsequent exact HEAD. Migration history drift and security review still block merge/release.
+
+## Open-order backlog pagination and privilege regression
+
+- Open-order recovery has **20-item bounded pages**, deterministic ordering by `created_at.desc,id.desc` and `offset` validation (0–10000). The operator can click `Xem thêm đơn cũ` to reach earlier persisted open orders. Tenant/Store mismatch responses are discarded when switching context.
+- API unit tests include 21-row boundary detection, next-offset and invalid-offset cases; synthetic real-loopback HTTP integration asserts a second page. The full browser QA with real signed-in staging user remains **NOT_RUN**.
+- A direct staging catalog audit confirmed all six Commerce tables have RLS enabled, `anon` has no table read/write grants, and only manager-scoped Menu INSERT can pass authenticated RLS. Trusted Order/Payment/Close writes are not directly granted to authenticated. This is bounded privilege evidence, not an independent security sign-off.
+- New pgTAP security snapshot: **37/37 PASS** inside one rolled-back transaction; exact HEAD source includes these assertions. SECURITY DEFINER and leaked-password Advisor warnings remain open for independent review.
 
 ## Next engineering action
 
