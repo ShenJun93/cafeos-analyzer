@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CafeOS Control Tower · E1 validation</title>
+<style>
+:root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#1c1917;background:#f5f5f4}
+*{box-sizing:border-box}body{margin:0}.wrap{max-width:1120px;margin:auto;padding:24px 18px 72px}
+.banner{background:#fff7ed;border:2px solid #c2410c;border-radius:14px;padding:14px 16px;font-weight:800;color:#9a3412}
+.top{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:18px 0}
+h1{margin:0;font-size:30px}.muted{color:#78716c}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.card{background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:16px}.card h3{margin:0 0 8px}
+.metric b{display:block;font-size:24px;margin-top:4px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+input,select,button,textarea{font:inherit;border:1px solid #d6d3d1;border-radius:9px;padding:9px 11px;background:#fff}
+button{cursor:pointer;background:#1c1917;color:#fff}.secondary{background:#fff;color:#1c1917}.danger{background:#7f1d1d}
+textarea{width:100%;min-height:72px}.hidden{display:none!important}.status{margin:12px 0;padding:10px 12px;border-radius:10px;background:#fff;border:1px solid #e7e5e4}
+.error{color:#991b1b}.ok{color:#166534}.section{margin-top:24px}.section h2{font-size:21px}
+.item{border-top:1px solid #e7e5e4;padding:12px 0}.item:first-child{border-top:0}.pill{display:inline-block;padding:3px 8px;border-radius:999px;background:#f5f5f4;font-size:12px}
+.notice{border-left:4px solid #57534e;padding:8px 12px;background:#fff}.noncausal{border-left-color:#b45309;font-weight:700}
+code{font-size:12px;word-break:break-all}.auth{max-width:620px}.auth input{min-width:220px}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:760px){.detail-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main class="wrap">
+<div id="syntheticBanner" class="banner">DEMO / SYNTHETIC CONTROL TOWER DATA — NOT YOUR STORE DATA</div>
+<div class="top">
+  <div><h1>Control Tower · E1 validation</h1><div class="muted">Brief → Store Health → Attention → Action → Measurement</div></div>
+  <button id="signOut" class="secondary hidden" type="button">Đăng xuất</button>
+</div>
+
+<section id="authPanel" class="card auth">
+  <h2>Đăng nhập synthetic staging</h2>
+  <p class="muted">Tài khoản này chỉ dùng cho môi trường synthetic. Token chỉ giữ trong memory của tab và không được lưu localStorage/sessionStorage.</p>
+  <div class="row">
+    <input id="email" type="email" autocomplete="username" placeholder="Synthetic test-user email">
+    <input id="password" type="password" autocomplete="current-password" placeholder="Password">
+    <button id="signIn" type="button">Đăng nhập</button>
+  </div>
+</section>
+
+<div id="status" class="status muted">Chưa đăng nhập.</div>
+
+<section id="app" class="hidden">
+  <div class="card">
+    <div class="row">
+      <label><strong>Tenant</strong> <select id="tenant"></select></label>
+      <label><strong>Store</strong> <select id="store"><option value="">— chọn store —</option></select></label>
+      <button id="refresh" type="button">Làm mới</button>
+    </div>
+    <p class="muted">Tenant list chỉ lấy từ membership của user hiện tại. Không có ô nhập tenant ID tự do.</p>
+  </div>
+
+  <section class="section">
+    <h2>Daily Brief</h2>
+    <div id="briefMeta" class="notice muted">Chưa tải.</div>
+    <div id="briefMetrics" class="grid"></div>
+  </section>
+
+  <section class="section detail-grid">
+    <div>
+      <h2>Attention</h2>
+      <div id="attention" class="card"></div>
+    </div>
+    <div>
+      <h2>Unresolved Actions</h2>
+      <div id="actions" class="card"></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Store Health</h2>
+    <div id="storeMeta" class="notice muted">Chọn Store để xem.</div>
+    <div id="storeMetrics" class="grid"></div>
+    <div id="storeAttention" class="card" style="margin-top:12px"></div>
+  </section>
+
+  <section id="actionSection" class="section hidden">
+    <h2>Action detail / Measurement</h2>
+    <div id="actionDetail" class="card"></div>
+    <div class="detail-grid" style="margin-top:12px">
+      <div class="card">
+        <h3>Cập nhật status</h3>
+        <div class="row">
+          <select id="actionStatus">
+            <option value="in_progress">in_progress</option>
+            <option value="resolved">resolved</option>
+            <option value="dismissed">dismissed</option>
+          </select>
+          <button id="updateStatus" type="button">Cập nhật</button>
+        </div>
+        <textarea id="resolutionNote" placeholder="Resolution note — bắt buộc khi resolved/dismissed"></textarea>
+      </div>
+      <div class="card">
+        <h3>Tạo Measurement Window</h3>
+        <div class="grid">
+          <label>Baseline start<input id="baselineStart" type="datetime-local"></label>
+          <label>Baseline end<input id="baselineEnd" type="datetime-local"></label>
+          <label>Measure start<input id="measurementStart" type="datetime-local"></label>
+          <label>Measure end<input id="measurementEnd" type="datetime-local"></label>
+        </div>
+        <button id="createMeasurement" type="button" style="margin-top:10px">Tạo window</button>
+        <p class="muted">Metric/scope/value không được gửi từ client; backend derive từ Action + Attention.</p>
+      </div>
+    </div>
+  </section>
+</section>
+</main>
+<script>
+let config=null;
+let accessToken=null;
+let selectedTenantId=null;
+let selectedActionId=null;
+let sessionMemberships=[];
+const $=selector=>document.querySelector(selector);
+const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const money=value=>value===null||value===undefined?'—':new Intl.NumberFormat('vi-VN').format(Number(value))+' ₫';
+const num=value=>value===null||value===undefined?'—':new Intl.NumberFormat('vi-VN',{maximumFractionDigits:2}).format(Number(value));
+function setStatus(message,error=false){$('#status').textContent=message;$('#status').className='status '+(error?'error':'muted')}
+function clearSession(){
+  accessToken=null;selectedTenantId=null;selectedActionId=null;sessionMemberships=[];
+  $('#app').classList.add('hidden');$('#signOut').classList.add('hidden');$('#authPanel').classList.remove('hidden');
+}
+async function loadConfig(){
+  const response=await fetch('/api/app/client-config',{headers:{accept:'application/json'}});
+  const body=await response.json();
+  if(!response.ok)throw new Error(body?.error?.message||'Synthetic staging chưa cấu hình');
+  if(body.environment!=='synthetic_staging'||body.evidenceProvenance!=='operator_synthetic_assisted')throw new Error('E1 provenance config không hợp lệ');
+  config=body;
+}
+async function signIn(){
+  try{
+    if(!config)await loadConfig();
+    const email=$('#email').value.trim(),password=$('#password').value;
+    if(!email||!password)throw new Error('Nhập synthetic test-user email và password.');
+    setStatus('Đang đăng nhập synthetic staging…');
+    const response=await fetch(config.supabaseUrl+'/auth/v1/token?grant_type=password',{
+      method:'POST',
+      headers:{apikey:config.publishableKey,'content-type':'application/json',accept:'application/json'},
+      body:JSON.stringify({email,password})
+    });
+    const body=await response.json();
+    if(!response.ok||!body?.access_token)throw new Error('Đăng nhập synthetic staging thất bại.');
+    accessToken=body.access_token;
+    $('#password').value='';
+    await loadSession();
+    $('#authPanel').classList.add('hidden');$('#signOut').classList.remove('hidden');$('#app').classList.remove('hidden');
+    setStatus('Đã đăng nhập synthetic staging.');
+  }catch(error){clearSession();setStatus(error.message||'Đăng nhập thất bại.',true)}
+}
+async function api(path,{method='GET',body,tenant=true}={}){
+  if(!accessToken)throw new Error('AUTH_REQUIRED');
+  const headers={authorization:'Bearer '+accessToken,accept:'application/json'};
+  if(tenant){
+    if(!selectedTenantId)throw new Error('TENANT_REQUIRED');
+    headers['x-cafeos-tenant-id']=selectedTenantId;
+  }
+  if(body!==undefined)headers['content-type']='application/json';
+  const response=await fetch(path,{method,headers,...(body===undefined?{}:{body:JSON.stringify(body)})});
+  let payload=null;try{payload=await response.json()}catch{}
+  if(response.status===401){
+    clearSession();
+    throw new Error(payload?.error?.code==='AUTH_INVALID'?'Phiên đăng nhập không còn hợp lệ.':'Cần đăng nhập.');
+  }
+  if(!response.ok)throw new Error(payload?.error?.message||payload?.error?.code||('HTTP '+response.status));
+  return payload;
+}
+async function loadSession(){
+  const session=await api('/api/app/session',{tenant:false});
+  sessionMemberships=Array.isArray(session.memberships)?session.memberships:[];
+  if(!sessionMemberships.length)throw new Error('Synthetic user không có tenant membership.');
+  $('#tenant').innerHTML=sessionMemberships.map(item=>'<option value="'+esc(item.tenantId)+'">'+esc(item.name||item.tenantId)+' · '+esc(item.role)+'</option>').join('');
+  selectedTenantId=sessionMemberships[0].tenantId;
+  $('#tenant').value=selectedTenantId;
+  await loadTenant();
+}
+function metricCard(label,value,detail=''){
+  return '<div class="card metric"><span>'+esc(label)+'</span><b>'+esc(value)+'</b><div class="muted">'+esc(detail)+'</div></div>';
+}
+function renderMetrics(target,metrics){
+  const m=metrics||{};
+  $(target).innerHTML=[
+    metricCard('Net sales',money(m.netSales?.current),m.netSales?.baselineStatus||''),
+    metricCard('Orders',num(m.orders?.current),m.orders?.baselineStatus||''),
+    metricCard('AOV',money(m.aov?.current),m.aov?.baselineStatus||'')
+  ].join('');
+}
+function renderAttention(items,target='#attention'){
+  const rows=Array.isArray(items)?items:[];
+  $(target).innerHTML=rows.length?rows.map(item=>
+    '<div class="item"><div><span class="pill">'+esc(item.severity||'attention')+'</span> <strong>'+esc(item.metric||item.type||'Attention')+'</strong></div>'+
+    '<div class="muted">current '+esc(item.current_value??'—')+' · baseline '+esc(item.baseline_value??'—')+'</div>'+
+    (item.status==='open'?'<button class="createAction" data-attention="'+esc(item.id)+'" type="button">Tạo investigate Action</button>':'<span class="pill">'+esc(item.status)+'</span>')+
+    '</div>'
+  ).join(''):'<div class="muted">Không có Attention hiện tại.</div>';
+  $(target).querySelectorAll('.createAction').forEach(button=>button.onclick=()=>createAction(button.dataset.attention));
+}
+function renderActions(items){
+  const rows=Array.isArray(items)?items:[];
+  $('#actions').innerHTML=rows.length?rows.map(item=>
+    '<div class="item"><strong>'+esc(item.title||'Action')+'</strong> <span class="pill">'+esc(item.status)+'</span>'+
+    '<div><button class="openAction secondary" data-action="'+esc(item.id)+'" type="button">Mở detail</button></div></div>'
+  ).join(''):'<div class="muted">Không có unresolved Action.</div>';
+  $('#actions').querySelectorAll('.openAction').forEach(button=>button.onclick=()=>loadAction(button.dataset.action));
+}
+async function loadTenant(){
+  try{
+    setStatus('Đang tải synthetic Control Tower…');
+    const [stores,brief,attention]=await Promise.all([
+      api('/api/app/stores'),
+      api('/api/app/brief'),
+      api('/api/app/attention')
+    ]);
+    $('#store').innerHTML='<option value="">— chọn store —</option>'+stores.stores.map(store=>'<option value="'+esc(store.id)+'">'+esc(store.name)+'</option>').join('');
+    $('#briefMeta').textContent='As of '+(brief.asOfBusinessDate||'—')+' · stores '+(brief.coverage?.storesRepresented??'—')+'/'+(brief.coverage?.activeStores??'—')+' · latest '+(brief.freshness?.latestObservedTransactionAt||'—');
+    renderMetrics('#briefMetrics',brief.metrics);
+    renderAttention(attention.attention);
+    renderActions(brief.unresolvedActions);
+    $('#storeMetrics').innerHTML='';
+    $('#storeAttention').innerHTML='';
+    $('#storeMeta').textContent='Chọn Store để xem.';
+    $('#actionSection').classList.add('hidden');
+    setStatus('Synthetic Control Tower đã tải.');
+  }catch(error){setStatus(error.message||'Không tải được Control Tower.',true)}
+}
+async function loadStore(){
+  const storeId=$('#store').value;
+  if(!storeId){$('#storeMeta').textContent='Chọn Store để xem.';$('#storeMetrics').innerHTML='';$('#storeAttention').innerHTML='';return}
+  try{
+    const body=await api('/api/app/store-health?storeId='+encodeURIComponent(storeId));
+    $('#storeMeta').textContent=(body.store?.name||'Store')+' · as of '+(body.asOfBusinessDate||'—')+' · current data '+String(body.coverage?.currentHasData??'—');
+    renderMetrics('#storeMetrics',body.metrics);
+    renderAttention(body.attention,'#storeAttention');
+  }catch(error){setStatus(error.message||'Không tải được Store Health.',true)}
+}
+async function createAction(attentionItemId){
+  try{
+    const body=await api('/api/app/actions',{method:'POST',body:{attentionItemId}});
+    setStatus('Đã tạo bounded investigate Action.');
+    await loadTenant();
+    if(body.action?.id)await loadAction(body.action.id);
+  }catch(error){setStatus(error.message||'Không tạo được Action.',true)}
+}
+async function loadAction(actionId){
+  try{
+    selectedActionId=actionId;
+    const body=await api('/api/app/action-detail?actionId='+encodeURIComponent(actionId));
+    $('#actionSection').classList.remove('hidden');
+    const measurements=Array.isArray(body.measurementWindows)?body.measurementWindows:[];
+    const measurementHtml=measurements.length?measurements.map(window=>{
+      const result=window.deterministicResult?.result;
+      const interpretation=result?.interpretation;
+      return '<div class="item"><strong>Measurement</strong> <span class="pill">'+esc(result?.status||window.status||'pending')+'</span>'+
+        '<div>Δ '+esc(result?.deltaValue??'—')+' · '+esc(result?.deltaPct??'—')+'</div>'+
+        (interpretation==='before_after_not_causal'?'<div class="notice noncausal">before/after measured change — not causal attribution</div>':'')+
+        '</div>';
+    }).join(''):'<div class="muted">Chưa có Measurement Window.</div>';
+    const history=Array.isArray(body.history)?body.history:[];
+    $('#actionDetail').innerHTML=
+      '<h3>'+esc(body.action?.title||'Action')+' <span class="pill">'+esc(body.action?.status||'')+'</span></h3>'+
+      '<p class="muted">Expected metric: '+esc(body.action?.expected_metric||'—')+'</p>'+
+      '<h3>History</h3>'+(history.length?history.map(row=>'<div class="item">'+esc(row.from_status||'—')+' → '+esc(row.to_status||'—')+'</div>').join(''):'<div class="muted">Chưa có status history.</div>')+
+      '<h3>Measurement</h3>'+measurementHtml;
+    $('#actionStatus').value=body.action?.status==='open'?'in_progress':(body.action?.status||'in_progress');
+  }catch(error){setStatus(error.message||'Không tải được Action detail.',true)}
+}
+async function updateActionStatus(){
+  if(!selectedActionId)return;
+  try{
+    const status=$('#actionStatus').value;
+    const resolutionNote=$('#resolutionNote').value.trim();
+    await api('/api/app/action-status',{method:'PATCH',body:{actionId:selectedActionId,status,resolutionNote}});
+    $('#resolutionNote').value='';
+    setStatus('Đã cập nhật Action status.');
+    await loadAction(selectedActionId);
+    await loadTenant();
+  }catch(error){setStatus(error.message||'Không cập nhật được Action.',true)}
+}
+function isoFromLocal(selector){
+  const raw=$(selector).value;
+  if(!raw)throw new Error('Điền đủ bốn mốc thời gian Measurement.');
+  return new Date(raw).toISOString();
+}
+async function createMeasurement(){
+  if(!selectedActionId)return;
+  try{
+    await api('/api/app/measurement-window',{method:'POST',body:{
+      actionId:selectedActionId,
+      baselineStart:isoFromLocal('#baselineStart'),
+      baselineEnd:isoFromLocal('#baselineEnd'),
+      measurementStart:isoFromLocal('#measurementStart'),
+      measurementEnd:isoFromLocal('#measurementEnd')
+    }});
+    setStatus('Đã tạo Measurement Window. Metric/scope được backend derive.');
+    await loadAction(selectedActionId);
+  }catch(error){setStatus(error.message||'Không tạo được Measurement Window.',true)}
+}
+$('#signIn').onclick=signIn;
+$('#signOut').onclick=()=>{clearSession();setStatus('Đã đăng xuất; JWT đã bỏ khỏi memory.')};
+$('#tenant').onchange=async()=>{selectedTenantId=$('#tenant').value;selectedActionId=null;await loadTenant()};
+$('#store').onchange=loadStore;
+$('#refresh').onclick=loadTenant;
+$('#updateStatus').onclick=updateActionStatus;
+$('#createMeasurement').onclick=createMeasurement;
+loadConfig().catch(error=>setStatus(error.message||'Synthetic staging chưa cấu hình.',true));
+</script>
+</body>
+</html>
