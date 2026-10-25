@@ -1,18 +1,18 @@
-export declare const CONTROL_TOWER_STORE_BUCKETS: readonly ["1", "2", "3-5", "6-10", "11-15", "16+"];
+export declare const CONTROL_TOWER_STORE_BUCKETS: readonly ['1', '2', '3-5', '6-10', '11-15', '16+'];
 export type ControlTowerStoreBucket = typeof CONTROL_TOWER_STORE_BUCKETS[number];
-export declare const CONTROL_TOWER_PARTICIPANT_ROLES: readonly ["owner_operator", "hq_decision_maker", "other"];
+export declare const CONTROL_TOWER_PARTICIPANT_ROLES: readonly ['owner_operator', 'hq_decision_maker', 'other'];
 export type ControlTowerParticipantRoleClass = typeof CONTROL_TOWER_PARTICIPANT_ROLES[number];
-export declare const CONTROL_TOWER_PROVENANCES: readonly ["synthetic_technical", "operator_synthetic_assisted", "merchant_data_permissioned"];
+export declare const CONTROL_TOWER_PROVENANCES: readonly ['synthetic_technical', 'operator_synthetic_assisted', 'merchant_data_permissioned'];
 export type ControlTowerEvidenceProvenance = typeof CONTROL_TOWER_PROVENANCES[number];
-export declare const CONTROL_TOWER_SOURCE_KEYS: readonly ["kiotviet_fnb", "sapo_fnb", "cukcuk", "pos365", "ipos", "haravan", "generic_excel_csv", "other_pos", "unknown"];
+export declare const CONTROL_TOWER_SOURCE_KEYS: readonly ['kiotviet_fnb', 'sapo_fnb', 'cukcuk', 'pos365', 'ipos', 'haravan', 'generic_excel_csv', 'other_pos', 'unknown'];
 export type ControlTowerTransactionSourceKey = typeof CONTROL_TOWER_SOURCE_KEYS[number];
-export declare const CONTROL_TOWER_SOURCE_EVIDENCE_KINDS: readonly ["operator_stated", "export_observed", "merchant_data_permissioned"];
+export declare const CONTROL_TOWER_SOURCE_EVIDENCE_KINDS: readonly ['operator_stated', 'export_observed', 'merchant_data_permissioned'];
 export type ControlTowerSourceEvidenceKind = typeof CONTROL_TOWER_SOURCE_EVIDENCE_KINDS[number];
-export declare const CONTROL_TOWER_ACQUISITION_SOURCES: readonly ["seo", "direct", "other"];
+export declare const CONTROL_TOWER_ACQUISITION_SOURCES: readonly ['seo', 'direct', 'other'];
 export type ControlTowerAcquisitionSource = typeof CONTROL_TOWER_ACQUISITION_SOURCES[number];
-export declare const CONTROL_TOWER_ACQUISITION_MEDIA: readonly ["organic", "none", "other"];
+export declare const CONTROL_TOWER_ACQUISITION_MEDIA: readonly ['organic', 'none', 'other'];
 export type ControlTowerAcquisitionMedium = typeof CONTROL_TOWER_ACQUISITION_MEDIA[number];
-export declare const CONTROL_TOWER_ACQUISITION_CAMPAIGNS: readonly ["kiotviet-excel-analysis", "sapo-fnb-excel-analysis", "cafe-excel-analysis", "other"];
+export declare const CONTROL_TOWER_ACQUISITION_CAMPAIGNS: readonly ['kiotviet-excel-analysis', 'sapo-fnb-excel-analysis', 'cafe-excel-analysis', 'other'];
 export type ControlTowerAcquisitionCampaign = typeof CONTROL_TOWER_ACQUISITION_CAMPAIGNS[number];
 export type ControlTowerEvidenceBool = boolean | null;
 export interface ControlTowerTransactionSourceItem {
