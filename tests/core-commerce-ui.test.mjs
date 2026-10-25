@@ -218,3 +218,54 @@ test("unfinished POS checkout prevents Store/Tenant refresh from losing the idem
   assert.equal(element("store").value, "store-A");
   assert.equal(requests.length, requestCount);
 });
+
+
+test("Control Tower outage degrades reporting but does not block POS; Menu outage still blocks", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const script = html.split("<script>")[1]?.split("</script>")[0];
+  assert.ok(script);
+
+  const dom = new Map();
+  function node(id) {
+    if (!dom.has(id)) dom.set(id, {
+      value: "", textContent: "", dataset: {}, disabled: false,
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener() {}, replaceChildren() {}, append() {}, reset() {}
+    });
+    return dom.get(id);
+  }
+  const context = createContext({
+    document: {
+      getElementById: node,
+      querySelectorAll: () => [],
+      createElement: () => node("created_" + dom.size)
+    },
+    window: { confirm: () => false },
+    fetch: async () => ({
+      ok: true, status: 200,
+      json: async () => ({ supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test" })
+    }),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "synthetic-key" }
+  });
+  runInContext(script, context);
+  node("store").value = "store-1";
+  runInContext(`
+    sessionToken = "synthetic-token";
+    currentTenantId = "tenant-1";
+    currentStoreId = "store-1";
+    let controlTowerCalls = 0;
+    loadMenu = async () => {};
+    loadDashboard = async () => {};
+    loadControlTower = async () => { controlTowerCalls += 1; throw new Error("brief offline"); };
+  `, context);
+
+  await runInContext("refreshStore()", context);
+  assert.match(node("status").textContent, /POS.*Commerce Dashboard.*Control Tower/i);
+  assert.match(node("controlBrief").textContent, /brief offline/);
+  assert.equal(runInContext("controlTowerCalls", context), 1);
+  assert.equal(node("status").dataset.state, "warning");
+
+  runInContext('loadMenu = async () => { throw new Error("menu offline"); }', context);
+  await assert.rejects(runInContext("refreshStore()", context), /menu offline/);
+});
