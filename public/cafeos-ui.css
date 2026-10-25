@@ -105,3 +105,38 @@ textarea{min-height:110px;resize:vertical}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
 }
+
+
+/* Landing — Warm Cafe Intelligence + Operational Editorial */
+.landing-shell{padding-top:18px}
+.landing-masthead .masthead-nav{display:flex;gap:18px;align-items:center;font-size:14px}
+.landing-hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr);gap:clamp(32px,7vw,96px);align-items:end;padding:68px 0 56px}
+.landing-hero .display-title{font-size:clamp(52px,8vw,100px);max-width:10.5ch;margin:12px 0 22px}
+.landing-hero .hero-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:28px}
+.landing-hero .material-note{align-self:stretch;display:flex;flex-direction:column;justify-content:space-between;padding:28px;background:linear-gradient(145deg,#e9d4bd 0%,#d7b99c 100%);border:1px solid rgba(127,66,47,.18);min-height:320px}
+.landing-hero .material-note strong{font-family:var(--font-display);font-size:32px;line-height:1.05;font-weight:600}
+.operator-proof{display:grid;grid-template-columns:1.15fr .85fr 1fr;border-block:1px solid var(--line)}
+.operator-proof article{padding:22px 22px 22px 0}
+.operator-proof article+article{border-left:1px solid var(--line);padding-left:22px}
+.operator-proof strong{display:block;font-family:var(--font-display);font-size:22px;margin-bottom:6px}
+.field-note{display:grid;grid-template-columns:minmax(180px,.35fr) minmax(0,.65fr);gap:36px;align-items:start}
+.field-note .note-number{font-family:var(--font-display);font-size:clamp(70px,10vw,132px);line-height:.8;color:var(--clay)}
+.field-note .note-copy{max-width:60ch;font-size:19px}
+.compatibility-checklist{display:grid;gap:0;border-top:1px solid var(--line)}
+.compatibility-checklist li{list-style:none;display:grid;grid-template-columns:42px 1fr;gap:14px;padding:16px 0;border-bottom:1px solid var(--line)}
+.compatibility-checklist .check-index{font-family:var(--font-display);font-size:20px;color:var(--clay-deep)}
+.privacy-boundary{display:grid;grid-template-columns:minmax(0,.7fr) minmax(260px,.3fr);gap:40px;padding:32px;background:var(--espresso);color:#fff}
+.privacy-boundary .section-label{color:#e8b99f}
+.privacy-boundary p{color:#e8e0da}
+.landing-final{display:flex;justify-content:space-between;gap:28px;align-items:end;padding:54px 0 12px}
+.landing-final h2{font-family:var(--font-display);font-size:clamp(36px,6vw,68px);line-height:1;margin:0;max-width:11ch}
+@media (max-width:720px){
+  .landing-masthead .masthead-nav{width:100%;justify-content:space-between}
+  .landing-hero,.field-note,.privacy-boundary{grid-template-columns:1fr}
+  .landing-hero{padding-top:42px}
+  .landing-hero .material-note{min-height:240px}
+  .operator-proof{grid-template-columns:1fr}
+  .operator-proof article{padding:18px 0}
+  .operator-proof article+article{border-left:0;border-top:1px solid var(--line);padding-left:0}
+  .landing-final{align-items:flex-start;flex-direction:column}
+}
