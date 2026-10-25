@@ -260,7 +260,28 @@ async function signIn() {
   await loadSession();
 }
 
+function hasUnfinishedCheckout() {
+  return Boolean(pendingOrderSubmission || currentOrder || orderSubmitInFlight || paymentSubmitInFlight);
+}
+
+function preventUnsafeContextReset() {
+  if (!hasUnfinishedCheckout()) return false;
+  el("tenant").value = currentTenantId || "";
+  el("store").value = currentStoreId || "";
+  setStatus(
+    "Có đơn chưa hoàn tất. Retry Create Order bằng cùng request hoặc ghi Payment trước khi Refresh/đổi Tenant/Store.",
+    "error"
+  );
+  return true;
+}
+
 function signOut() {
+  if (orderSubmitInFlight || paymentSubmitInFlight) {
+    return setStatus("Yêu cầu POS đang xử lý; không đăng xuất khi chưa có kết quả.", "error");
+  }
+  if (hasUnfinishedCheckout() && !window.confirm(
+    "Đơn chưa hoàn tất. Đăng xuất sẽ xóa bộ nhớ retry/payment trong trình duyệt. Tiếp tục?"
+  )) return;
   sessionToken = null;
   currentTenantId = null;
   currentStoreId = null;
@@ -296,6 +317,7 @@ async function loadSession() {
 }
 
 async function loadTenant() {
+  if (preventUnsafeContextReset()) return;
   currentTenantId = el("tenant").value;
   currentStoreId = null;
   currentOrder = null;
@@ -314,6 +336,7 @@ async function loadTenant() {
 }
 
 async function refreshStore() {
+  if (preventUnsafeContextReset()) return;
   currentStoreId = el("store").value;
   currentOrder = null;
   pendingOrderSubmission = null;
