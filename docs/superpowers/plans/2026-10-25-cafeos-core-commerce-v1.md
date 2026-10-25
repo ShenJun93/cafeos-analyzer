@@ -4,7 +4,7 @@
 
 **Goal:** Build the first first-party CafeOS commerce spine: Menu → POS Order → Payment Record → Daily Close → Dashboard → Control Tower handoff.
 
-**Architecture:** Extend the existing Supabase/Postgres tenant/store/RLS foundation with atomic SECURITY INVOKER commerce RPCs and explicit grants/RLS. Reuse the existing \`api/app/workflow.mjs\` Vercel function as the commerce dispatcher so the project stays within the 12-function Hobby budget. Add one authenticated static \`/app\` shell using the existing Hallmark CSS; Analyzer and Control Tower remain backward compatible.
+**Architecture:** Extend the existing Supabase/Postgres tenant/store/RLS foundation with bounded SECURITY DEFINER write RPCs, a SECURITY INVOKER dashboard, and explicit grants/RLS. Reuse the existing \`api/app/workflow.mjs\` Vercel function as the commerce dispatcher so the project stays within the 12-function Hobby budget. Add one authenticated static \`/app\` shell using the existing Hallmark CSS; Analyzer and Control Tower remain backward compatible.
 
 **Tech Stack:** PostgreSQL/Supabase, Vercel Node handlers, static HTML/CSS/vanilla JS, Node test runner.
 
