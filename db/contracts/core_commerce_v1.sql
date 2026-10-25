@@ -358,35 +358,26 @@ begin
       using errcode = 'P0002';
   end if;
 
-  v_business_date := (clock_timestamp() at time zone v_timezone)::date;
-
-  perform pg_advisory_xact_lock(
-    hashtextextended(
-      p_tenant_id::text || ':' || p_store_id::text || ':' || v_business_date::text,
-      0
-    )
-  );
-
-  if exists (
-    select 1
-    from public.daily_closes dc
-    where dc.tenant_id = p_tenant_id
-      and dc.store_id = p_store_id
-      and dc.business_date = v_business_date
-  ) then
-    raise exception 'COMMERCE_DAY_CLOSED'
-      using errcode = '55000';
-  end if;
-
+  -- A retry must resolve to the original order even if its business date has
+  -- since been closed. Lock the intent key independently of the business day,
+  -- then check for an existing matching request BEFORE the daily-close gate.
   v_request_fingerprint := encode(
-    digest(
+    sha256(convert_to(
       p_store_id::text || '|' ||
       v_client_order_key || '|' ||
       v_channel || '|' ||
       p_items::text,
-      'sha256'
-    ),
+      'UTF8'
+    )),
     'hex'
+  );
+
+  perform pg_advisory_xact_lock(
+    hashtextextended(
+      'commerce:client-order-key:' ||
+      p_tenant_id::text || ':' || p_store_id::text || ':' || v_client_order_key,
+      0
+    )
   );
 
   select o.id, o.request_fingerprint
@@ -404,6 +395,24 @@ begin
     end if;
     v_order_id := v_existing.id;
   else
+    v_business_date := (clock_timestamp() at time zone v_timezone)::date;
+    perform pg_advisory_xact_lock(
+      hashtextextended(
+        p_tenant_id::text || ':' || p_store_id::text || ':' || v_business_date::text,
+        0
+      )
+    );
+
+    if exists (
+      select 1
+      from public.daily_closes dc
+      where dc.tenant_id = p_tenant_id
+        and dc.store_id = p_store_id
+        and dc.business_date = v_business_date
+    ) then
+      raise exception 'COMMERCE_DAY_CLOSED'
+        using errcode = '55000';
+    end if;
     for v_item in
       select value from jsonb_array_elements(p_items)
     loop
