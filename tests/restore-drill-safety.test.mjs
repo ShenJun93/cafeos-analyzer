@@ -39,7 +39,8 @@ test("history-repair drill is isolated to local synthetic Supabase and checks no
   );
   assert.match(script, /readonly DB_URL="postgresql:\/\/postgres:postgres@127\.0\.0\.1:54322\/postgres"/);
   assert.match(script, /pg_isready -h 127\.0\.0\.1 -p 54322/);
-  assert.match(script, /inet_server_addr\(\).*inet_server_port\(\)/s);
+  assert.match(script, /current_database\(\) \|\| ':' \|\| current_user/);
+  assert.match(script, /\[\[ "\$DB_URL" == "postgresql:\/\/postgres:postgres@127\.0\.0\.1:54322\/postgres" \]\]/);
   assert.match(script, /supabase migration repair --db-url "\$DB_URL" --status reverted/);
   assert.match(script, /supabase migration repair --db-url "\$DB_URL" --status applied/);
   assert.match(script, /CAFEOS_LOCAL_LEDGER_REPAIR_DRILL_PASS/);

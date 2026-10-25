@@ -7,7 +7,11 @@ command -v psql >/dev/null
 command -v pg_isready >/dev/null
 
 pg_isready -h 127.0.0.1 -p 54322 -U postgres -d postgres -q
-[[ "$(psql "$DB_URL" -Atq -c "select inet_server_addr()::text||':'||inet_server_port()::text")" == "127.0.0.1:54322" ]]
+# PostgreSQL is behind Docker port forwarding; server-side inet_server_addr()
+# and inet_server_port() expose its container endpoint, not the host listener.
+# The client-side DB_URL is pinned to localhost above; also verify DB identity.
+[[ "$DB_URL" == "postgresql://postgres:postgres@127.0.0.1:54322/postgres" ]]
+[[ "$(psql "$DB_URL" -Atq -c "select current_database() || ':' || current_user")" == "postgres:postgres" ]]
 
 readonly -a CANONICAL=(
   20260921005530 20260921005532 20260921100900 20260921164500
