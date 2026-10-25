@@ -121,3 +121,30 @@ test("feedback uses warm research stages while preserving one-page evidence sema
     assert.match(html, /không cấp quyền hồi tố/i);
   }
 });
+
+
+test("Control Tower E1 uses bounded Glass Control Room macrostructure", async () => {
+  const html = await readFile(new URL("../web/control-tower-e1.html", import.meta.url), "utf8");
+
+  assert.match(html, /<link rel="stylesheet" href="\/cafeos-ui\.css">/);
+  for (const marker of [
+    "control-shell",
+    "synthetic-system-strip",
+    "control-commandbar",
+    "brief-stage",
+    "control-metrics",
+    "queue-board",
+    "store-diagnostic",
+    "action-workspace",
+    "measurement-evidence"
+  ]) assert.equal(html.includes(marker), true, "missing Control Tower marker " + marker);
+
+  assert.match(html, /DEMO \/ SYNTHETIC CONTROL TOWER DATA — NOT YOUR STORE DATA/);
+  assert.match(html, /before\/after measured change — not causal attribution/);
+  assert.doesNotMatch(html, /localStorage|sessionStorage/);
+
+  const glassCount=(html.match(/glass-surface/g) || []).length;
+  assert.ok(glassCount >= 1 && glassCount <= 4, "glass surfaces must stay bounded");
+  assert.equal(html.includes("status-resolution-panel"), true);
+  assert.equal(html.includes("measurement-create-panel"), true);
+});
