@@ -304,6 +304,7 @@ test("lost payment response reconciles paid order and preserves an open order", 
   runInContext(`
     sessionToken = "fake-jwt";
     currentTenantId = "tenant-1";
+    currentTenantRole = "cashier";
     currentStoreId = "store-1";
     currentOrder = { id: "order-1", status: "open", total: 50000 };
     let statusResult = "paid";
