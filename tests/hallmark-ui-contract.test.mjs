@@ -56,3 +56,44 @@ test("landing uses Warm Cafe editorial macrostructure without changing evidence 
   assert.doesNotMatch(html, /<div class="grid">/);
   assert.doesNotMatch(html, /testimonial|customer logos|purple|pink gradient/i);
 });
+
+
+test("Analyzer uses editorial operations macrostructure while preserving the existing behavior surface", async () => {
+  const html = await readFile(new URL("../public/analyzer.html", import.meta.url), "utf8");
+
+  assert.match(html, /<link rel="stylesheet" href="\/cafeos-ui\.css">/);
+  for (const marker of [
+    "analyzer-shell",
+    "analyzer-commandbar",
+    "intake-stage",
+    "metric-band",
+    "evidence-rail",
+    "diagnostic-strip",
+    "attention-stage",
+    "technical-evidence",
+    "research-action"
+  ]) assert.equal(html.includes(marker), true, "missing Analyzer marker " + marker);
+
+  for (const id of [
+    "file",
+    "downloadProfile",
+    "sheetPicker",
+    "mappingPanel",
+    "status",
+    "report",
+    "metrics",
+    "health",
+    "insights",
+    "workbook",
+    "feedbackLink"
+  ]) assert.match(html, new RegExp('id="' + id + '"'));
+
+  assert.match(html, /accept="\.csv,\.xlsx"/);
+  assert.match(html, /tối đa 4MB/i);
+  assert.match(html, /issues\/new\?template=compatibility-report\.yml/);
+  assert.match(html, /href="\/sample-report"/);
+  assert.match(html, /fetch\(path,\{method:'POST',body:file\}\)/);
+  assert.match(html, /\/api\/analyze/);
+  assert.match(html, /\/api\/inspect/);
+  assert.match(html, /\/api\/profile/);
+});
