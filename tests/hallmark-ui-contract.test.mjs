@@ -97,3 +97,27 @@ test("Analyzer uses editorial operations macrostructure while preserving the exi
   assert.match(html, /\/api\/inspect/);
   assert.match(html, /\/api\/profile/);
 });
+
+
+test("feedback uses warm research stages while preserving one-page evidence semantics", async () => {
+  for (const file of ["../public/feedback.html", "../web/feedback.html"]) {
+    const html = await readFile(new URL(file, import.meta.url), "utf8");
+    assert.match(html, /<link rel="stylesheet" href="\/cafeos-ui\.css">/);
+    for (const marker of [
+      "feedback-shell",
+      "privacy-intro",
+      "evidence-stage",
+      "evidence-stage-context",
+      "evidence-stage-trust",
+      "evidence-stage-insight",
+      "evidence-stage-intent",
+      "evidence-stage-value",
+      "e1-research-invite"
+    ]) assert.equal(html.includes(marker), true, "missing feedback marker " + marker + " in " + file);
+
+    assert.equal((html.match(/<form\b/g) || []).length, 1);
+    assert.equal(html.includes('id="f"'), true);
+    assert.ok(html.indexOf("</form>") < html.indexOf("control-tower-e1-interest.yml"));
+    assert.match(html, /không cấp quyền hồi tố/i);
+  }
+});
