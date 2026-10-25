@@ -37,7 +37,12 @@ const workflowRoutes = new Map([
   ['/api/app/actions', 'actions'],
   ['/api/app/action-status', 'action-status'],
   ['/api/app/measurement-window', 'measurement-window'],
-  ['/api/app/action-detail', 'action-detail']
+  ['/api/app/action-detail', 'action-detail'],
+  ['/api/app/commerce-menu', 'commerce-menu'],
+  ['/api/app/commerce-order', 'commerce-order'],
+  ['/api/app/commerce-payment', 'commerce-payment'],
+  ['/api/app/commerce-dashboard', 'commerce-dashboard'],
+  ['/api/app/commerce-daily-close', 'commerce-daily-close']
 ]);
 
 const staticMap = new Map([
@@ -46,6 +51,7 @@ const staticMap = new Map([
   ['/analyzer', { dir: 'public', file: 'analyzer.html' }],
   ['/sample-report', { dir: 'public', file: 'sample-report.html' }],
   ['/feedback', { dir: 'public', file: 'feedback.html' }],
+  ['/app', { dir: 'public', file: 'app.html' }],
   ['/control-tower-e1', { dir: 'web', file: 'control-tower-e1.html' }],
   ['/cafeos-ui.css', { dir: 'public', file: 'cafeos-ui.css' }]
 ]);
