@@ -112,3 +112,11 @@ A new **unapplied** migration has been committed:
 **Ledger inventory changed:** the original comparison was 8 Git migration filenames versus 7 staging records; it is now **9 Git candidate filenames versus the same 7 staging entries**. The new one is never to be counted as applied on staging merely because a GitHub scratch-DB test passes. No ledger change or DDL was run on staging in this batch.
 
 See `docs/research/2026-10-25-core-commerce-future-close-release-gate.md` before releasing.
+
+## New second unapplied guard: create-order Menu-price snapshot integrity
+
+The original `commerce_create_order` RPC queries Menu twice: once to compute trusted `pos_orders.total`, then again after the Order header is inserted when writing line-item unit prices. A concurrent price edit between those reads can make trusted Order total and line-total snapshots disagree.
+
+Candidate-only incremental SQL `supabase/migrations/20261025140000_core_commerce_order_price_snapshot_guard.sql` stores the validated Menu item name, ID, price and quantity in a JSONB snapshot during the first scan; the second scan never reloads Menu. The test adds a synthetic trigger changing the price during the header insert. The pgTAP expected plan increases to **42**. It also settles the race-test Order and asserts correct daily-close sales; after a prior fixture-related failed CI test, the new fixture requires a fresh CI PASS.
+
+**Staging migration history unchanged: 7 old receipts. Git candidate inventory is now 10 files: 8 historically materialized plus 2 unapplied guards.** Never mark either guard as applied without executing its SQL through the approved migration flow after history reconciliation.

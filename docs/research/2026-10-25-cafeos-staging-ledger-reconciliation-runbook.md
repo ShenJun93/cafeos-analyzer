@@ -30,7 +30,7 @@ Latest direct staging transactional pgTAP *before* the future-date patch: **37/3
 
 ## Exact Git ↔ staging receipt mapping
 
-Nine Git migrations exist in the PR candidate, versus seven staging receipts, with **zero identical timestamps**.
+Ten Git migrations exist in the PR candidate, versus seven staging receipts, with **zero identical timestamps**.
 
 | Staging applied version | Migration | Canonical Git version | SQL equivalence |
 | --- | --- | --- | --- |
@@ -44,6 +44,7 @@ Nine Git migrations exist in the PR candidate, versus seven staging receipts, wi
 | `20260921151006` | action_measurement_loop | `20260921203000` | Latest staging receipt exact canonical SQL text |
 | `20261025103648` | core_commerce_v1 | `20261025094352` | Exact canonical SQL text (29,843 chars) |
 | — (**NOT APPLIED**) | core_commerce_future_close_guard | `20261025130000` | Blank-DB Supabase CI PASS only |
+| — (**NOT APPLIED**) | core_commerce_order_price_snapshot_guard | `20261025140000` | Pending 42-case blank-DB pgTAP; never run on staging yet |
 
 Current historical receipt MD5 fingerprints, which the SQL preflight checks without printing statements:
 - `20260921100732`: `156d05aca9bab134c034c3bfeb5f0af8`
@@ -61,13 +62,13 @@ Current historical receipt MD5 fingerprints, which the SQL preflight checks with
 
 - Mark **all seven orphan staging receipt versions** as reverted **only after their SQL contents are backed up**: `20260921100732`, `20260921103432`, `20260921105352`, `20260921133428`, `20260921141814`, `20260921151006`, `20261025103648`.
 - Mark these **eight historically materialized canonical Git versions** as applied: `20260921005530`, `20260921005532`, `20260921100900`, `20260921164500`, `20260921170000`, `20260921201000`, `20260921203000`, `20261025094352`.
-- **DO NOT mark `20261025130000` applied**: the future-close protection is genuinely absent on staging and must be executed as SQL migration *after* the ledger is consistent.
+- **DO NOT mark `20261025130000` or `20261025140000` applied**: the future-close and Menu-price snapshot protections are genuinely absent on staging and must execute as SQL migrations *after* the ledger is consistent.
 
 This is a **candidate mapping, not an approved command batch**. Supabase migration repair is not a guaranteed atomic multi-version operation: take backups and verify each stage; establish an owner-tested compensation plan. If a post-check differs, STOP; do not run `db push`.
 
-**Gate C — post-history read-only verification.** Compare `supabase migration list --linked`: exactly eight matching canonical applied versions, zero orphan versions, and the future-close migration pending. The legacy preflight SQL intentionally FAILS after a successful repair because it pins the original seven receipts; use a versioned new manifest for post-repair verification. Re-check policy, grants, functions, RLS, data integrity and migration diff without making SQL mutations.
+**Gate C — post-history read-only verification.** Compare `supabase migration list --linked`: exactly eight matching canonical applied versions, zero orphan versions, and **both future-close and Menu-price snapshot migrations pending**. The legacy preflight SQL intentionally FAILS after a successful repair because it pins the original seven receipts; use a versioned new manifest for post-repair verification. Re-check policy, grants, functions, RLS, data integrity and migration diff without making SQL mutations.
 
-**Gate D — apply future-close protection on staging only.** Execute the new incremental migration via the supported migration tool after Gate A–C. Verify an authenticated synthetic manager cannot close tomorrow/future Store-local dates, while valid current/historical close and retry remain correct. Recheck migration history, 38-case pgTAP and advisor warnings, and run the real authenticated HTTP/browser journey at 390px and 1200px.
+**Gate D — apply both Core Commerce integrity guards on staging only.** Execute the two new incremental migrations in timestamp order (`20261025130000` then `20261025140000`) via the supported migration tool after Gate A–C. Verify an authenticated synthetic manager cannot close tomorrow/future Store-local dates, while valid current/historical close and retry remain correct. Prove Menu item name/price snapshots stay internally consistent with Order totals under the synthetic concurrent-price-change regression. Recheck migration history, 38-case pgTAP and advisor warnings, and run the real authenticated HTTP/browser journey at 390px and 1200px.
 
 **Gate E — independent security signoff.** Three intentional `authenticated_security_definer_function_executable` warnings and the disabled leaked-password protection warning remain open. They are not fixed by history reconciliation.
 
