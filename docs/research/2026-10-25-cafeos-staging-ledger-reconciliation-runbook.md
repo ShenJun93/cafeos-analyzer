@@ -44,7 +44,7 @@ Ten Git migrations exist in the PR candidate, versus seven staging receipts, wit
 | `20260921151006` | action_measurement_loop | `20260921203000` | Latest staging receipt exact canonical SQL text |
 | `20261025103648` | core_commerce_v1 | `20261025094352` | Exact canonical SQL text (29,843 chars) |
 | — (**NOT APPLIED**) | core_commerce_future_close_guard | `20261025130000` | Blank-DB Supabase CI PASS only |
-| — (**NOT APPLIED**) | core_commerce_order_price_snapshot_guard | `20261025140000` | Pending 42-case blank-DB pgTAP; never run on staging yet |
+| — (**NOT APPLIED**) | core_commerce_order_price_snapshot_guard | `20261025140000` | 42/42 isolated blank-DB pgTAP PASS at `f55433e`; never run on staging yet |
 
 Current historical receipt MD5 fingerprints, which the SQL preflight checks without printing statements:
 - `20260921100732`: `156d05aca9bab134c034c3bfeb5f0af8`
@@ -79,3 +79,7 @@ References:
 - https://supabase.com/docs/reference/cli/supabase-migration-list
 - https://supabase.com/docs/reference/cli/supabase-migration-repair
 
+
+## 2026-10-25 snapshot guard — exact CI evidence
+
+The tenth migration, `20261025140000_core_commerce_order_price_snapshot_guard.sql`, replaces a second Menu-price lookup during `commerce_create_order` with one cached server-owned price/name/quantity snapshot. A deterministic synthetic `BEFORE INSERT` trigger changes Menu price after the header total is calculated; 42/42 pgTAP assertions PASS before and after synthetic restore on the isolated database. At `f55433e`, GitHub CI runs `40199282073`/`40199285729`, Chromium QA `40199285663`, and Supabase DB `40199282063`/`40199285730` all succeeded. Staging still has 7 historical receipts, and **both integrity guard migrations remain unapplied**.
