@@ -186,6 +186,16 @@ The product-level discovery gate in issue #11 remains open because real target-I
 - After a separately backed-up, independently approved historical repair, it should return `HISTORY_READY_GUARDS_PENDING_OWNER_APPROVAL` **only** when eight canonical historical receipts replace the seven old ones and both guard migrations are still pending. Otherwise `STOP_REVIEW_REQUIRED`. Neither result alone approves database writes.
 - Direct comparison of complete original SQL receipts versus Git canonical contracts: **6/7 exact text matches**; Daily Brief aggregate differs by **one trailing newline** only. Repeated `action_measurement_loop` receipts contain identical SQL. No staging or production schema/history change.
 
+## Supabase CLI migration-repair semantics — isolated live rehearsal (2026-10-25)
+
+- `scripts/run-local-ledger-reconciliation-drill.sh` runs only against **`postgresql://postgres:postgres@127.0.0.1:54322/postgres`** in a disposable GitHub Actions Supabase stack, after the existing 42-case pgTAP and synthetic restore. All `supabase migration repair` commands pass explicit `--db-url`; no linked project, network secret, staging or production target is used.
+- The drill recreated seven *synthetic* old receipt versions, mapped these to the eight canonical historical versions, and restored all ten local migration receipt versions. Direct function-definition and data-count fingerprints remained identical across the CLI repair operations. This proves version bookkeeping in CLI v2.117.0 did **not** execute/rollback Order, Payment or Close schema in this local run.
+- Important CLI discovery: `migration repair --status applied` requires a local migration file for that version. The test creates seven temporary **NO-OP legacy placeholders on the disposable runner only** and deletes them using a shell `EXIT` trap. These files are **never committed, never used for staging migration repair, and never executed**.
+- The local stack already contained both guard SQL bodies. When its history was rewritten to eight canonical versions with both guard receipts pending, `scripts/sql/cafeos-staging-post-repair-readonly-gate.sql` correctly returned `STOP_REVIEW_REQUIRED` — the preflight did not mistake history-only bookkeeping for a real SQL rollback.
+- Exact code source **`b867a14`**: GitHub CI `40203880881`/`40203884721`, Chromium synthetic `40203884659`, and Supabase DB `40203880830`/`40203884689` all **SUCCESS**. Supabase DB passes include the 42-case pgTAP before/after synthetic restore and the new history drill. Earlier failed CI runs reflect preflight implementation errors, not staging mutations.
+- **Limit of evidence:** the legacy versions/files in the rehearsal are synthetic and have no original staging SQL receipts. The full staging receipts still require secure independent backup; the mapping still requires owner approval, before any real migration repair or application of the two pending guards.
+- Staging remains **7 old receipt versions, both guard SQL functions absent, DRAFT / NO-GO**; production untouched.
+
 ## Next engineering action
 
 1. Confirm exact-head CI + blank-database pgTAP on PR #74; record failures at the actual HEAD, not at earlier commits.

@@ -58,6 +58,14 @@ Current historical receipt MD5 fingerprints, which the SQL preflight checks with
 
 **Gate A — capture and independent compare.** Obtain a secure export/backup of staging's entire `supabase_migrations.schema_migrations` receipts including original SQL statements, not merely the seven timestamp labels. Keep the export outside source control and protect credentials. Run the read-only SQL preflight, confirm 7/107/14/17/3/11/1 and patch-absent booleans. Compare structural schema, constraints, function privileges, triggers and affected managed schemas independently. Verify local CLI is linked to **staging project only**, not production. Re-verify exact Git HEAD and blank-DB CI.
 
+### Isolated CLI preflight rehearsal — completed
+
+The **test-only** GitHub workflow `Supabase DB` now executes `scripts/run-local-ledger-reconciliation-drill.sh` (CLI v2.117.0), *after* synthetic restore and pgTAP. It pins all CLI `migration repair` calls to `postgresql://postgres:postgres@127.0.0.1:54322/postgres`; no `supabase link`, remote ref or staging password.
+
+CLI **`--status applied` requires a matching local migration file**, even though no schema SQL is executed. For the test only, seven temporary no-op legacy migration filenames are created inside the ephemeral checkout and deleted on EXIT. **Do not add legacy placeholders to the actual project for staging repair.** For a real staging repair, the eight intended `applied` canonical versions already have genuine Git migration files.
+
+The drill demonstrates (a) 10 canonical→7 synthetic legacy→8 canonical historical→10 canonical version transitions, (b) no change to the three Core Commerce RPC definitions or data-count fingerprint, and (c) deliberate `STOP_REVIEW_REQUIRED` when the scratch database has both guard SQL bodies installed but their migration receipts are marked pending. PASS at commit `b867a14` in DB workflows `40203880830` and `40203884689` (plus standard pgTAP pre/post restore). These results **do not validate real staging SQL backups or authorize repair**.
+
 **Gate B — approve an exact history-only change.** Supabase documents `supabase migration repair --status reverted <old-version>` to delete a *receipt* and `--status applied <Git-version>` to add an *applied receipt*, without executing schema SQL. After explicit review/authorization, the proposed mapping is:
 
 - Mark **all seven orphan staging receipt versions** as reverted **only after their SQL contents are backed up**: `20260921100732`, `20260921103432`, `20260921105352`, `20260921133428`, `20260921141814`, `20260921151006`, `20261025103648`.
