@@ -22,36 +22,36 @@
   <form id="f" class="feedback-form">
 <fieldset class="evidence-stage evidence-stage-context">
   <legend><span>01 · Context</span>Ai đang đánh giá và dữ liệu đến từ đâu?</legend>
-  <div class="row"><label>POS/source</label><select id="source" required><option value="" disabled selected>Chọn…</option><option value="kiotviet">KiotViet</option><option value="cukcuk">CUKCUK</option><option value="sapo_fnb">Sapo FnB</option><option value="ipos">iPOS</option><option value="pos365">POS365</option><option value="generic_excel_csv">Excel/CSV chung</option><option value="other_pos">POS khác</option><option value="unknown">Không rõ</option></select></div>
-  <div class="row"><label>Số cửa hàng</label><input id="stores" type="number" min="1" value="" required></div>
-  <div class="row"><label>Vai trò người tham gia</label><select id="role" required><option value="" disabled selected>Chọn…</option><option value="owner_operator">Chủ/quản lý vận hành</option><option value="other">Vai trò khác</option></select></div>
-  <div class="row"><label>Cho phép đưa record ẩn danh này vào validation evidence?</label><select id="permission" required><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row"><label for="source">POS/source</label><select id="source" required><option value="" disabled selected>Chọn…</option><option value="kiotviet">KiotViet</option><option value="cukcuk">CUKCUK</option><option value="sapo_fnb">Sapo FnB</option><option value="ipos">iPOS</option><option value="pos365">POS365</option><option value="generic_excel_csv">Excel/CSV chung</option><option value="other_pos">POS khác</option><option value="unknown">Không rõ</option></select></div>
+  <div class="row"><label for="stores">Số cửa hàng</label><input id="stores" type="number" min="1" value="" required></div>
+  <div class="row"><label for="role">Vai trò người tham gia</label><select id="role" required><option value="" disabled selected>Chọn…</option><option value="owner_operator">Chủ/quản lý vận hành</option><option value="other">Vai trò khác</option></select></div>
+  <div class="row"><label for="permission">Cho phép đưa record ẩn danh này vào validation evidence?</label><select id="permission" required><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
 </fieldset>
 <fieldset class="evidence-stage evidence-stage-trust">
   <legend><span>02 · Import & trust</span>File có vào được Analyzer và số có đáng tin?</legend>
-  <div class="row"><label>Đã thử import vào Analyzer?</label><select id="importAttempted"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-  <div class="row hidden" id="row-importSucceeded"><label>Import Analyzer thành công?</label><select id="importSucceeded"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-  <div class="row hidden" id="row-reconciliationAttempted"><label>Đã đối chiếu orders/net sales với POS?</label><select id="reconciliationAttempted"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-  <div class="row hidden" id="row-metricTrusted"><label>Sau đối chiếu, có tin các metric?</label><select id="metricTrusted"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row"><label for="importAttempted">Đã thử import vào Analyzer?</label><select id="importAttempted"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-importSucceeded"><label for="importSucceeded">Import Analyzer thành công?</label><select id="importSucceeded"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-reconciliationAttempted"><label for="reconciliationAttempted">Đã đối chiếu orders/net sales với POS?</label><select id="reconciliationAttempted"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-metricTrusted"><label for="metricTrusted">Sau đối chiếu, có tin các metric?</label><select id="metricTrusted"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
 </fieldset>
 <fieldset class="evidence-stage evidence-stage-insight">
   <legend><span>03 · Insight</span>Có insight nào thực sự được review và hữu ích?</legend>
-  <div class="row hidden" id="row-insightReviewed"><label>Đã review ít nhất một insight?</label><select id="insightReviewed"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-  <div class="row hidden" id="row-usefulNewInsight"><label>Insight đã review có mới và hữu ích?</label><select id="usefulNewInsight"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-insightReviewed"><label for="insightReviewed">Đã review ít nhất một insight?</label><select id="insightReviewed"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-usefulNewInsight"><label for="usefulNewInsight">Insight đã review có mới và hữu ích?</label><select id="usefulNewInsight"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
 </fieldset>
 <fieldset class="evidence-stage evidence-stage-intent">
   <legend><span>04 · Repeat / sync</span>Operator có muốn lặp lại workflow này?</legend>
-  <div class="row"><label>Đã hỏi họ có muốn dùng lại?</label><select id="repeatUseAsked"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-  <div class="row hidden" id="row-repeatUseIntent"><label>Họ có muốn dùng lại?</label><select id="repeatUseIntent"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-  <div class="row"><label>Đã hỏi họ có muốn auto-sync liên tục?</label><select id="continuousSyncAsked"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-  <div class="row hidden" id="row-continuousSyncIntent"><label>Họ có muốn auto-sync liên tục?</label><select id="continuousSyncIntent"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row"><label for="repeatUseAsked">Đã hỏi họ có muốn dùng lại?</label><select id="repeatUseAsked"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-repeatUseIntent"><label for="repeatUseIntent">Họ có muốn dùng lại?</label><select id="repeatUseIntent"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row"><label for="continuousSyncAsked">Đã hỏi họ có muốn auto-sync liên tục?</label><select id="continuousSyncAsked"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-continuousSyncIntent"><label for="continuousSyncIntent">Họ có muốn auto-sync liên tục?</label><select id="continuousSyncIntent"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
 </fieldset>
 <fieldset class="evidence-stage evidence-stage-value">
   <legend><span>05 · Value / WTP</span>Chỉ hỏi willingness-to-pay sau khi value đã được chứng minh.</legend>
-  <div class="row"><label>Đã chứng minh giá trị vận hành cụ thể?</label><select id="valueDemonstrated"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-  <div class="row hidden" id="row-wtpAsked"><label>Đã hỏi willingness-to-pay mà chưa đưa khoảng giá trước?</label><select id="wtpAsked"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-  <div class="row hidden" id="row-willingnessToPay"><label>Họ có sẵn sàng trả tiền?</label><select id="willingnessToPay"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
-  <div class="row hidden" id="row-band"><label>Khoảng giá/tháng (tùy chọn, chỉ sau câu trả lời WTP)</label><select id="band"><option value="">Không ghi band</option><option value="<500k">&lt;500K</option><option value="500k-1m">500K–1M</option><option value="1m-2m">1M–2M</option><option value="2m+">2M+</option></select></div>
+  <div class="row"><label for="valueDemonstrated">Đã chứng minh giá trị vận hành cụ thể?</label><select id="valueDemonstrated"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-wtpAsked"><label for="wtpAsked">Đã hỏi willingness-to-pay mà chưa đưa khoảng giá trước?</label><select id="wtpAsked"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-willingnessToPay"><label for="willingnessToPay">Họ có sẵn sàng trả tiền?</label><select id="willingnessToPay"><option value="" disabled selected>Chọn…</option><option value="true">Có</option><option value="false">Không</option></select></div>
+  <div class="row hidden" id="row-band"><label for="band">Khoảng giá/tháng (tùy chọn, chỉ sau câu trả lời WTP)</label><select id="band"><option value="">Không ghi band</option><option value="<500k">&lt;500K</option><option value="500k-1m">500K–1M</option><option value="1m-2m">1M–2M</option><option value="2m+">2M+</option></select></div>
 </fieldset>
 <div class="feedback-conclusion">
   <div><div class="section-label">Local evidence artifact</div><strong>Tải record JSON khi các dependency hợp lệ.</strong></div>
