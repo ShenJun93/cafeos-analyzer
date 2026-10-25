@@ -128,7 +128,7 @@ The product-level discovery gate in issue #11 remains open because real target-I
 - `/api/app/commerce-open-orders`: authenticated cashier-or-higher, read-only GET of up to 20 still-open first-party orders for one selected Store and Tenant. After reload/login, POS can select and revalidate an open order via `commerce-order-status`, then record payment. No JWT, payment details or price authority is saved in browser storage; there is no recovery of an unsubmitted cart.
 - Order recovery is a synthetic candidate with mocked UI/API unit tests; it is not yet a production cashier acceptance or actual browser E2E.
 - Local workflow router now preserves query parameters (including `orderId` and `storeId`); regression tests cover unauthenticated HTTP routes and paid/open response recovery.
-- Staging foundation object survey: 11 related tables present, 11 have RLS enabled. This is not full migration equivalence.
+- Staging foundation object survey: all 11 expected tables have RLS enabled. A separate read-only Git-vs-live catalog reconciliation found **11/11 baseline tables, 17/17 policies, 14/14 indexes, 3/3 functions and 1/1 trigger** by object name. Existence is not SQL definition equivalence nor repaired migration history.
 - Newer exact-head CI, authenticated HTTP E2E, real rendered UI screenshots at 390/1200px, privilege review and migration history reconciliation remain release gates.
 
 ## Next engineering action

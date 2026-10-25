@@ -65,3 +65,22 @@ Official guidance: https://supabase.com/docs/guides/deployment/database-migratio
 - Unit/HTTP tests cover permitted cashier and rejected viewer, tenant/store query filters, malformed responses, role-scoped controls, and reopened order guard. **Real authenticated UI/API E2E and rendered browser QA remain NOT_RUN.**
 - The staging pgTAP count remains **28/28 PASS** from the rollback-only audit and is not a substitute for remote HTTP/browser E2E.
 - Ledger drift (8 Git versions vs 7 staging with zero matches) is unchanged; do not run `db push` or bulk `migration repair` until independently reconciled.
+
+## Read-only foundation object existence audit
+
+Both missing-from-ledger Git foundation migrations were parsed for named DDL objects:
+`20260921005530_analyzer_core.sql` and `20260921005532_control_tower_core.sql`.
+
+Live catalog survey on staging (2026-10-25) matched the expected **object names**:
+
+| Object type | Present / declared |
+| --- | --- |
+| Baseline tables | **11 / 11** |
+| RLS policies | **17 / 17** |
+| Indexes | **14 / 14** |
+| SQL functions | **3 / 3** |
+| Triggers | **1 / 1** |
+
+An additional catalog check found RLS enabled on all 11 baseline tables. This reduces the risk that the missing history entries represent completely absent schema, but object names alone cannot prove DDL text, privilege, trigger-body, index-predicate or rollback equivalence. No migration-history records were mutated.
+
+**Release decision unchanged: staging history drift remains BLOCKED, bulk repair/db push prohibited without a full owner-approved reconciliation.**
