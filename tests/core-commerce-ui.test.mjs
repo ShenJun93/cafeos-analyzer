@@ -358,3 +358,83 @@ test("local workflow router keeps orderId/storeId query params and denies anonym
     await once(server, "close");
   }
 });
+
+test("cashier POS affordances remain available while manager-only Menu and Daily Close are hidden", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const script = html.split("<script>")[1]?.split("</script>")[0];
+  assert.ok(script);
+  const nodes = new Map();
+  function element(id) {
+    if (!nodes.has(id)) {
+      const classes = new Set();
+      nodes.set(id, {
+        value: "", textContent: "", dataset: {}, disabled: false,
+        classList: {
+          add(name) { classes.add(name); },
+          remove(name) { classes.delete(name); },
+          toggle(name, force) { if (force) classes.add(name); else classes.delete(name); },
+          contains(name) { return classes.has(name); }
+        },
+        addEventListener() {}, replaceChildren() {}, append() {}, reset() {}
+      });
+    }
+    return nodes.get(id);
+  }
+  const context = createContext({
+    document: {
+      getElementById: element,
+      querySelectorAll: () => [],
+      createElement: () => element("created_" + nodes.size)
+    },
+    window: { confirm: () => false },
+    fetch: async () => ({
+      ok: true, status: 200,
+      json: async () => ({ supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test" })
+    }),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "synthetic-key" }
+  });
+  runInContext(script, context);
+  runInContext(`
+    sessionToken = "synthetic-user";
+    tenantMemberships = [
+      { tenantId: "tenant-cashier", role: "cashier" },
+      { tenantId: "tenant-manager", role: "manager" }
+    ];
+    appFetch = async (path) => {
+      if (path === "/api/app/stores") return { stores: [{ id: "store-1", name: "Store" }] };
+      throw new Error("Unexpected call: " + path);
+    };
+    refreshStore = async () => {};
+  `, context);
+  element("tenant").value = "tenant-cashier";
+  await runInContext("loadTenant()", context);
+  assert.equal(runInContext("currentTenantRole", context), "cashier");
+  assert.equal(runInContext("canWriteCommerce()", context), true);
+  assert.equal(runInContext("canManageCommerce()", context), false);
+  assert.equal(element("menuWriteControls").classList.contains("hidden"), true);
+  assert.equal(element("menuReadOnlyNotice").classList.contains("hidden"), false);
+  assert.equal(element("closeManagerNotice").classList.contains("hidden"), false);
+  runInContext(`
+    currentDashboard = {
+      businessDate: "2026-10-25", orderCount: 0, salesTotal: 0,
+      openOrderCount: 0, closed: false
+    };
+    renderClosePreview();
+  `, context);
+  assert.equal(element("closeDay").disabled, true);
+  await assert.rejects(runInContext("closeBusinessDay()", context), /Manager role required/);
+  await assert.rejects(runInContext("createItem({ preventDefault() {} })", context), /Manager role required/);
+
+  element("tenant").value = "tenant-manager";
+  await runInContext("loadTenant()", context);
+  assert.equal(runInContext("currentTenantRole", context), "manager");
+  assert.equal(element("menuWriteControls").classList.contains("hidden"), false);
+  assert.equal(element("menuReadOnlyNotice").classList.contains("hidden"), true);
+  assert.equal(element("closeManagerNotice").classList.contains("hidden"), true);
+  runInContext(`currentDashboard = {
+    businessDate: "2026-10-25", orderCount: 0, salesTotal: 0,
+    openOrderCount: 0, closed: false
+  }; renderClosePreview();`, context);
+  assert.equal(element("closeDay").disabled, false);
+});

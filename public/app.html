@@ -112,7 +112,8 @@
         </div>
       </header>
 
-      <div class="menu-admin-grid">
+      <p id="menuReadOnlyNotice" class="muted hidden">Chỉ Owner/Admin/Manager được sửa Menu. Bạn vẫn có thể xem danh sách món.</p>
+      <div id="menuWriteControls" class="menu-admin-grid">
         <form id="categoryForm" class="commerce-form">
           <div class="section-label">New category</div>
           <label class="field-group">Name<input id="categoryName" maxlength="200" required></label>
@@ -156,6 +157,7 @@
       <div class="daily-close-panel">
         <div id="closePreview" class="close-preview">Tải dashboard để xem trạng thái đóng ngày.</div>
         <button id="closeDay" type="button">Close business day</button>
+        <p id="closeManagerNotice" class="muted hidden">Daily Close chỉ dành cho Owner/Admin/Manager.</p>
       </div>
       <div id="closeReceipt" class="close-receipt"></div>
     </section>
@@ -178,6 +180,8 @@ let clientConfig = null;
 let sessionToken = null;
 let currentTenantId = null;
 let currentStoreId = null;
+let tenantMemberships = [];
+let currentTenantRole = null;
 let currentOrder = null;
 let currentDashboard = null;
 let pendingOrderSubmission = null;
@@ -260,6 +264,21 @@ async function signIn() {
   await loadSession();
 }
 
+function canWriteCommerce() {
+  return ["owner", "admin", "manager", "cashier"].includes(currentTenantRole);
+}
+function canManageCommerce() {
+  return ["owner", "admin", "manager"].includes(currentTenantRole);
+}
+function renderRoleControls() {
+  const manager = canManageCommerce();
+  el("menuWriteControls").classList.toggle("hidden", !manager);
+  el("menuReadOnlyNotice").classList.toggle("hidden", manager);
+  el("closeManagerNotice").classList.toggle("hidden", manager);
+  el("closeDay").disabled = !manager || !currentDashboard
+    || Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
+}
+
 function hasUnfinishedCheckout() {
   return Boolean(pendingOrderSubmission || currentOrder || orderSubmitInFlight || paymentSubmitInFlight);
 }
@@ -285,6 +304,8 @@ function signOut() {
   sessionToken = null;
   currentTenantId = null;
   currentStoreId = null;
+  tenantMemberships = [];
+  currentTenantRole = null;
   currentOrder = null;
   currentDashboard = null;
   pendingOrderSubmission = null;
@@ -311,7 +332,8 @@ function fillSelect(select, rows, { valueKey = "id", labelKey = "name", prefix =
 async function loadSession() {
   const session = await appFetch("/api/app/session", { tenant: false });
   if (!session.memberships?.length) throw new Error("User has no CafeOS tenant membership");
-  fillSelect(el("tenant"), session.memberships, { valueKey: "tenantId", labelKey: "name" });
+  tenantMemberships = session.memberships;
+  fillSelect(el("tenant"), tenantMemberships, { valueKey: "tenantId", labelKey: "name" });
   currentTenantId = el("tenant").value;
   await loadTenant();
 }
@@ -319,6 +341,7 @@ async function loadSession() {
 async function loadTenant() {
   if (preventUnsafeContextReset()) return;
   currentTenantId = el("tenant").value;
+  currentTenantRole = tenantMemberships.find(row => row.tenantId === currentTenantId)?.role ?? null;
   currentStoreId = null;
   currentOrder = null;
   currentDashboard = null;
@@ -326,6 +349,7 @@ async function loadTenant() {
   orderSubmitInFlight = false;
   paymentSubmitInFlight = false;
   cartState.clear();
+  renderRoleControls();
 
   const stores = await appFetch("/api/app/stores");
   const active = (stores.stores || []).filter(store => store.active !== false);
@@ -374,6 +398,7 @@ function renderMenu() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "menu-item-button";
+    button.disabled = !canWriteCommerce();
     const name = document.createElement("strong");
     name.textContent = item.name;
     const value = document.createElement("span");
@@ -417,7 +442,7 @@ function renderMenu() {
 
 function addToCart(menuItemId) {
   const item = menuState.items.find(row => row.id === menuItemId);
-  if (!item || currentOrder || pendingOrderSubmission || orderSubmitInFlight) return;
+  if (!item || !canWriteCommerce() || currentOrder || pendingOrderSubmission || orderSubmitInFlight) return;
   const current = cartState.get(menuItemId) || { item, quantity: 0 };
   current.quantity += 1;
   cartState.set(menuItemId, current);
@@ -426,7 +451,7 @@ function addToCart(menuItemId) {
 
 function changeQuantity(menuItemId, delta) {
   const current = cartState.get(menuItemId);
-  if (!current || currentOrder || pendingOrderSubmission || orderSubmitInFlight) return;
+  if (!current || !canWriteCommerce() || currentOrder || pendingOrderSubmission || orderSubmitInFlight) return;
   current.quantity += delta;
   if (current.quantity <= 0) cartState.delete(menuItemId);
   renderCart();
@@ -475,8 +500,8 @@ function renderCart() {
     cart.append(line);
   }
 
-  el("submitOrder").disabled = !currentStoreId || !cartState.size || Boolean(currentOrder || orderSubmitInFlight);
-  el("capturePayment").disabled = paymentSubmitInFlight;
+  el("submitOrder").disabled = !canWriteCommerce() || !currentStoreId || !cartState.size || Boolean(currentOrder || orderSubmitInFlight);
+  el("capturePayment").disabled = !canWriteCommerce() || paymentSubmitInFlight;
   el("paymentPanel").classList.toggle("hidden", !currentOrder || currentOrder.status !== "open");
   if (currentOrder) {
     el("serverOrderTotal").textContent = "Server total · " + money(currentOrder.total);
@@ -484,7 +509,7 @@ function renderCart() {
 }
 
 async function submitOrder() {
-  if (!currentStoreId || !cartState.size || currentOrder || orderSubmitInFlight) return;
+  if (!canWriteCommerce() || !currentStoreId || !cartState.size || currentOrder || orderSubmitInFlight) return;
 
   // Ambiguous network retries must preserve the exact same intent and key.
   if (!pendingOrderSubmission) {
@@ -536,7 +561,7 @@ async function submitOrder() {
 }
 
 async function capturePayment() {
-  if (!currentOrder || currentOrder.status !== "open" || paymentSubmitInFlight) return;
+  if (!canWriteCommerce() || !currentOrder || currentOrder.status !== "open" || paymentSubmitInFlight) return;
   paymentSubmitInFlight = true;
   el("capturePayment").disabled = true;
   setStatus("Đang ghi payment record…");
@@ -583,12 +608,13 @@ async function capturePayment() {
     await loadDashboard();
   } finally {
     paymentSubmitInFlight = false;
-    el("capturePayment").disabled = false;
+    el("capturePayment").disabled = !canWriteCommerce();
   }
 }
 
 async function createCategory(event) {
   event.preventDefault();
+  if (!canManageCommerce()) throw new Error("Manager role required to edit Menu");
   setStatus("Đang tạo category…");
   await appFetch("/api/app/commerce-menu", {
     method: "POST",
@@ -606,6 +632,7 @@ async function createCategory(event) {
 
 async function createItem(event) {
   event.preventDefault();
+  if (!canManageCommerce()) throw new Error("Manager role required to edit Menu");
   setStatus("Đang tạo menu item…");
   await appFetch("/api/app/commerce-menu", {
     method: "POST",
@@ -675,10 +702,11 @@ function renderClosePreview() {
     money(currentDashboard.salesTotal) + " sales · " +
     currentDashboard.openOrderCount + " open orders" +
     (currentDashboard.closed ? " · CLOSED" : " · OPEN");
-  el("closeDay").disabled = Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
+  el("closeDay").disabled = !canManageCommerce() || Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
 }
 
 async function closeBusinessDay() {
+  if (!canManageCommerce()) throw new Error("Manager role required for Daily Close");
   if (!currentStoreId || !currentDashboard) return;
   setStatus("Đang đóng business day…");
   const payload = await appFetch("/api/app/commerce-daily-close", {
