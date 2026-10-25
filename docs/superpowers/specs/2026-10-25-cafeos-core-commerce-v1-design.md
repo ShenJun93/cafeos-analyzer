@@ -340,7 +340,18 @@ Every commerce table:
 - service_role full maintenance grants;
 - tenant-scoped policies use \`private.has_tenant_access\` and \`private.has_tenant_role\`.
 
-The public RPC functions are SECURITY INVOKER and explicitly granted only to authenticated/service_role as appropriate.
+Read RPCs are SECURITY INVOKER.
+
+Atomic write RPCs are a deliberate, narrowly-scoped SECURITY DEFINER exception so authenticated users do not need direct INSERT/UPDATE grants on trusted order/payment/close tables. Each write RPC must:
+
+- reject a null auth.uid();
+- perform explicit tenant + allowed-role checks inside the body;
+- validate every referenced Store/Menu/Order against the same tenant;
+- use a fixed search_path;
+- revoke EXECUTE from PUBLIC/anon and then grant only authenticated/service_role;
+- accept no client price, subtotal, total or close-summary values.
+
+Raw order/payment/close tables remain read-only to authenticated users.
 
 This design intentionally follows Supabase’s 2026 explicit-exposure requirement: GRANT, RLS and policy are treated as one migration unit.
 
