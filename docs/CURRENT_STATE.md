@@ -179,6 +179,13 @@ The product-level discovery gate in issue #11 remains open because real target-I
 - The first 41-test CI attempt exposed a **test fixture** issue: the synthetic price-race order remained open and blocked the subsequent Daily Close assertions. Fixed by settling the synthetic order before close; pgTAP plan now **42**. **42/42 isolated pgTAP PASS** before and after synthetic restore at `f55433e` (Supabase DB runs `40199282063`, `40199285730`). This does not supersede the older 37/37 **live staging** result.
 - The staging ledger has 7 old receipts, while Git now has **10** migration files, of which the last two are genuinely unapplied. Neither guard is live on staging. Owner-reviewed reconciliation and controlled staging migration remain release-blocking.
 
+## Staging post-repair read-only transition gate (2026-10-25)
+
+- `scripts/sql/cafeos-staging-post-repair-readonly-gate.sql` checks the exact migration version set, RLS on six Commerce tables, three write RPC grant profiles and the presence/absence of both pending integrity guards. It runs **SELECT only**; never calls `repair`, `db push` or mutating SQL.
+- Executed against real staging at Git checkpoint `59c7adb`: **`PRE_REPAIR_NO_GO`** (7 old receipts, 0 canonical, 0 guard receipts; both guards absent; 6/6 Commerce RLS; 3/3 privileged RPC grant checks). This is the expected safe state before ledger reconciliation.
+- After a separately backed-up, independently approved historical repair, it should return `HISTORY_READY_GUARDS_PENDING_OWNER_APPROVAL` **only** when eight canonical historical receipts replace the seven old ones and both guard migrations are still pending. Otherwise `STOP_REVIEW_REQUIRED`. Neither result alone approves database writes.
+- Direct comparison of complete original SQL receipts versus Git canonical contracts: **6/7 exact text matches**; Daily Brief aggregate differs by **one trailing newline** only. Repeated `action_measurement_loop` receipts contain identical SQL. No staging or production schema/history change.
+
 ## Next engineering action
 
 1. Confirm exact-head CI + blank-database pgTAP on PR #74; record failures at the actual HEAD, not at earlier commits.

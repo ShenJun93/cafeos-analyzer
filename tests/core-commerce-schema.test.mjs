@@ -179,3 +179,28 @@ test("incremental Create Order migration snapshots menu prices once per validate
   assert.match(patch, /revoke all on function public\.commerce_create_order\(uuid, uuid, text, text, jsonb\)/i);
   assert.match(patch, /grant execute on function public\.commerce_create_order\(uuid, uuid, text, text, jsonb\)/i);
 });
+
+test("staging reconciliation transition gate is read-only and never grants migration repair approval", async () => {
+  const script = await readFile(
+    new URL("../scripts/sql/cafeos-staging-post-repair-readonly-gate.sql", import.meta.url),
+    "utf8"
+  );
+  const sql = script.split("\n").filter(line => !/^\s*--/.test(line)).join("\n");
+  assert.match(sql.trimStart(), /^with\s+/i);
+  assert.equal((sql.match(/;/g) || []).length, 1);
+  assert.doesNotMatch(sql, /\b(?:create\s+(?:or\s+replace\s+)?(?:table|function)|alter\s+table|insert\s+into|update\s+\w+\s+set|delete\s+from|drop\s+(?:table|function)|grant\s+|revoke\s+|truncate\s+)\b/i);
+  for (const check of [
+    "PRE_REPAIR_NO_GO",
+    "HISTORY_READY_GUARDS_PENDING_OWNER_APPROVAL",
+    "STOP_REVIEW_REQUIRED",
+    "canonical_present=8",
+    "legacy_present=0",
+    "guards_marked_applied=0",
+    "commerce_rls_tables=6",
+    "guarded_rpc_grants=3",
+    "COMMERCE_CLOSE_FUTURE_DATE",
+    "v_snapshot_items"
+  ]) {
+    assert.ok(sql.includes(check), "transition gate missing: " + check);
+  }
+});
