@@ -165,7 +165,7 @@ async function runViewport(browser, width, height, base) {
     await page.goto(base + "/app", { waitUntil: "networkidle" });
     await snapshot(page, width, "login");
     await signIn(page, "manager@synthetic.invalid", "synthetic-only");
-    assert.equal(await page.locator("#menuWriteControls").isVisible(), true);
+    assert.equal(await page.locator("#menuWriteControls").evaluate(el => el.classList.contains("hidden")), false);
     await snapshot(page, width, "pos");
     const latte = page.locator("#menuCatalog .menu-item-button").filter({ hasText: "Latte" });
     await latte.click();
@@ -210,7 +210,7 @@ async function runViewport(browser, width, height, base) {
     await installMockTransport(cashier);
     await cashier.goto(base + "/app", { waitUntil: "networkidle" });
     await signIn(cashier, "cashier@synthetic.invalid", "synthetic-only");
-    assert.equal(await cashier.locator("#menuWriteControls").isVisible(), false);
+    assert.equal(await cashier.locator("#menuWriteControls").evaluate(el => el.classList.contains("hidden")), true);
     assert.equal(await cashier.locator("#closeDay").isDisabled(), true);
     assert.equal(await cashier.locator("#menuCatalog .menu-item-button").first().isEnabled(), true);
     await snapshot(cashier, width, "cashier");
