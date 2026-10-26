@@ -8,7 +8,7 @@ The seven original Supabase migration receipts have been archived as Windows DPA
 
 ## Blocked prerequisites on MAIN-PC
 
-- MAIN-PC WSL currently uses **Ubuntu 26.04**; no `age` or PostgreSQL client binaries are installed. APT shows candidates for `age` and `postgresql-client-18`, but unattended `sudo` is unavailable. Installing packages requires owner-controlled elevation; no apt mutation was done in this session.
+- MAIN-PC WSL uses **Ubuntu 26.04**, with no system-installed age/PostgreSQL client and no noninteractive sudo. **Portable tools now PASS without sudo:** age 1.2.1, PostgreSQL 18.6 client suite and libpq 18.6, unpacked from Ubuntu APT packages in `E:\\Projects\\CafeOS-Evidence\\portable-backup-cli-20261026` (outside Git). The binaries and libraries run; a one-time age key encrypted and decrypted a synthetic token successfully, and the key was securely discarded. This is not a staging DB credential or actual backup.
 - From the Supabase Dashboard **Connect** panel, obtain the project-specific **staging** direct/session-pooler host and database login, and prepare a 0600 `PGPASSFILE` **outside Git**. Never copy database passwords, JWTs, key files, passwords embedded in URIs, or WSL privilege credentials into chat or Git.
 - Supply a validated CA trust file with `PGSSLMODE=verify-full` and an exact pinned staging host. Never use `sslmode=require` as a workaround. Do not relax the script's project host or receipt-history guards.
 - Generate a portable `age` recipient/public key and secure 0600 private identity, with an independent recovery custodian; private key must be **outside the backup destination and outside Git**. This single-account DPAPI archive is insufficient for off-machine recovery.
@@ -25,3 +25,27 @@ With the prerequisites satisfied, review and invoke `scripts/backup-cafeos-stagi
 A successful archive is **NOT a recovery acceptance**. On an independent isolated PostgreSQL/Supabase-compatible restore target, prove actual table counts/data, public/managed Auth and Storage schemas, all relevant functions/extensions, role/ownership grants, tenant RLS, three Commerce RPC privilege profiles, exact migration receipts and financial invariants. Account for Supabase-managed configuration, storage object blobs, dashboard secrets and other platform state **outside** a bare PostgreSQL dump. Do not run recovered SQL against existing staging or production. Store signed-off evidence in Git without any personal data, credentials, SQL receipts, encryption keys or raw archive bytes.
 
 Until that real off-host restore passes and migration mapping has independent approval: **do not run** `supabase migration repair`, `supabase db push`, either pending guard migration, or a production deployment.
+
+## Portable CLI verification on MAIN-PC (no sudo)
+
+A user-owned, **non-Git** toolchain was created at `E:\Projects\CafeOS-Evidence\portable-backup-cli-20261026` by downloading three packages from Ubuntu 26.04 configured APT repositories, extracting them with `dpkg-deb -x`, and running binary/version checks. This did **not** use `sudo`, alter system packages, read Supabase database credentials or generate a permanent backup key.
+
+| Package | SHA-256 of downloaded .deb |
+|---|---|
+| age 1.2.1-1build1 | `b6994be61dd9880456c36c13da5392ee4ab406763152cd86e33e430676aa8fb9` |
+| libpq5 18.6 | `7e9199f54290b04a28e9f136207624ca30b0988d613159977fd84e8b4467e0a4` |
+| postgresql-client-18 18.6 | `c46d1ace8f7d84a9648c63b566fff799b7ee3281db46ef6e7b99baf0fd7bd2e4` |
+
+Verified `age --version`, `pg_dump --version`, `pg_dumpall --version`, `pg_restore --version`, `psql --version`, resolved dynamic library dependencies, and performed `MAIN_PC_AGE_ROUNDTRIP_PASS` with an ephemeral test-only private key deleted afterward.
+
+To use the binaries in a **future owner-approved backup shell** (paths contain no secrets):
+
+```bash
+prefix=/mnt/e/Projects/CafeOS-Evidence/portable-backup-cli-20261026/prefix
+export PATH="$prefix/usr/lib/postgresql/18/bin:$prefix/usr/bin:$PATH"
+export LD_LIBRARY_PATH="$prefix/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
+age --version
+pg_dump --version
+```
+
+The portable tools eliminate the package-install blocker but **do not** provide the necessary staging DB password, protected password file, trusted TLS CA, private age key recovery or full restore test. The backup script rejects private keys on Git worktrees and requires the private identity to have mode 0400/0600, so generate real secrets on an appropriate private filesystem, not an NTFS mount that cannot enforce Unix ownership/modes. Do not paste any credential into chat or Git.
