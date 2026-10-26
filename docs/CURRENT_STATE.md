@@ -308,3 +308,10 @@ Primary distribution remains pull/inbound; no dependency on cold outbound sales.
 - Real external-network preflight: staging direct database hostname has IPv6-only DNS resolution on WSL; port 5432 unreachable. A regional **candidate** session-pooler hostname has IPv4 and reachable 5432, but project-specific Connect tuple not yet independently confirmed. TLS PostgreSQL STARTTLS certificate verification with system CA returns `19: self-signed certificate in certificate chain`; project-specific root CA and `verify-full` validation are outstanding. **No credentials used and no DB connection authenticated.**
 - Provisional age key is still local WSL 0700/0600; independent off-host recovery NOT proven. Docker engine was unavailable from WSL; no compatible actual-data recovery target prepared. Main blockers have been concretely narrowed; no more synthetic tests required at present. See `docs/research/2026-10-26-cafeos-staging-db-network-tls-preflight.md`.
 - Actual staging encrypted backup and compatible isolated real-data restore NOT_RUN. PR remains Draft and release NO-GO; no migrations/db push/merge/production changes.
+
+
+## 2026-10-26 independent Commerce RPC source audit (not release sign-off)
+
+- A separate ephemeral, read-only Codex CLI reviewer inspected tracked Core Commerce SECURITY DEFINER RPCs, tenant-role helper, RLS grants, idempotency and pending guard SQL at commit 305ffea. Outcome: **NO NEW VERIFIED SOURCE-LEVEL SECURITY FINDINGS**. No staging credential, DB session or mutations used.
+- Bounded positive evidence: tenant-qualified auth checks and composite FKs, restricted write grants, order/close advisory locks, payment order row lock. **NOT** proof of runtime JWT scope, concurrency in separate sessions, or Supabase advisor exception. See docs/research/2026-10-26-cafeos-independent-commerce-source-review.md.
+- Actual full staging backup, portable off-host age recovery, TLS-authenticated staging DB connectivity, isolated Supabase-compatible restore, JWT E2E and independent human security approval remain OPEN. Keep PR #74 Draft / release NO-GO.
