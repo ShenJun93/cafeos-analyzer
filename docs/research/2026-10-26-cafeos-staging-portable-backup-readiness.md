@@ -33,3 +33,9 @@ References:
 - https://supabase.com/docs/guides/platform/backups
 - https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore
 - https://supabase.com/docs/reference/cli/supabase-inspect-db-role-configs
+
+## Local encryption + clean-room restore rehearsal — PASS (2026-10-26)
+
+A new CI step runs `scripts/run-local-age-backup-drill.sh` against **disposable localhost PostgreSQL 17**. It creates synthetic business and migration receipt records in one throwaway database, exports custom `pg_dump` and global role metadata through age encryption, restores the encrypted database stream into a **different** newly created local database, and verifies content/record counts and ciphertext checksums. Evidence: `dc50f247`, Supabase DB runs `40259256516`, `40259259386`, marker `CAFEOS_LOCAL_AGE_BACKUP_RESTORE_PASS`; standard CI and Chromium QA at the same source succeed.
+
+The backup candidate was also made **atomic**: two ciphertext files and manifest must validate inside a private temp directory before publishing the entire directory. This prevents an incomplete flat archive from appearing successful. Actual staging backup remains **NOT RUN** due to missing owner-controlled PostgreSQL credential provisioning, age key custody, off-machine artifact storage and a full Supabase-managed-schema clean-room restore plan. The synthetic drill does not satisfy those gates. See `docs/research/2026-10-26-cafeos-age-encrypted-local-restore-evidence.md`.
