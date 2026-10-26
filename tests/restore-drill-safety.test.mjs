@@ -131,6 +131,7 @@ test("portable staging backup candidate never writes plaintext or targets produc
   assert.match(source, /pg_dump -w -Fc --dbname=postgres \| age -R/);
   assert.match(source, /pg_dumpall -w --globals-only --no-role-passwords \| age -R/);
   assert.match(source, /age -d -i.*pg_restore --list/s);
+  assert.doesNotMatch(source, /pg_restore --list -/);
   assert.match(source, /sha256sum database\.pgdump\.age globals\.sql\.age > manifest\.sha256/);
   assert.match(source, /mv --no-clobber --no-target-directory -- "\$work" "\$final"/);
   assert.match(source, /sha256sum -c manifest\.sha256/);
@@ -175,6 +176,7 @@ test("encrypted database restore rehearsal is hard-pinned to disposable loopback
   assert.match(script,/pg_dumpall -w --globals-only --no-role-passwords/);
   assert.match(script,/age -d -i.*pg_restore --no-owner/s);
   assert.match(script,/CAFEOS_LOCAL_AGE_BACKUP_RESTORE_PASS/);
+  assert.doesNotMatch(script,/pg_restore --no-owner --no-acl --exit-on-error --dbname="\$restore_url" -/);
   assert.match(script,/trap cleanup EXIT/);
   assert.doesNotMatch(script,/wjatnyvdygvblirggdcm|--linked|supabase link|PGHOST=.*supabase\.co|SUPABASE_ACCESS_TOKEN|service_role|sb_secret_/i);
 });

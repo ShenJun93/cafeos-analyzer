@@ -60,7 +60,7 @@ pg_dumpall -w --globals-only --no-role-passwords --dbname="$DB_URL" |
   age -R "$tmp/recipients" -o "$tmp/globals.sql.age"
 [[ -s "$tmp/database.pgdump.age" && -s "$tmp/globals.sql.age" ]]
 age -d -i "$tmp/identity" "$tmp/database.pgdump.age" |
-  pg_restore --no-owner --no-acl --exit-on-error --dbname="$restore_url" -
+  pg_restore --no-owner --no-acl --exit-on-error --dbname="$restore_url"
 age -d -i "$tmp/identity" "$tmp/globals.sql.age" | sha256sum >/dev/null
 (
  cd "$tmp"

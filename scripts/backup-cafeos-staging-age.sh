@@ -84,7 +84,7 @@ pg_dumpall -w --globals-only --no-role-passwords | age -R "$CAFEOS_AGE_RECIPIENT
 [[ -s "$work/database.pgdump.age" && -s "$work/globals.sql.age" ]] || {
   echo "STOP: incomplete ciphertext archive" >&2; exit 14;
 }
-age -d -i "$CAFEOS_AGE_IDENTITY" "$work/database.pgdump.age" | pg_restore --list - >/dev/null
+age -d -i "$CAFEOS_AGE_IDENTITY" "$work/database.pgdump.age" | pg_restore --list >/dev/null
 age -d -i "$CAFEOS_AGE_IDENTITY" "$work/globals.sql.age" | sha256sum >/dev/null
 (
   cd "$work"
