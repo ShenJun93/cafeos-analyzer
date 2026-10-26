@@ -131,6 +131,8 @@ test("portable staging backup candidate never writes plaintext or targets produc
   assert.match(source, /pg_dump -w -Fc --dbname=postgres \| age -R/);
   assert.match(source, /pg_dumpall -w --globals-only --no-role-passwords \| age -R/);
   assert.match(source, /age -d -i.*pg_restore --list/s);
+  assert.match(source, /sha256sum "\$\(basename "\$final"\)\.database\.pgdump\.age"/);
+  assert.match(source, /sha256sum -c "\$\(basename "\$final"\)\.manifest\.sha256"/);
   assert.match(source, /RESTORE_NOT_YET_PROVEN/);
   assert.doesNotMatch(source, /supabase migration repair|supabase db push|--linked|supabase db reset|service_role|sb_secret_/i);
 });

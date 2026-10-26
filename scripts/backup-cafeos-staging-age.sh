@@ -80,12 +80,20 @@ pg_dumpall -w --globals-only --no-role-passwords | age -R "$CAFEOS_AGE_RECIPIENT
 # Decrypt from saved ciphertext without creating any plaintext backup file.
 age -d -i "$CAFEOS_AGE_IDENTITY" "$work/database.pgdump.age" | pg_restore --list - >/dev/null
 age -d -i "$CAFEOS_AGE_IDENTITY" "$work/globals.sql.age" | sha256sum >/dev/null
-(
-  cd "$work"
-  sha256sum database.pgdump.age globals.sql.age > manifest.sha256
-)
 mv -n "$work/database.pgdump.age" "$final.database.pgdump.age"
 mv -n "$work/globals.sql.age" "$final.globals.sql.age"
+[[ -s "$final.database.pgdump.age" && -s "$final.globals.sql.age" ]] || {
+  echo "STOP: encrypted output is missing after final rename" >&2; exit 14;
+}
+# Checksums must reference FINAL ciphertext filenames, not temporary work names.
+(
+  cd "$dest"
+  sha256sum "$(basename "$final").database.pgdump.age" "$(basename "$final").globals.sql.age"
+) > "$work/manifest.sha256"
 mv -n "$work/manifest.sha256" "$final.manifest.sha256"
+(
+  cd "$dest"
+  sha256sum -c "$(basename "$final").manifest.sha256" >/dev/null
+)
 echo "CAFEOS_STAGING_ENCRYPTED_LOGICAL_BACKUP_COMPLETE: encrypted database and globals, no plaintext files"
 echo "RESTORE_NOT_YET_PROVEN: require isolated fresh-DB pg_restore rehearsal before history repair"
