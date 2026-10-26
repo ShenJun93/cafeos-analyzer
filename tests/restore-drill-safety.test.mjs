@@ -111,3 +111,24 @@ test("post-guard negative fixture is transaction-rolled-back and never permitted
   assert.match(sql, /negative-financial-audit/);
   assert.doesNotMatch(sql, /service_role|wjatnyvdygvblirggdcm|migration repair|db push/i);
 });
+
+
+test("portable staging backup candidate never writes plaintext or targets production", async () => {
+  const source = await readFile(
+    new URL("../scripts/backup-cafeos-staging-age.sh", import.meta.url), "utf8"
+  );
+  assert.match(source, /set -euo pipefail/);
+  assert.match(source, /wjatnyvdygvblirggdcm/);
+  assert.match(source, /PGSSLMODE.*verify-full/);
+  assert.match(source, /PGPASSFILE/);
+  assert.match(source, /PGSSLROOTCERT/);
+  assert.match(source, /CAFEOS_AGE_RECIPIENTS/);
+  assert.match(source, /CAFEOS_AGE_IDENTITY/);
+  assert.match(source, /receipt_versions/);
+  assert.match(source, /default_transaction_read_only=on/);
+  assert.match(source, /pg_dump -w -Fc --dbname=postgres \| age -R/);
+  assert.match(source, /pg_dumpall -w --globals-only --no-role-passwords \| age -R/);
+  assert.match(source, /age -d -i.*pg_restore --list/s);
+  assert.match(source, /RESTORE_NOT_YET_PROVEN/);
+  assert.doesNotMatch(source, /supabase migration repair|supabase db push|--linked|supabase db reset|service_role|sb_secret_/i);
+});
