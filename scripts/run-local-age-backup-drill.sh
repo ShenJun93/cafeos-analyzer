@@ -31,7 +31,7 @@ cleanup() {
 trap cleanup EXIT
 # The scratch names must be absent; never overwrite any existing database.
 for db in "$source_db" "$restore_db"; do
-  [[ "$(psql "$DB_URL" -Atq -v db="$db" -c "select count(*) from pg_database where datname = :'db'")" == "0" ]]
+  [[ "$(psql "$DB_URL" -Atq -c "select count(*) from pg_database where datname = '$db'")" == "0" ]]
 done
 createdb --maintenance-db="$DB_URL" "$source_db"
 source_created=true
