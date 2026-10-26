@@ -61,3 +61,9 @@ The portable tools eliminate the package-install blocker but **do not** provide 
 ## Offline verifier negative controls — synthetic only
 
 The disposable localhost age drill already proved correct independent-copy readback and rejection of corrupted ciphertext. The next CI acceptance also requires rejection of (a) a wrong out-of-band manifest SHA-256 and (b) a valid encrypted copy paired with an unrelated age private identity. These tests do not establish cross-machine recovery; only running the verifier on a real separately custodied encrypted archive and restoring the **actual** staging snapshot into an isolated compatible database can satisfy that gate.
+
+## Recovery-path correction — upstream Supabase caveat (2026-10-26)
+
+**Do not use the success marker of `backup-cafeos-staging-age.sh` as a release gate.** Supabase's official restore documentation warns that raw PostgreSQL dumps include internal schemas that may fail managed-platform restore due to permissions. The raw age archive is a preservation artifact, not a Supabase-portable recovery acceptance. Before any history repair, separately produce and restore a supported Supabase-compatible roles/schema/data export with separately preserved original migration history on an isolated target. CLI dump formats can write plaintext: do not create persistent unencrypted SQL or place credentials in source/CI/process logs. Plan and prove secure handling first.
+
+See `docs/research/2026-10-26-cafeos-recovery-path-correction.md` for the revised required A–E gates and live source inventory. No live dump or restore was executed by this documentation/guard change.

@@ -129,6 +129,7 @@ test("portable staging backup candidate never writes plaintext or targets produc
   assert.match(source, /CAFEOS_AGE_RECIPIENTS/);
   assert.match(source, /CAFEOS_AGE_IDENTITY/);
   assert.match(source, /CAFEOS_EXPECTED_RECEIPT_SHA256/);
+  assert.match(source, /RAW_PG_DUMP_NOT_SUPABASE_RESTORE_CERTIFIED/);
   assert.match(source, /ledger_hash_before.*CAFEOS_EXPECTED_RECEIPT_SHA256/);
   assert.match(source, /DB credential file cannot be inside a Git working tree/);
   assert.match(source, /receipt_versions/);
