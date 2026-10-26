@@ -315,3 +315,9 @@ Primary distribution remains pull/inbound; no dependency on cold outbound sales.
 - A separate ephemeral, read-only Codex CLI reviewer inspected tracked Core Commerce SECURITY DEFINER RPCs, tenant-role helper, RLS grants, idempotency and pending guard SQL at commit 305ffea. Outcome: **NO NEW VERIFIED SOURCE-LEVEL SECURITY FINDINGS**. No staging credential, DB session or mutations used.
 - Bounded positive evidence: tenant-qualified auth checks and composite FKs, restricted write grants, order/close advisory locks, payment order row lock. **NOT** proof of runtime JWT scope, concurrency in separate sessions, or Supabase advisor exception. See docs/research/2026-10-26-cafeos-independent-commerce-source-review.md.
 - Actual full staging backup, portable off-host age recovery, TLS-authenticated staging DB connectivity, isolated Supabase-compatible restore, JWT E2E and independent human security approval remain OPEN. Keep PR #74 Draft / release NO-GO.
+
+
+## 2026-10-26 live staging anonymous read-API negative E2E
+
+- Used connected Supabase modern publishable key in temporary MAIN-PC WSL local memory/files only. Real HTTPS Auth public settings GET returned 200 (positive control). Three anonymous GETs to menu_items, pos_orders and commerce_daily_dashboard all returned HTTP 401 with PostgreSQL 42501. No JWT, DB credential or Commerce write RPC used, and no staging data changed.
+- Verified three anonymous-read denies only; **NOT a substitute for authenticated JWT cross-tenant/Commerce writes E2E**. Evidence: docs/research/2026-10-26-cafeos-staging-anonymous-http-read-e2e.md. Source and PR remain Draft; release NO-GO. All operational backup/restore gates remain open.
