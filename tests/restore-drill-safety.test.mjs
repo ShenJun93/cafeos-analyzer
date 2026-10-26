@@ -170,6 +170,7 @@ test("encrypted database restore rehearsal is hard-pinned to disposable loopback
   assert.equal(syntax.status,0,syntax.stderr);
   assert.match(script,/127\.0\.0\.1:54322/);
   assert.match(script,/age-keygen -o "\$tmp\/identity"/);
+  assert.match(script,/requires PostgreSQL client major 17/);
   assert.match(script,/pg_dump -w -Fc.*\| age -R/);
   assert.match(script,/pg_dumpall -w --globals-only --no-role-passwords/);
   assert.match(script,/age -d -i.*pg_restore --no-owner/s);

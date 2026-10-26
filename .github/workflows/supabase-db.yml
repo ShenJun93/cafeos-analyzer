@@ -80,8 +80,12 @@ jobs:
       - name: Prove post-repair GREEN and guarded upgrade on disposable localhost
         run: bash scripts/run-local-greenpath-ledger-drill.sh
 
-      - name: Install age for the disposable encrypted backup rehearsal
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq age
+      - name: Install age and PostgreSQL 17 client to match local Postgres 17.6
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
 
       - name: Restore age-encrypted synthetic PostgreSQL backup to a separate local database
         run: bash scripts/run-local-age-backup-drill.sh
