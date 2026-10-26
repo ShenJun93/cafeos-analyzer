@@ -34,3 +34,7 @@ Project: `wjatnyvdygvblirggdcm`, Supabase region `ap-southeast-1`, PostgreSQL ve
 The three HEAD `c07fea7` workflows all succeeded (CI `40280812118`, Supabase DB `40280812094`, Chromium `40280812091`). Supabase staging migration history remains 7 original receipts, both planned Commerce guards absent. Real full staging backup and clean-room recovery **NOT_RUN**. No history repair, `db push`, guard migration, PR merge or production deployment authorized. **DRAFT / NO-GO**.
 
 Source for required CA/project connection tuple: [Supabase connecting with PSQL](https://supabase.com/docs/guides/database/psql). Network probe is local evidence; Supabase documentation does not attest to this particular MAIN-PC route.
+
+## Later update on 2026-10-26
+
+The earlier network and missing-certificate observations were superseded after operator connection details arrived. See 2026-10-26-cafeos-live-direct-session-pooler-tls-preflight.md. Windows now reaches direct IPv6; session pooler TCP and CA/hostname TLS have been verified from WSL. The authentication/backup and independent restore gates remain open.

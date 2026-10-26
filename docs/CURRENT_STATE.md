@@ -329,3 +329,11 @@ Primary distribution remains pull/inbound; no dependency on cold outbound sales.
 - Verified atomic private directory rename on the real WSL filesystem and verified the temporary marker was removed: **zero archive members** and zero config files after cleanup. Portable age/PostgreSQL binaries present but must be added explicitly to PATH for any future operator-authorized execution.
 - Primary-source Supabase docs still require root CA download from this project's authenticated Database Settings and exact Session pooler tuple from Connect; static `https://supabase.com/prod-ca-2021.crt` responds 404 and is not a supported replacement. CA, PGPASSFILE, independent off-host age recovery and actual Supabase-compatible clean-room restore remain **BLOCKED/NOT_RUN**. This closes *only* a local destination-readiness prerequisite.
 - Evidence: `docs/research/2026-10-26-cafeos-wsl-backup-directory-readiness.md`. PR Draft / NO-GO. No staging/production mutations.
+
+
+## 2026-10-26 live staging direct / session pooler TLS preflight
+
+- Operator provided both direct and transaction-pooler tuples. Windows TCP to direct IPv6 5432 PASS while WSL lacks IPv6 routing. On pooler aws-0-ap-southeast-1.pooler.supabase.com, Windows and WSL TCP ports 5432 and 6543 PASS.
+- Verified Supabase Root 2021 CA from Windows Downloads (file SHA-256 700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7), copied to protected WSL config/db-root-ca.crt outside Git mode 0600. PostgreSQL STARTTLS chain and hostname verification PASS at both pooler ports.
+- WSL PostgreSQL 18.6 psql in Session Pooler mode 5432 with verify-full, -w and NO PASSWORD reached expected authentication-required stage. No SQL executed. Authenticated Dashboard CA download provenance was not separately observed.
+- Technical network and TLS validation PASS. Protected PGPASSFILE, real DB login, off-host independently recovered age identity, complete real staging backup and compatible clean-room restoration remain OPEN. See docs/research/2026-10-26-cafeos-live-direct-session-pooler-tls-preflight.md. PR Draft / release NO-GO.
