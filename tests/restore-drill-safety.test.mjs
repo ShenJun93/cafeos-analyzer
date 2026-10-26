@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdir, mkdtemp, writeFile, chmod, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -126,6 +128,7 @@ test("portable staging backup candidate never writes plaintext or targets produc
   assert.match(source, /PGSSLROOTCERT/);
   assert.match(source, /CAFEOS_AGE_RECIPIENTS/);
   assert.match(source, /CAFEOS_AGE_IDENTITY/);
+  assert.match(source, /DB credential file cannot be inside a Git working tree/);
   assert.match(source, /receipt_versions/);
   assert.match(source, /ledger_hash_before="\$\(ledger_fingerprint\)"/);
   assert.match(source, /ledger_hash_after="\$\(ledger_fingerprint\)"/);
@@ -169,6 +172,40 @@ test("portable staging backup candidate shell parses and refuses missing/wrong t
   assert.match(hostile.stderr, /pinned CafeOS staging/i);
 });
 
+
+test("portable staging backup refuses a pgpass file from any Git working tree before connecting", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "cafeos-pgpass-git-"));
+  t.after(async () => { await rm(root, { recursive: true, force: true }); });
+  const gitDir = join(root, "credential-repo");
+  const backupDir = join(root, "encrypted-out");
+  await mkdir(gitDir);
+  await mkdir(backupDir, { mode: 0o700 });
+  await chmod(backupDir, 0o700);
+  const gitInit = spawnSync("git", ["init", "-q", gitDir], { encoding: "utf8" });
+  assert.equal(gitInit.status, 0, gitInit.stderr);
+  const passfile = join(gitDir, "pgpass");
+  const identity = join(root, "identity");
+  const ca = join(root, "root-ca.pem");
+  const recipient = join(root, "recipient");
+  for (const p of [passfile, identity, ca, recipient]) {
+    await writeFile(p, "synthetic-test-only\\n", { mode: 0o600 });
+    await chmod(p, 0o600);
+  }
+  const script = fileURLToPath(new URL("../scripts/backup-cafeos-staging-age.sh", import.meta.url));
+  const result = spawnSync("bash", [script], {
+    env: {
+      PATH: process.env.PATH,
+      PGHOST: "db.wjatnyvdygvblirggdcm.supabase.co",
+      PGUSER: "postgres", PGDATABASE: "postgres", PGPORT: "5432",
+      PGSSLMODE: "verify-full", PGPASSFILE: passfile,
+      PGSSLROOTCERT: ca, CAFEOS_BACKUP_DIR: backupDir,
+      CAFEOS_AGE_RECIPIENTS: recipient, CAFEOS_AGE_IDENTITY: identity
+    },
+    encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /DB credential file cannot be inside a Git working tree/);
+});
 
 test("encrypted database restore rehearsal is hard-pinned to disposable loopback databases", async () => {
   const script = await readFile(new URL("../scripts/run-local-age-backup-drill.sh", import.meta.url),"utf8");

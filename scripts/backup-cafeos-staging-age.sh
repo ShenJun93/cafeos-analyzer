@@ -53,6 +53,9 @@ fi
 if git -C "$(dirname "$key")" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "STOP: age private identity cannot be inside a Git working tree" >&2; exit 12;
 fi
+if git -C "$(dirname "$passfile")" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "STOP: DB credential file cannot be inside a Git working tree" >&2; exit 12;
+fi
 [[ "$(stat -c '%a' "$key")" == "600" || "$(stat -c '%a' "$key")" == "400" ]] || {
   echo "STOP: age private identity must have file mode 0600 or 0400" >&2; exit 12;
 }
