@@ -114,3 +114,11 @@ Money precision: API handlers for Menu prices and recorded Payment amounts now v
 
 **Critical remaining Gate A requirements:** This is **NOT a database backup**. Obtain and test a complete staging database backup/snapshot, secure a portable off-machine copy and an independently recoverable decryption path. DPAPI `CurrentUser` alone is not independent disaster recovery. Re-run the ledger+schema preflight at the moment of action and have an independent reviewer approve an exact reversible version mapping. No repair or migration-up operation is approved or executed yet. See `docs/research/2026-10-26-cafeos-staging-receipt-archive-attestation.md`.
 
+
+## 2026-10-26 Free plan backup readiness (not a backup completion claim)
+
+The Supabase organization actually reports **Free**; no paid-plan automated daily backups/PITR can be assumed. Staging currently contains about 13 MiB PostgreSQL, 1 Auth user and no Storage objects. The verified 7/7 DPAPI migration receipt archive is narrower than a full database snapshot.
+
+`scripts/backup-cafeos-staging-age.sh` is a **candidate only**, added to prepare a streaming, portable age-encrypted logical PostgreSQL dump plus role metadata without writing plaintext SQL to the disk. It validates the staging host, TLS CA, password file restrictions, PostgreSQL 17+ and exact seven-version ledger before reading. It must **not** be used for production or mistaken for a completed backup. Both encrypted outputs require fresh-project/isolated restore verification, including managed schema and ownership/RLS behavior and handling Auth/Storage/secret differences. CLI `db dump` defaults filter managed schemas; raw `pg_dump` can carry those objects but may fail to restore into a managed Supabase project without an explicit compatibility plan. See `docs/research/2026-10-26-cafeos-staging-portable-backup-readiness.md`.
+
+**Gate A status remains PARTIAL**: original SQL receipts encrypted and restored **PASS**; full DB backup, independent cross-host restore, cryptographic key custody, security signoff and owner approval **OPEN**. No live history repair was attempted.

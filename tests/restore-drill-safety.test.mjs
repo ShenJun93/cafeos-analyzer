@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 test("restore drill is pinned to the ephemeral local Supabase database", async () => {
   const script = await readFile(
@@ -131,4 +133,28 @@ test("portable staging backup candidate never writes plaintext or targets produc
   assert.match(source, /age -d -i.*pg_restore --list/s);
   assert.match(source, /RESTORE_NOT_YET_PROVEN/);
   assert.doesNotMatch(source, /supabase migration repair|supabase db push|--linked|supabase db reset|service_role|sb_secret_/i);
+});
+
+
+test("portable staging backup candidate shell parses and refuses missing/wrong target", async () => {
+  const executable = fileURLToPath(new URL("../scripts/backup-cafeos-staging-age.sh", import.meta.url));
+  const syntax = spawnSync("bash", ["-n", executable], { encoding: "utf8", timeout: 6000 });
+  assert.equal(syntax.status, 0, "backup shell syntax is invalid: " + syntax.stderr);
+  const empty = spawnSync("bash", [executable], {
+    env: { PATH: process.env.PATH }, encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(empty.status, 0, "missing target details must be refused");
+  const hostile = spawnSync("bash", [executable], {
+    env: {
+      PATH: process.env.PATH, PGHOST: "db.unrelated.supabase.co",
+      PGUSER: "postgres", PGDATABASE: "postgres", PGPORT: "5432",
+      PGSSLMODE: "verify-full", PGPASSFILE: "/tmp/not-used",
+      PGSSLROOTCERT: "/tmp/not-used", CAFEOS_BACKUP_DIR: "/tmp",
+      CAFEOS_AGE_RECIPIENTS: "/tmp/not-used",
+      CAFEOS_AGE_IDENTITY: "/tmp/not-used"
+    },
+    encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(hostile.status, 0, "non-CafeOS host must be refused");
+  assert.match(hostile.stderr, /pinned CafeOS staging/i);
 });
