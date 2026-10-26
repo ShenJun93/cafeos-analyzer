@@ -286,3 +286,11 @@ Primary distribution remains pull/inbound; no dependency on cold outbound sales.
 - Exact source `a84a06eee1b85e742e3c9c4e90682d066f41387e`: GitHub CI `40274603941`, synthetic Chromium `40274603944`, Supabase DB `40274603967` **SUCCESS**. Read Supabase DB job `121414566546` logs directly: `CAFEOS_OFFLINE_ARCHIVE_READBACK_PASS`, `CAFEOS_SYNTHETIC_OFFLINE_TAMPER_REJECTED`, `CAFEOS_LOCAL_AGE_BACKUP_RESTORE_PASS`, and local migration `CAFEOS_LOCAL_GREENPATH_PASS` were present. These prove *only* the ephemeral/synthetic data paths.
 - Extended the disposable age drill with two negative acceptance controls: copy must reject a **wrong separately retained manifest SHA-256**, and a correct copied archive must reject an **unrelated age private identity**. Wrong test identity is ephemeral and cleaned up after the drill; no real staging key is involved.
 - **Not evidence** of off-host key custody or full staging database restoration. Keep the real backup/independent restore, authenticated JWT E2E, security sign-off, and migration mapping approval gates open. PR #74 remains Draft / NO-GO; staging and production schema unchanged.
+
+
+## 2026-10-26 staging security review and provisional age key
+
+- At exact functional HEAD b0324fa, GitHub CI 40276909713, synthetic Chromium 40276909739 and Supabase DB 40276910134 PASS, including wrong-key and wrong-manifest tests.
+- Fresh SELECT-only security evidence: 3 Commerce SECURITY DEFINER write RPCs owned by postgres, fixed search_path, denied anon/PUBLIC EXECUTE and permitted authenticated EXECUTE, using tenant-role helper before writes. Commerce tables have RLS and no direct authenticated write grants. See docs/research/2026-10-26-cafeos-staging-rpc-security-readonly-review.md. This is not independent security sign-off or JWT E2E.
+- MAIN-PC WSL created a provisional local age key outside Git, with 0700/0600 protections and synthetic age roundtrip PASS. No off-host custody or recovery verified; do not use it for real staging backup until independently recoverable.
+- Staging still has 7 legacy receipts, 0/2 Commerce SQL guards, zero menu items/orders/payments. Full real backup, DB credentials/CA, independent restore, JWT E2E, security sign-off and migration mapping remain OPEN. PR Draft / NO-GO; staging and production unchanged.
