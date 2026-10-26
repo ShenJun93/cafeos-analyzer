@@ -33,3 +33,7 @@ The synthetic restore proves PostgreSQL and `age` tooling behavior, **not** a po
 Before any real `migration repair`: securely provision a staging-specific DB credential file; establish portable age public recipient and separate private identity/off-host recovery custody; capture complete encrypted staging database and role metadata; test a fresh disposable target restoring real schemas/data with verified auth/migration/RLS invariants; review Supabase security advisor warnings and approve an exact version mapping. Keep PR #74 Draft / NO-GO and production unchanged.
 
 References: https://www.postgresql.org/download/linux/ubuntu/ and https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore .
+
+## Strengthened staging candidate integrity — 2026-10-26
+
+The synthetic local restore already passed at `dc50f247`. The next candidate update (`c6cbe77`) introduces a **source migration SQL fingerprint** checked both before and after the encrypted dumps, protected archive metadata and Git-location exclusion for the archive and private key. Its SQL file was executed read-only on real staging and returned a stable 64-character SHA-256. A local negative control intentionally changes receipt SQL without modifying the version and proves hash drift detection, then restores the original text. Both Supabase DB workflows at the exact code commit PASS, as do CI and Chromium QA. The real staging full dump remains NOT_RUN.
