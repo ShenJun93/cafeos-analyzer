@@ -10,6 +10,8 @@ on:
       - "scripts/run-local-ledger-reconciliation-drill.sh"
       - "scripts/run-local-greenpath-ledger-drill.sh"
       - "scripts/sql/cafeos-staging-post-repair-readonly-gate.sql"
+      - "scripts/sql/cafeos-staging-post-guards-readonly-gate.sql"
+      - "scripts/sql/cafeos-local-postguards-negative-fixture.sql"
       - ".github/workflows/supabase-db.yml"
   pull_request:
     paths:
@@ -20,6 +22,8 @@ on:
       - "scripts/run-local-ledger-reconciliation-drill.sh"
       - "scripts/run-local-greenpath-ledger-drill.sh"
       - "scripts/sql/cafeos-staging-post-repair-readonly-gate.sql"
+      - "scripts/sql/cafeos-staging-post-guards-readonly-gate.sql"
+      - "scripts/sql/cafeos-local-postguards-negative-fixture.sql"
       - ".github/workflows/supabase-db.yml"
 
 permissions:
