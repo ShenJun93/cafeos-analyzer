@@ -35,7 +35,7 @@ cleanup() {
     rm -f -- "$tmp/offline-copy/database.pgdump.age" "$tmp/offline-copy/globals.sql.age" "$tmp/offline-copy/source-ledger-sha256.txt" "$tmp/offline-copy/manifest.sha256"
     rmdir -- "$tmp/offline-copy" 2>/dev/null || true
   fi
-  rm -f -- "$tmp/identity" "$tmp/recipients" "$tmp/database.pgdump.age" "$tmp/globals.sql.age" "$tmp/manifest.sha256"
+  rm -f -- "$tmp/identity" "$tmp/wrong-identity" "$tmp/recipients" "$tmp/database.pgdump.age" "$tmp/globals.sql.age" "$tmp/manifest.sha256"
   rmdir -- "$tmp" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -99,6 +99,29 @@ CAFEOS_AGE_IDENTITY="$tmp/identity" \
 CAFEOS_EXPECTED_MANIFEST_SHA256="$manifest_hash" \
 CAFEOS_EXPECTED_RECEIPT_SHA256="$baseline_fp" \
 bash scripts/verify-cafeos-staging-age-archive.sh
+# Wrong retained manifest SHA must fail before accepting a copied archive.
+wrong_manifest="$(printf '%064d' 0)"
+[[ "$wrong_manifest" != "$manifest_hash" ]]
+if CAFEOS_ARCHIVE_DIR="$offline_copy" \
+   CAFEOS_AGE_IDENTITY="$tmp/identity" \
+   CAFEOS_EXPECTED_MANIFEST_SHA256="$wrong_manifest" \
+   CAFEOS_EXPECTED_RECEIPT_SHA256="$baseline_fp" \
+   bash scripts/verify-cafeos-staging-age-archive.sh >/dev/null 2>&1; then
+  echo "STOP: wrong original manifest fingerprint was accepted" >&2
+  exit 43
+fi
+echo "CAFEOS_SYNTHETIC_WRONG_MANIFEST_REJECTED"
+# Correct archive with another private identity must never decrypt successfully.
+age-keygen -o "$tmp/wrong-identity" >/dev/null 2>&1
+if CAFEOS_ARCHIVE_DIR="$offline_copy" \
+   CAFEOS_AGE_IDENTITY="$tmp/wrong-identity" \
+   CAFEOS_EXPECTED_MANIFEST_SHA256="$manifest_hash" \
+   CAFEOS_EXPECTED_RECEIPT_SHA256="$baseline_fp" \
+   bash scripts/verify-cafeos-staging-age-archive.sh >/dev/null 2>&1; then
+  echo "STOP: unrelated age private identity was accepted" >&2
+  exit 43
+fi
+echo "CAFEOS_SYNTHETIC_WRONG_AGE_IDENTITY_REJECTED"
 printf 'synthetic-tamper' >> "$offline_copy/database.pgdump.age"
 if CAFEOS_ARCHIVE_DIR="$offline_copy" \
    CAFEOS_AGE_IDENTITY="$tmp/identity" \

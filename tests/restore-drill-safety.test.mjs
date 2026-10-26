@@ -303,6 +303,9 @@ test("encrypted database restore rehearsal is hard-pinned to disposable loopback
   assert.match(script,/CAFEOS_LOCAL_AGE_BACKUP_RESTORE_PASS/);
   assert.match(script,/verify-cafeos-staging-age-archive\.sh/);
   assert.match(script,/synthetic-tamper/);
+  assert.match(script,/CAFEOS_SYNTHETIC_WRONG_MANIFEST_REJECTED/);
+  assert.match(script,/CAFEOS_SYNTHETIC_WRONG_AGE_IDENTITY_REJECTED/);
+  assert.match(script,/wrong-identity/);
   assert.doesNotMatch(script,/pg_restore --no-owner --no-acl --exit-on-error --dbname="\$restore_url" -/);
   assert.match(script,/trap cleanup EXIT/);
   assert.doesNotMatch(script,/wjatnyvdygvblirggdcm|--linked|supabase link|PGHOST=.*supabase\.co|SUPABASE_ACCESS_TOKEN|service_role|sb_secret_/i);
