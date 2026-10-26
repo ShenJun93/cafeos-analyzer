@@ -265,3 +265,11 @@ The product-level discovery gate in issue #11 remains open because real target-I
 5. Keep PR #74 draft and production writes disabled until the staged release checklist is complete.
 
 Primary distribution remains pull/inbound; no dependency on cold outbound sales.
+
+
+## 2026-10-26 independent staging-backup SQL attestation guard
+
+- Fresh exact-head `82956a73bdd5a99aedf8c5c4833d42bc9493f307` verification: CI `40266149698`, synthetic Chromium `40266149725`, Supabase DB CI `40266149766` **SUCCESS**. PR #74 remains Draft.
+- Fresh staging SELECT-only ledger fingerprint `fa57902e637543dde1082d4ff307aabda1a9e223a3b0a354780948da8bb34eb3` matches prior 7/7 DPAPI-restored original receipts; the staging history still has 7 old versions and both Commerce guards are unapplied.
+- Corrected backup safety gap: pre/post hash equality alone would not detect an original SQL receipt changed **before** a dump while retaining the same version. Backup now requires the previously pinned 64-hex `CAFEOS_EXPECTED_RECEIPT_SHA256`; it refuses a different initial SQL fingerprint before dumping. New negative regression tests missing/invalid values without DB access. Expected value is the previously recorded full-ledger checkpoint (whose seven individual receipt SQLs were separately verified against the recovered DPAPI archive), not the same live query. The combined ledger fingerprint itself has not yet been recomputed from the DPAPI receipt files.
+- Full staging logical database backup, portable/off-host key custody, independent restore of actual staging managed schemas, live JWT E2E and independent security signoff remain **NOT_RUN / BLOCKED**. No migration repair, `db push`, SQL guard application, merge or production release. **DRAFT / NO-GO**.

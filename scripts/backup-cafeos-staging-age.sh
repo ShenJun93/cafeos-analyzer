@@ -12,6 +12,7 @@ ref="wjatnyvdygvblirggdcm"
 : "${CAFEOS_BACKUP_DIR:?Choose non-repo backup output directory}"
 : "${CAFEOS_AGE_RECIPIENTS:?Set external age public recipient file}"
 : "${CAFEOS_AGE_IDENTITY:?Set external age private identity for readback}"
+: "${CAFEOS_EXPECTED_RECEIPT_SHA256:?Set independently attested receipt SQL SHA-256}"
 
 [[ "${PGDATABASE:-postgres}" == "postgres" ]]
 [[ "${PGPORT:-5432}" == "5432" ]]
@@ -29,6 +30,12 @@ else
   echo "STOP: not the pinned CafeOS staging direct/session-pooler host" >&2
   exit 12
 fi
+# Pin the previously recorded historical-ledger fingerprint, cross-checked at
+# receipt level with 7/7 archived DPAPI receipts; never self-approve from the
+# same fresh staging query used during this backup.
+[[ "$CAFEOS_EXPECTED_RECEIPT_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+  echo "STOP: invalid independently attested receipt SHA-256" >&2; exit 12;
+}
 
 for file in "$PGPASSFILE" "$PGSSLROOTCERT" "$CAFEOS_AGE_RECIPIENTS" "$CAFEOS_AGE_IDENTITY"; do
   [[ -f "$file" && -r "$file" ]] || { echo "STOP: missing protected local prerequisite" >&2; exit 12; }
@@ -82,6 +89,10 @@ ledger_fingerprint() {
 ledger_hash_before="$(ledger_fingerprint)"
 [[ "$ledger_hash_before" =~ ^[0-9a-f]{64}$ ]] || {
   echo "STOP: unexpected original migration receipt fingerprint" >&2; exit 13;
+}
+[[ "$ledger_hash_before" == "$CAFEOS_EXPECTED_RECEIPT_SHA256" ]] || {
+  echo "STOP: live original receipt SQL differs from the independent attestation" >&2
+  exit 13
 }
 
 receipt_versions="$(psql -XAtw -v ON_ERROR_STOP=1 -d postgres -c \

@@ -128,6 +128,8 @@ test("portable staging backup candidate never writes plaintext or targets produc
   assert.match(source, /PGSSLROOTCERT/);
   assert.match(source, /CAFEOS_AGE_RECIPIENTS/);
   assert.match(source, /CAFEOS_AGE_IDENTITY/);
+  assert.match(source, /CAFEOS_EXPECTED_RECEIPT_SHA256/);
+  assert.match(source, /ledger_hash_before.*CAFEOS_EXPECTED_RECEIPT_SHA256/);
   assert.match(source, /DB credential file cannot be inside a Git working tree/);
   assert.match(source, /receipt_versions/);
   assert.match(source, /ledger_hash_before="\$\(ledger_fingerprint\)"/);
@@ -164,7 +166,8 @@ test("portable staging backup candidate shell parses and refuses missing/wrong t
       PGSSLMODE: "verify-full", PGPASSFILE: "/tmp/not-used",
       PGSSLROOTCERT: "/tmp/not-used", CAFEOS_BACKUP_DIR: "/tmp",
       CAFEOS_AGE_RECIPIENTS: "/tmp/not-used",
-      CAFEOS_AGE_IDENTITY: "/tmp/not-used"
+      CAFEOS_AGE_IDENTITY: "/tmp/not-used",
+      CAFEOS_EXPECTED_RECEIPT_SHA256: "fa57902e637543dde1082d4ff307aabda1a9e223a3b0a354780948da8bb34eb3"
     },
     encoding: "utf8", timeout: 6000
   });
@@ -172,6 +175,69 @@ test("portable staging backup candidate shell parses and refuses missing/wrong t
   assert.match(hostile.stderr, /pinned CafeOS staging/i);
 });
 
+
+test("portable backup rejects missing or invalid independent receipt SHA-256 without DB access", () => {
+  const executable = fileURLToPath(new URL("../scripts/backup-cafeos-staging-age.sh", import.meta.url));
+  const base = {
+    PATH: process.env.PATH, PGHOST: "db.wjatnyvdygvblirggdcm.supabase.co",
+    PGUSER: "postgres", PGDATABASE: "postgres", PGPORT: "5432",
+    PGSSLMODE: "verify-full", PGPASSFILE: "/path/not-used",
+    PGSSLROOTCERT: "/path/not-used", CAFEOS_BACKUP_DIR: "/path/not-used",
+    CAFEOS_AGE_RECIPIENTS: "/path/not-used", CAFEOS_AGE_IDENTITY: "/path/not-used"
+  };
+  for (const invalid of ["invalid", "f".repeat(63), "F".repeat(64)]) {
+    const result = spawnSync("bash", [executable], {
+      env: { ...base, CAFEOS_EXPECTED_RECEIPT_SHA256: invalid },
+      encoding: "utf8", timeout: 6000
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /STOP: invalid independently attested receipt SHA-256/);
+  }
+  const missing = spawnSync("bash", [executable], {
+    env: base, encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(missing.status, 0);
+  assert.match(missing.stderr, /CAFEOS_EXPECTED_RECEIPT_SHA256/);
+});
+
+test("portable staging backup rejects a pre-existing receipt SQL drift before dump", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "cafeos-ledger-attestation-"));
+  t.after(async () => { await rm(root, { recursive: true, force: true }); });
+  const bin = join(root, "bin");
+  const output = join(root, "out");
+  await mkdir(bin);
+  await mkdir(output, { mode: 0o700 });
+  await chmod(output, 0o700);
+  for (const name of ["pg_dump", "pg_dumpall", "pg_restore", "age"]) {
+    const file = join(bin, name);
+    await writeFile(file, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'PostgreSQL 18.6'; exit 0; fi\nexit 99\n");
+    await chmod(file, 0o700);
+  }
+  const psql = join(bin, "psql");
+  await writeFile(psql, "#!/bin/sh\necho '" + "b".repeat(64) + "'\n");
+  await chmod(psql, 0o700);
+  for (const name of ["pgpass", "ca.pem", "recipient", "identity"]) {
+    const file = join(root, name);
+    await writeFile(file, "synthetic-test-only\\n", { mode: 0o600 });
+    await chmod(file, 0o600);
+  }
+  const script = fileURLToPath(new URL("../scripts/backup-cafeos-staging-age.sh", import.meta.url));
+  const result = spawnSync("bash", [script], {
+    env: {
+      PATH: bin + ":" + process.env.PATH, PGHOST: "db.wjatnyvdygvblirggdcm.supabase.co",
+      PGUSER: "postgres", PGDATABASE: "postgres", PGPORT: "5432",
+      PGSSLMODE: "verify-full", PGPASSFILE: join(root, "pgpass"),
+      PGSSLROOTCERT: join(root, "ca.pem"), CAFEOS_BACKUP_DIR: output,
+      CAFEOS_AGE_RECIPIENTS: join(root, "recipient"),
+      CAFEOS_AGE_IDENTITY: join(root, "identity"),
+      CAFEOS_EXPECTED_RECEIPT_SHA256: "a".repeat(64)
+    },
+    encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /STOP: live original receipt SQL differs from the independent attestation/);
+  assert.deepEqual(await import("node:fs/promises").then(({ readdir }) => readdir(output)), []);
+});
 
 test("portable staging backup refuses a pgpass file from any Git working tree before connecting", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "cafeos-pgpass-git-"));
@@ -199,7 +265,8 @@ test("portable staging backup refuses a pgpass file from any Git working tree be
       PGUSER: "postgres", PGDATABASE: "postgres", PGPORT: "5432",
       PGSSLMODE: "verify-full", PGPASSFILE: passfile,
       PGSSLROOTCERT: ca, CAFEOS_BACKUP_DIR: backupDir,
-      CAFEOS_AGE_RECIPIENTS: recipient, CAFEOS_AGE_IDENTITY: identity
+      CAFEOS_AGE_RECIPIENTS: recipient, CAFEOS_AGE_IDENTITY: identity,
+      CAFEOS_EXPECTED_RECEIPT_SHA256: "fa57902e637543dde1082d4ff307aabda1a9e223a3b0a354780948da8bb34eb3"
     },
     encoding: "utf8", timeout: 6000
   });
