@@ -56,7 +56,7 @@ SQL
 age-keygen -o "$tmp/identity" >/dev/null 2>&1
 age-keygen -y "$tmp/identity" > "$tmp/recipients"
 pg_dump -w -Fc --dbname="$source_url" | age -R "$tmp/recipients" -o "$tmp/database.pgdump.age"
-pg_dumpall -w --globals-only --no-role-passwords -h 127.0.0.1 -p 54322 -U postgres |
+pg_dumpall -w --globals-only --no-role-passwords --dbname="$DB_URL" |
   age -R "$tmp/recipients" -o "$tmp/globals.sql.age"
 [[ -s "$tmp/database.pgdump.age" && -s "$tmp/globals.sql.age" ]]
 age -d -i "$tmp/identity" "$tmp/database.pgdump.age" |
