@@ -31,6 +31,10 @@ cleanup() {
   if [[ "$source_created" == true ]]; then
     dropdb --if-exists --maintenance-db="$DB_URL" "$source_db" || true
   fi
+  if [[ -d "$tmp/offline-copy" ]]; then
+    rm -f -- "$tmp/offline-copy/database.pgdump.age" "$tmp/offline-copy/globals.sql.age" "$tmp/offline-copy/source-ledger-sha256.txt" "$tmp/offline-copy/manifest.sha256"
+    rmdir -- "$tmp/offline-copy" 2>/dev/null || true
+  fi
   rm -f -- "$tmp/identity" "$tmp/recipients" "$tmp/database.pgdump.age" "$tmp/globals.sql.age" "$tmp/manifest.sha256"
   rmdir -- "$tmp" 2>/dev/null || true
 }
@@ -78,6 +82,33 @@ age -d -i "$tmp/identity" "$tmp/globals.sql.age" | sha256sum >/dev/null
  sha256sum database.pgdump.age globals.sql.age > manifest.sha256
  sha256sum -c manifest.sha256 >/dev/null
 )
+# Copy only encrypted artifacts into a separate restricted directory. The age
+# identity stays outside the copy, mirroring an independent recovery custodian.
+offline_copy="$tmp/offline-copy"
+mkdir -m 700 "$offline_copy"
+cp -- "$tmp/database.pgdump.age" "$tmp/globals.sql.age" "$offline_copy/"
+printf '%s\n' "$baseline_fp" > "$offline_copy/source-ledger-sha256.txt"
+(
+  cd "$offline_copy"
+  sha256sum database.pgdump.age globals.sql.age source-ledger-sha256.txt > manifest.sha256
+)
+manifest_hash="$(sha256sum "$offline_copy/manifest.sha256")"
+manifest_hash="${manifest_hash%% *}"
+CAFEOS_ARCHIVE_DIR="$offline_copy" \
+CAFEOS_AGE_IDENTITY="$tmp/identity" \
+CAFEOS_EXPECTED_MANIFEST_SHA256="$manifest_hash" \
+CAFEOS_EXPECTED_RECEIPT_SHA256="$baseline_fp" \
+bash scripts/verify-cafeos-staging-age-archive.sh
+printf 'synthetic-tamper' >> "$offline_copy/database.pgdump.age"
+if CAFEOS_ARCHIVE_DIR="$offline_copy" \
+   CAFEOS_AGE_IDENTITY="$tmp/identity" \
+   CAFEOS_EXPECTED_MANIFEST_SHA256="$manifest_hash" \
+   CAFEOS_EXPECTED_RECEIPT_SHA256="$baseline_fp" \
+   bash scripts/verify-cafeos-staging-age-archive.sh >/dev/null 2>&1; then
+  echo "STOP: tampered offline ciphertext was accepted" >&2
+  exit 43
+fi
+echo "CAFEOS_SYNTHETIC_OFFLINE_TAMPER_REJECTED"
 s="$(psql "$source_url" -Atq -c "select count(*)::text||':'||sum(cents)::text||':'||md5(string_agg(title,',' order by id)) from synthetic.sales")"
 t="$(psql "$restore_url" -Atq -c "select count(*)::text||':'||sum(cents)::text||':'||md5(string_agg(title,',' order by id)) from synthetic.sales")"
 [[ "$s" == "$t" && "$s" == 2:3155:* ]] || {

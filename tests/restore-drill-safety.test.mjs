@@ -274,6 +274,21 @@ test("portable staging backup refuses a pgpass file from any Git working tree be
   assert.match(result.stderr, /DB credential file cannot be inside a Git working tree/);
 });
 
+test("offline encrypted archive verifier requires independently pinned manifest and receipt hashes", async () => {
+  const source = fileURLToPath(new URL("../scripts/verify-cafeos-staging-age-archive.sh", import.meta.url));
+  const script = await readFile(source,"utf8");
+  assert.match(script,/CAFEOS_EXPECTED_MANIFEST_SHA256/);
+  assert.match(script,/CAFEOS_EXPECTED_RECEIPT_SHA256/);
+  assert.match(script,/sha256sum database\.pgdump\.age globals\.sql\.age source-ledger-sha256\.txt/);
+  assert.match(script,/age -d -i.*pg_restore --list/s);
+  assert.match(script,/REAL_STAGING_DATABASE_RESTORE_NOT_PROVEN/);
+  assert.doesNotMatch(script,/\b(?:pg_dump|pg_dumpall|createdb|dropdb)\b|supabase\s+(?:migration|db push)/i);
+  const syntax = spawnSync("bash",["-n",source],{encoding:"utf8",timeout:6000});
+  assert.equal(syntax.status,0,syntax.stderr);
+  const noTrust = spawnSync("bash",[source],{env:{PATH:process.env.PATH},encoding:"utf8",timeout:6000});
+  assert.notEqual(noTrust.status,0);
+});
+
 test("encrypted database restore rehearsal is hard-pinned to disposable loopback databases", async () => {
   const script = await readFile(new URL("../scripts/run-local-age-backup-drill.sh", import.meta.url),"utf8");
   const source = fileURLToPath(new URL("../scripts/run-local-age-backup-drill.sh", import.meta.url));
@@ -286,6 +301,8 @@ test("encrypted database restore rehearsal is hard-pinned to disposable loopback
   assert.match(script,/pg_dumpall -w --globals-only --no-role-passwords/);
   assert.match(script,/age -d -i.*pg_restore --no-owner/s);
   assert.match(script,/CAFEOS_LOCAL_AGE_BACKUP_RESTORE_PASS/);
+  assert.match(script,/verify-cafeos-staging-age-archive\.sh/);
+  assert.match(script,/synthetic-tamper/);
   assert.doesNotMatch(script,/pg_restore --no-owner --no-acl --exit-on-error --dbname="\$restore_url" -/);
   assert.match(script,/trap cleanup EXIT/);
   assert.doesNotMatch(script,/wjatnyvdygvblirggdcm|--linked|supabase link|PGHOST=.*supabase\.co|SUPABASE_ACCESS_TOKEN|service_role|sb_secret_/i);

@@ -145,5 +145,8 @@ mv --no-clobber --no-target-directory -- "$work" "$final"
   cd "$final"
   sha256sum -c manifest.sha256 >/dev/null
 )
+# Custody this SHA-256 independently of the copied archive. It is not a secret.
+manifest_sha="$(sha256sum "$final/manifest.sha256")"
+echo "CAFEOS_BACKUP_MANIFEST_SHA256=${manifest_sha%% *}"
 echo "CAFEOS_STAGING_ENCRYPTED_LOGICAL_BACKUP_COMPLETE: encrypted database and globals, no plaintext files"
 echo "RESTORE_NOT_YET_PROVEN: require isolated fresh-DB pg_restore rehearsal before history repair"

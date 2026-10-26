@@ -50,3 +50,10 @@ pg_dump --version
 ```
 
 The portable tools eliminate the package-install blocker but **do not** provide the necessary staging DB password, protected password file, trusted TLS CA, private age key recovery or full restore test. The backup script rejects private keys on Git worktrees and requires the private identity to have mode 0400/0600, so generate real secrets on an appropriate private filesystem, not an NTFS mount that cannot enforce Unix ownership/modes. Do not paste any credential into chat or Git.
+
+## Independent encrypted-copy verification candidate (2026-10-26)
+
+- After an owner-authorized, completed staging backup, capture `CAFEOS_BACKUP_MANIFEST_SHA256` **outside** the encrypted archive and outside Git. Copy the complete archive directory to an independent recovery environment (private directory mode 0700).
+- On the independent environment, with an independently held age private identity (mode 0600/0400, outside Git and the archive), use `scripts/verify-cafeos-staging-age-archive.sh` with `CAFEOS_ARCHIVE_DIR`, `CAFEOS_AGE_IDENTITY`, `CAFEOS_EXPECTED_MANIFEST_SHA256` and the earlier pinned `CAFEOS_EXPECTED_RECEIPT_SHA256`. It performs offline manifest authenticity check against the separately recorded checksum, full ciphertext decryption, and a PostgreSQL custom-archive catalog read. No live database connection.
+- This verifier is **not** a fresh-DB restore; it must never satisfy the actual Supabase-managed-schema clean-room restore gate by itself. The synthetic localhost drill runs it against a copied synthetic archive and rejects intentionally tampered ciphertext; this proves only the verifier's technical behavior.
+- **Never publish actual archive bytes, its decryption identity or secret DB credentials in Git, PR comments, logs, or CI artifacts.** Retain `DRAFT / NO-GO` pending real backup, cross-machine key custody and independently restored staging database.
