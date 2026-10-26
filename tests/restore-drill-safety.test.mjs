@@ -131,8 +131,9 @@ test("portable staging backup candidate never writes plaintext or targets produc
   assert.match(source, /pg_dump -w -Fc --dbname=postgres \| age -R/);
   assert.match(source, /pg_dumpall -w --globals-only --no-role-passwords \| age -R/);
   assert.match(source, /age -d -i.*pg_restore --list/s);
-  assert.match(source, /sha256sum "\$\(basename "\$final"\)\.database\.pgdump\.age"/);
-  assert.match(source, /sha256sum -c "\$\(basename "\$final"\)\.manifest\.sha256"/);
+  assert.match(source, /sha256sum database\.pgdump\.age globals\.sql\.age > manifest\.sha256/);
+  assert.match(source, /mv --no-clobber --no-target-directory -- "\$work" "\$final"/);
+  assert.match(source, /sha256sum -c manifest\.sha256/);
   assert.match(source, /RESTORE_NOT_YET_PROVEN/);
   assert.doesNotMatch(source, /supabase migration repair|supabase db push|--linked|supabase db reset|service_role|sb_secret_/i);
 });
@@ -159,4 +160,20 @@ test("portable staging backup candidate shell parses and refuses missing/wrong t
   });
   assert.notEqual(hostile.status, 0, "non-CafeOS host must be refused");
   assert.match(hostile.stderr, /pinned CafeOS staging/i);
+});
+
+
+test("encrypted database restore rehearsal is hard-pinned to disposable loopback databases", async () => {
+  const script = await readFile(new URL("../scripts/run-local-age-backup-drill.sh", import.meta.url),"utf8");
+  const source = fileURLToPath(new URL("../scripts/run-local-age-backup-drill.sh", import.meta.url));
+  const syntax = spawnSync("bash",["-n",source],{encoding:"utf8",timeout:6000});
+  assert.equal(syntax.status,0,syntax.stderr);
+  assert.match(script,/127\.0\.0\.1:54322/);
+  assert.match(script,/age-keygen -o "\$tmp\/identity"/);
+  assert.match(script,/pg_dump -w -Fc.*\| age -R/);
+  assert.match(script,/pg_dumpall -w --globals-only --no-role-passwords/);
+  assert.match(script,/age -d -i.*pg_restore --no-owner/s);
+  assert.match(script,/CAFEOS_LOCAL_AGE_BACKUP_RESTORE_PASS/);
+  assert.match(script,/trap cleanup EXIT/);
+  assert.doesNotMatch(script,/wjatnyvdygvblirggdcm|--linked|supabase link|PGHOST=.*supabase\.co|SUPABASE_ACCESS_TOKEN|service_role|sb_secret_/i);
 });

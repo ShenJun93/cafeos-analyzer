@@ -67,33 +67,39 @@ expected="20260921100732,20260921103432,20260921105352,20260921133428,2026092114
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 final="$dest/cafeos-staging-$stamp"
-[[ ! -e "$final.database.pgdump.age" && ! -e "$final.globals.sql.age" ]] || exit 13
+[[ ! -e "$final" ]] || { echo "STOP: existing backup directory" >&2; exit 13; }
 work="$(mktemp -d "$dest/.cafeos-archive-XXXXXX")"
-cleanup() { rm -f "$work/database.pgdump.age" "$work/globals.sql.age" "$work/manifest.sha256"; rmdir "$work" 2>/dev/null || true; }
+cleanup() {
+  if [[ -d "$work" ]]; then
+    rm -f -- "$work/database.pgdump.age" "$work/globals.sql.age" "$work/manifest.sha256"
+    rmdir -- "$work" 2>/dev/null || true
+  fi
+}
 trap cleanup EXIT
 
-# The custom-format logical dump includes all accessible PostgreSQL schemas.
-# pg_dumpall global export excludes role password hashes on purpose.
+# Stream plaintext only in pipes; both archive components remain in ONE
+# private temporary directory until verified and published atomically.
 pg_dump -w -Fc --dbname=postgres | age -R "$CAFEOS_AGE_RECIPIENTS" -o "$work/database.pgdump.age"
 pg_dumpall -w --globals-only --no-role-passwords | age -R "$CAFEOS_AGE_RECIPIENTS" -o "$work/globals.sql.age"
-
-# Decrypt from saved ciphertext without creating any plaintext backup file.
+[[ -s "$work/database.pgdump.age" && -s "$work/globals.sql.age" ]] || {
+  echo "STOP: incomplete ciphertext archive" >&2; exit 14;
+}
 age -d -i "$CAFEOS_AGE_IDENTITY" "$work/database.pgdump.age" | pg_restore --list - >/dev/null
 age -d -i "$CAFEOS_AGE_IDENTITY" "$work/globals.sql.age" | sha256sum >/dev/null
-mv -n "$work/database.pgdump.age" "$final.database.pgdump.age"
-mv -n "$work/globals.sql.age" "$final.globals.sql.age"
-[[ -s "$final.database.pgdump.age" && -s "$final.globals.sql.age" ]] || {
-  echo "STOP: encrypted output is missing after final rename" >&2; exit 14;
+(
+  cd "$work"
+  sha256sum database.pgdump.age globals.sql.age > manifest.sha256
+  sha256sum -c manifest.sha256 >/dev/null
+)
+# The manifest uses relative names inside the final directory, and a single
+# same-filesystem directory rename prevents exposing half-complete archives.
+mv --no-clobber --no-target-directory -- "$work" "$final"
+[[ ! -d "$work" && -d "$final" ]] || {
+  echo "STOP: atomic directory publication refused" >&2; exit 14;
 }
-# Checksums must reference FINAL ciphertext filenames, not temporary work names.
 (
-  cd "$dest"
-  sha256sum "$(basename "$final").database.pgdump.age" "$(basename "$final").globals.sql.age"
-) > "$work/manifest.sha256"
-mv -n "$work/manifest.sha256" "$final.manifest.sha256"
-(
-  cd "$dest"
-  sha256sum -c "$(basename "$final").manifest.sha256" >/dev/null
+  cd "$final"
+  sha256sum -c manifest.sha256 >/dev/null
 )
 echo "CAFEOS_STAGING_ENCRYPTED_LOGICAL_BACKUP_COMPLETE: encrypted database and globals, no plaintext files"
 echo "RESTORE_NOT_YET_PROVEN: require isolated fresh-DB pg_restore rehearsal before history repair"
