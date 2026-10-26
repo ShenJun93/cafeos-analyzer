@@ -107,3 +107,10 @@ Following a separately approved staging history repair and execution of both pen
 The pre-deployment transition classifier intentionally returns `STOP_REVIEW_REQUIRED` **after** guards are installed and must no longer be used as an after-deployment sign-off. The new classifier expects `POST_GUARDS_NOT_READY_REVIEW` on today's unpatched staging; this was independently verified with SQL **SELECT only** on 2026-10-25. The local green-path CI test now also checks refusal before upgrade and green after upgrade; exact HEAD test evidence must be checked before relying on it.
 
 Money precision: API handlers for Menu prices and recorded Payment amounts now validate up to two decimal digits by textual decimal form rather than binary floating arithmetic, accepting valid `0.29`/`2.55` that the previous validator erroneously rejected. Existing monetary ceilings and server-owned trusted totals remain unchanged.
+
+## Receipt backup progress — 2026-10-26
+
+**Gate A, limited receipt-text portion: PASS.** The complete original seven `supabase_migrations.schema_migrations` records (`version`, `name`, ordered `statements`) have been archived as **7 DPAPI CurrentUser-encrypted files outside the repository**, alongside a manifest containing version/name/statement counts/byte lengths and SHA-256 digests. PowerShell encrypts after reading each receipt from stdin, never from a command-line SQL argument and never from a plaintext staging SQL file. A second OS process restored and verified all seven receipts in memory, and read-only staging SHA-256 comparison passed **7/7**.
+
+**Critical remaining Gate A requirements:** This is **NOT a database backup**. Obtain and test a complete staging database backup/snapshot, secure a portable off-machine copy and an independently recoverable decryption path. DPAPI `CurrentUser` alone is not independent disaster recovery. Re-run the ledger+schema preflight at the moment of action and have an independent reviewer approve an exact reversible version mapping. No repair or migration-up operation is approved or executed yet. See `docs/research/2026-10-26-cafeos-staging-receipt-archive-attestation.md`.
+
