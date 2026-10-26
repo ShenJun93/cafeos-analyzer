@@ -45,6 +45,18 @@ passfile="$(realpath "$PGPASSFILE")"
 case "$key" in "$dest"/*) echo "STOP: decryption key cannot share backup directory" >&2; exit 12;; esac
 case "$passfile" in "$dest"/*) echo "STOP: DB password file cannot share backup directory" >&2; exit 12;; esac
 [[ "$(stat -c '%a' "$dest")" == "700" ]] || { echo "STOP: backup directory needs chmod 700" >&2; exit 12; }
+# Neither confidential key material nor encrypted archives belong inside Git.
+command -v git >/dev/null || { echo "STOP: git needed to verify destination boundaries" >&2; exit 12; }
+if git -C "$dest" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "STOP: destination cannot be inside a Git working tree" >&2; exit 12;
+fi
+if git -C "$(dirname "$key")" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "STOP: age private identity cannot be inside a Git working tree" >&2; exit 12;
+fi
+[[ "$(stat -c '%a' "$key")" == "600" || "$(stat -c '%a' "$key")" == "400" ]] || {
+  echo "STOP: age private identity must have file mode 0600 or 0400" >&2; exit 12;
+}
+
 
 for executable in psql pg_dump pg_dumpall pg_restore age sha256sum; do
   command -v "$executable" >/dev/null || { echo "STOP: missing required binary $executable" >&2; exit 12; }
@@ -58,6 +70,17 @@ done
 
 # Default transaction settings are read-only; no data/ledger/DDL mutations.
 export PGOPTIONS="-c default_transaction_read_only=on"
+script_root="$(cd -- "$(dirname -- "$0")" && pwd)"
+ledger_sql="$script_root/sql/cafeos-staging-receipt-fingerprint.sql"
+[[ -r "$ledger_sql" ]] || { echo "STOP: receipt fingerprint SQL unavailable" >&2; exit 13; }
+ledger_fingerprint() {
+  psql -XAtw -v ON_ERROR_STOP=1 -d postgres -f "$ledger_sql"
+}
+ledger_hash_before="$(ledger_fingerprint)"
+[[ "$ledger_hash_before" =~ ^[0-9a-f]{64}$ ]] || {
+  echo "STOP: unexpected original migration receipt fingerprint" >&2; exit 13;
+}
+
 receipt_versions="$(psql -XAtw -v ON_ERROR_STOP=1 -d postgres -c \
   "select string_agg(version, ',' order by version) from supabase_migrations.schema_migrations")"
 expected="20260921100732,20260921103432,20260921105352,20260921133428,20260921141814,20260921151006,20261025103648"
@@ -71,7 +94,7 @@ final="$dest/cafeos-staging-$stamp"
 work="$(mktemp -d "$dest/.cafeos-archive-XXXXXX")"
 cleanup() {
   if [[ -d "$work" ]]; then
-    rm -f -- "$work/database.pgdump.age" "$work/globals.sql.age" "$work/manifest.sha256"
+    rm -f -- "$work/database.pgdump.age" "$work/globals.sql.age" "$work/source-ledger-sha256.txt" "$work/manifest.sha256"
     rmdir -- "$work" 2>/dev/null || true
   fi
 }
@@ -86,9 +109,16 @@ pg_dumpall -w --globals-only --no-role-passwords | age -R "$CAFEOS_AGE_RECIPIENT
 }
 age -d -i "$CAFEOS_AGE_IDENTITY" "$work/database.pgdump.age" | pg_restore --list >/dev/null
 age -d -i "$CAFEOS_AGE_IDENTITY" "$work/globals.sql.age" | sha256sum >/dev/null
+# Reject mid-dump ledger edits, including modified SQL under unchanged versions.
+ledger_hash_after="$(ledger_fingerprint)"
+[[ "$ledger_hash_after" == "$ledger_hash_before" ]] || {
+  echo "STOP: staging migration SQL ledger changed during backup" >&2
+  exit 13
+}
+printf '%s\n' "$ledger_hash_before" > "$work/source-ledger-sha256.txt"
 (
   cd "$work"
-  sha256sum database.pgdump.age globals.sql.age > manifest.sha256
+  sha256sum database.pgdump.age globals.sql.age source-ledger-sha256.txt > manifest.sha256
   sha256sum -c manifest.sha256 >/dev/null
 )
 # The manifest uses relative names inside the final directory, and a single

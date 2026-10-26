@@ -49,10 +49,21 @@ create table synthetic.sales (id integer primary key, title text not null, cents
 insert into synthetic.sales(id,title,cents) values
  (1,'Cà phê sữa đá',2900),(2,'Tổng thử nghiệm',255);
 create schema supabase_migrations;
-create table supabase_migrations.schema_migrations(version text primary key, statements text[]);
+create table supabase_migrations.schema_migrations(version text primary key, name text not null, statements text[]);
 insert into supabase_migrations.schema_migrations values
- ('20260921100732',array['select 1','select 2']);
+ ('20260921100732','synthetic_integration_fixture',array['select 1','select 2']);
 SQL
+# Negative control proves fingerprint detects modified SQL even without version drift.
+fp_script="scripts/sql/cafeos-staging-receipt-fingerprint.sql"
+baseline_fp="$(psql "$source_url" -XAtq -v ON_ERROR_STOP=1 -f "$fp_script")"
+[[ "$baseline_fp" =~ ^[0-9a-f]{64}$ ]]
+psql "$source_url" -XAtq -v ON_ERROR_STOP=1 -c \
+  "update supabase_migrations.schema_migrations set statements=array['tampered synthetic SQL'] where version='20260921100732'" >/dev/null
+changed_fp="$(psql "$source_url" -XAtq -v ON_ERROR_STOP=1 -f "$fp_script")"
+[[ "$changed_fp" != "$baseline_fp" ]]
+psql "$source_url" -XAtq -v ON_ERROR_STOP=1 -c \
+  "update supabase_migrations.schema_migrations set statements=array['select 1','select 2'] where version='20260921100732'" >/dev/null
+[[ "$(psql "$source_url" -XAtq -v ON_ERROR_STOP=1 -f "$fp_script")" == "$baseline_fp" ]]
 age-keygen -o "$tmp/identity" >/dev/null 2>&1
 age-keygen -y "$tmp/identity" > "$tmp/recipients"
 pg_dump -w -Fc --dbname="$source_url" | age -R "$tmp/recipients" -o "$tmp/database.pgdump.age"

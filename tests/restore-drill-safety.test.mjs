@@ -127,12 +127,18 @@ test("portable staging backup candidate never writes plaintext or targets produc
   assert.match(source, /CAFEOS_AGE_RECIPIENTS/);
   assert.match(source, /CAFEOS_AGE_IDENTITY/);
   assert.match(source, /receipt_versions/);
+  assert.match(source, /ledger_hash_before="\$\(ledger_fingerprint\)"/);
+  assert.match(source, /ledger_hash_after="\$\(ledger_fingerprint\)"/);
+  assert.match(source, /ledger_hash_after.*ledger_hash_before/);
+  assert.match(source, /source-ledger-sha256\.txt/);
+  assert.match(source, /cannot be inside a Git working tree/);
+  assert.match(source, /age private identity must have file mode 0600 or 0400/);
   assert.match(source, /default_transaction_read_only=on/);
   assert.match(source, /pg_dump -w -Fc --dbname=postgres \| age -R/);
   assert.match(source, /pg_dumpall -w --globals-only --no-role-passwords \| age -R/);
   assert.match(source, /age -d -i.*pg_restore --list/s);
   assert.doesNotMatch(source, /pg_restore --list -/);
-  assert.match(source, /sha256sum database\.pgdump\.age globals\.sql\.age > manifest\.sha256/);
+  assert.match(source, /sha256sum database\.pgdump\.age globals\.sql\.age source-ledger-sha256\.txt > manifest\.sha256/);
   assert.match(source, /mv --no-clobber --no-target-directory -- "\$work" "\$final"/);
   assert.match(source, /sha256sum -c manifest\.sha256/);
   assert.match(source, /RESTORE_NOT_YET_PROVEN/);
@@ -179,4 +185,20 @@ test("encrypted database restore rehearsal is hard-pinned to disposable loopback
   assert.doesNotMatch(script,/pg_restore --no-owner --no-acl --exit-on-error --dbname="\$restore_url" -/);
   assert.match(script,/trap cleanup EXIT/);
   assert.doesNotMatch(script,/wjatnyvdygvblirggdcm|--linked|supabase link|PGHOST=.*supabase\.co|SUPABASE_ACCESS_TOKEN|service_role|sb_secret_/i);
+});
+
+
+test("migration ledger checksum SQL remains read-only and used in local mutation negative control", async () => {
+  const sql = await readFile(new URL("../scripts/sql/cafeos-staging-receipt-fingerprint.sql", import.meta.url),"utf8");
+  assert.match(sql.replace(/^\s*--.*$/gm,"").trimStart(), /^select\s+encode\(/i);
+  assert.equal((sql.match(/;/g)||[]).length,1);
+  assert.match(sql,/sha256\(convert_to/);
+  assert.match(sql,/version \|\| chr\(31\)/);
+  assert.match(sql,/coalesce\(name/);
+  assert.match(sql,/array_to_string\(statements/);
+  assert.doesNotMatch(sql,/\b(?:insert|update|delete|drop|create|alter|grant|revoke|truncate)\s+(?:table|function|into|from|schema|on|set)?\b/i);
+  const drill = await readFile(new URL("../scripts/run-local-age-backup-drill.sh", import.meta.url),"utf8");
+  assert.match(drill,/changed_fp.*baseline_fp/);
+  assert.match(drill,/tampered synthetic SQL/);
+  assert.match(drill,/baseline_fp/);
 });
