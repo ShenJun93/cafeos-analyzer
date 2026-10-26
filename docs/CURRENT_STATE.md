@@ -214,6 +214,14 @@ The product-level discovery gate in issue #11 remains open because real target-I
 - Updated `scripts/run-local-greenpath-ledger-drill.sh` to demand the new gate fail **before** local migration and pass **after** two actual SQL guard upgrades, then still pass after complete pgTAP. Await the **exact-head Supabase DB workflow** on `5518f199` before claiming this new acceptance test PASS.
 - Real authenticated staging E2E, secure backup of seven original receipts, independent security advisor signoff and controlled staging-only migration remain the blocking tasks. **PR #74 stays DRAFT / NO-GO; production unchanged.**
 
+## 2026-10-26 negative financial-audit validation
+
+- Added a **LOCAL ONLY** synthetic negative fixture `scripts/sql/cafeos-local-postguards-negative-fixture.sql`. Inside `BEGIN ... ROLLBACK`, it writes a superuser-created Order header of 1,000 with no Order Items to intentionally violate `subtotal = SUM(line_total)`.
+- The read-only `cafeos-staging-post-guards-readonly-gate.sql` **must return `POST_GUARDS_NOT_READY_REVIEW`** while the bad Order exists; after rollback it must return `POST_GUARDS_READY_FOR_AUTH_E2E`. This proves that the financial audit does not pass solely because staging has zero synthetic facts.
+- Integrated in `scripts/run-local-greenpath-ledger-drill.sh`; configured Supabase DB CI path triggers for both new SQL files. Exact functional checkpoint `65c118b5`: CI `40248182303` and `40248178634` SUCCESS; Chromium `40248182289` SUCCESS; Supabase DB `40248182196` and `40248178630` SUCCESS, including both before/after post-guard assertions.
+- **Staging NOT mutated**. Existing seven receipt versions and both unapplied database guards remain. Open blocker: full original SQL receipt archival in access-controlled storage plus independent review before any history repair. A DPAPI-backed Windows SecureString encryption roundtrip was locally verified on MAIN-PC but **no staging SQL archive has been generated**, to avoid accidentally logging receipt content in remote shell commands or source control.
+- PR #74 remains DRAFT / NO-GO; real authenticated staging E2E and security advisor review still pending.
+
 ## Next engineering action
 
 1. Confirm exact-head CI + blank-database pgTAP on PR #74; record failures at the actual HEAD, not at earlier commits.
