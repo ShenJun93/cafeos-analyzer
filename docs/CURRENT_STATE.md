@@ -321,3 +321,11 @@ Primary distribution remains pull/inbound; no dependency on cold outbound sales.
 
 - Used connected Supabase modern publishable key in temporary MAIN-PC WSL local memory/files only. Real HTTPS Auth public settings GET returned 200 (positive control). Three anonymous GETs to menu_items, pos_orders and commerce_daily_dashboard all returned HTTP 401 with PostgreSQL 42501. No JWT, DB credential or Commerce write RPC used, and no staging data changed.
 - Verified three anonymous-read denies only; **NOT a substitute for authenticated JWT cross-tenant/Commerce writes E2E**. Evidence: docs/research/2026-10-26-cafeos-staging-anonymous-http-read-e2e.md. Source and PR remain Draft; release NO-GO. All operational backup/restore gates remain open.
+
+
+## 2026-10-26 WSL local encrypted archive destination preflight
+
+- Prepared `$HOME/.local/share/cafeos-staging-archives` (0700) as the future age-encrypted archive output destination, outside Git and separate from the provisional age private identity. Created `$HOME/.config/cafeos-staging` (0700) as an empty operator-controlled configuration directory; no credential/CA files placed there.
+- Verified atomic private directory rename on the real WSL filesystem and verified the temporary marker was removed: **zero archive members** and zero config files after cleanup. Portable age/PostgreSQL binaries present but must be added explicitly to PATH for any future operator-authorized execution.
+- Primary-source Supabase docs still require root CA download from this project's authenticated Database Settings and exact Session pooler tuple from Connect; static `https://supabase.com/prod-ca-2021.crt` responds 404 and is not a supported replacement. CA, PGPASSFILE, independent off-host age recovery and actual Supabase-compatible clean-room restore remain **BLOCKED/NOT_RUN**. This closes *only* a local destination-readiness prerequisite.
+- Evidence: `docs/research/2026-10-26-cafeos-wsl-backup-directory-readiness.md`. PR Draft / NO-GO. No staging/production mutations.
