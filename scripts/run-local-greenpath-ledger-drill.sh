@@ -77,6 +77,13 @@ assert_versions "${FULL[@]}"
 [[ "$(guards_present)" == "t" ]]
 [[ "$(phase)" == "STOP_REVIEW_REQUIRED" ]]
 [[ "$(post_guard_phase)" == "POST_GUARDS_READY_FOR_AUTH_E2E" ]]
+negative_phase="$(psql "$DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
+  -f scripts/sql/cafeos-local-postguards-negative-fixture.sql | awk -F '|' 'NF { print $NF }' | tail -n 1)"
+[[ "$negative_phase" == "POST_GUARDS_NOT_READY_REVIEW" ]] || {
+  echo "Financial audit did not reject intentionally inconsistent Order: $negative_phase" >&2
+  exit 1
+}
+[[ "$(post_guard_phase)" == "POST_GUARDS_READY_FOR_AUTH_E2E" ]]
 supabase test db
 [[ "$(post_guard_phase)" == "POST_GUARDS_READY_FOR_AUTH_E2E" ]]
 echo "CAFEOS_LOCAL_GREENPATH_PASS: pre=8 legacy=7 reconciled=8 guarded=10"

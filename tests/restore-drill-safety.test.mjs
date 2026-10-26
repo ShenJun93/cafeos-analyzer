@@ -71,6 +71,9 @@ test("greenpath reconciliation acceptance never targets staging or production", 
   assert.match(script, /POST_GUARDS_NOT_READY_REVIEW/);
   assert.match(script, /POST_GUARDS_READY_FOR_AUTH_E2E/);
   assert.match(script, /cafeos-staging-post-guards-readonly-gate\.sql/);
+  assert.match(script, /cafeos-local-postguards-negative-fixture\\.sql/);
+  assert.match(script, /POST_GUARDS_NOT_READY_REVIEW/);
+  assert.match(script, /POST_GUARDS_READY_FOR_AUTH_E2E/);
   assert.match(script, /CAFEOS_LOCAL_GREENPATH_PASS/);
   assert.match(script, /trap cleanup EXIT/);
   assert.doesNotMatch(script, /--linked|supabase link|wjatnyvdygvblirggdcm|SUPABASE_ACCESS_TOKEN|service_role|sb_secret_/i);
@@ -98,4 +101,13 @@ test("post-guard acceptance checks canonical ledger, SQL protections and financi
     "bad_payment_states=0",
     "bad_daily_closes=0"
   ]) assert.ok(sql.includes(key), "post-guard assertion missing: " + key);
+});
+
+test("post-guard negative fixture is transaction-rolled-back and never permitted on live staging", async () => {
+  const sql = await readFile(new URL("../scripts/sql/cafeos-local-postguards-negative-fixture.sql", import.meta.url), "utf8");
+  assert.match(sql, /^begin;/im);
+  assert.match(sql, /\\ir cafeos-staging-post-guards-readonly-gate\\.sql/);
+  assert.match(sql, /rollback;/im);
+  assert.match(sql, /negative-financial-audit/);
+  assert.doesNotMatch(sql, /service_role|wjatnyvdygvblirggdcm|migration repair|db push/i);
 });
