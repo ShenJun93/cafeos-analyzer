@@ -992,3 +992,110 @@ test("ambiguous Daily Close response prevents duplicate write until fresh dashbo
   assert.equal(el("closeReceipt").textContent, "", "Store change must clear old close receipt");
   assert.equal(el("closeDay").disabled, true, "new Store still awaits verified dashboard");
 });
+
+test("old recovery list cannot repaint another Store or unlock a newer pending fetch", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const code = html.split("<script>")[1].split("</script>")[0];
+  const nodes = new Map();
+  const element = id => {
+    if (!nodes.has(id)) nodes.set(id, {
+      value: "", textContent: "", disabled: false, dataset: {}, children: [],
+      classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {},
+      replaceChildren(...xs) { this.children = xs; },
+      append(...xs) { this.children.push(...xs); }
+    });
+    return nodes.get(id);
+  };
+  const pending = [];
+  const ctx = createContext({
+    document: {
+      getElementById: element, querySelectorAll: () => [],
+      createElement: () => ({ textContent: "", type: "", className: "", addEventListener() {} })
+    },
+    window: { confirm: () => false },
+    fetch: async () => ({ ok: true, json: async () => ({}) }),
+    deferred: path => new Promise(resolve => pending.push({ path, resolve })),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "test-id" }
+  });
+  runInContext(code, ctx);
+  runInContext(`
+    sessionToken = "jwt"; currentTenantId = "tenant-A";
+    currentTenantRole = "cashier"; currentStoreId = "store-A";
+    appFetch = deferred;
+    loadMenu = async () => {};
+    loadDashboard = async () => {};
+    loadOptionalControlTower = async () => true;
+  `, ctx);
+  const old = runInContext("loadOpenOrdersForRecovery()", ctx);
+  assert.equal(pending.length, 1);
+  assert.match(pending[0].path, /store-A/);
+  element("store").value = "store-B";
+  await runInContext("refreshStore()", ctx);
+  assert.equal(runInContext("openOrdersLoadInFlight", ctx), false);
+  const fresh = runInContext("loadOpenOrdersForRecovery()", ctx);
+  assert.equal(pending.length, 2);
+  assert.match(pending[1].path, /store-B/);
+  pending[0].resolve({ orders: [{ id: "old", orderNumber: "OLD", total: 1 }], nextOffset: null });
+  await old;
+  assert.equal(element("openOrderList").children.length, 0, "old Store order must be discarded");
+  assert.equal(runInContext("openOrdersLoadInFlight", ctx), true, "old finally must not unlock fresh read");
+  pending[1].resolve({ orders: [{ id: "new", orderNumber: "NEW", total: 2 }], nextOffset: null });
+  await fresh;
+  assert.equal(element("openOrderList").children.length, 1);
+  assert.match(element("openOrderList").children[0].textContent, /NEW/);
+  assert.equal(runInContext("openOrdersLoadInFlight", ctx), false);
+});
+
+test("recovery selection discards stale response and protects newer unsent cart", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const code = html.split("<script>")[1].split("</script>")[0];
+  const nodes = new Map();
+  const element = id => {
+    if (!nodes.has(id)) nodes.set(id, {
+      value: "", textContent: "", disabled: false, dataset: {}, children: [],
+      classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {},
+      replaceChildren(...xs) { this.children = xs; },
+      append(...xs) { this.children.push(...xs); }
+    });
+    return nodes.get(id);
+  };
+  const pending = [];
+  const ctx = createContext({
+    document: {
+      getElementById: element, querySelectorAll: () => [],
+      createElement: () => ({ textContent: "", type: "", addEventListener() {}, append() {} })
+    },
+    window: { confirm: () => true },
+    fetch: async () => ({ ok: true, json: async () => ({}) }),
+    deferred: path => new Promise(resolve => pending.push({ path, resolve })),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "test-id" }
+  });
+  runInContext(code, ctx);
+  runInContext(`
+    sessionToken = "jwt"; currentTenantId = "tenant-A";
+    currentTenantRole = "cashier"; currentStoreId = "store-A";
+    menuState.items = [{ id: "coffee", name: "Coffee", price: 29000 }];
+    appFetch = deferred;
+    loadMenu = async () => {};
+    loadDashboard = async () => {};
+    loadOptionalControlTower = async () => true;
+  `, ctx);
+  const recovery = runInContext('resumeOpenOrder("old-order")', ctx);
+  runInContext('addToCart("coffee")', ctx);
+  pending[0].resolve({ order: { id: "old-order", storeId: "store-A", status: "open", total: 30000 } });
+  await assert.rejects(recovery, /Giỏ hàng đã thay đổi/);
+  assert.equal(runInContext("currentOrder", ctx), null);
+  assert.equal(runInContext("cartState.get('coffee').quantity", ctx), 1);
+
+  runInContext("cartState.clear()", ctx);
+  const obsolete = runInContext('resumeOpenOrder("old-order")', ctx);
+  element("store").value = "store-B";
+  await runInContext("refreshStore()", ctx);
+  runInContext('cartState.set("coffee", { item: { id: "coffee", price: 29000, name: "Coffee" }, quantity: 2 })', ctx);
+  pending[1].resolve({ order: { id: "old-order", storeId: "store-A", status: "open", total: 30000 } });
+  await obsolete;
+  assert.equal(runInContext("currentOrder", ctx), null);
+  assert.equal(runInContext("cartState.get('coffee').quantity", ctx), 2, "old recovery must not erase new Store cart");
+});

@@ -337,7 +337,7 @@ function signOut() {
   paymentSubmitInFlight = false;
   closeSubmitInFlight = false;
   cartState.clear();
-  el("openOrderList").replaceChildren();
+  invalidateOpenOrderReads();
   el("closeReceipt").textContent = "";
   el("appPanel").classList.add("hidden");
   el("authPanel").classList.remove("hidden");
@@ -377,6 +377,7 @@ async function loadTenant() {
   orderSubmitInFlight = false;
   paymentSubmitInFlight = false;
   cartState.clear();
+  invalidateOpenOrderReads();
   menuState = { categories: [], items: [] };
   el("menuCatalog").replaceChildren();
   el("menuAdminList").replaceChildren();
@@ -416,7 +417,7 @@ async function refreshStore() {
   cartState.clear();
   el("posMenuSearch").value = "";
   el("posMenuCategory").value = "";
-  el("openOrderList").replaceChildren();
+  invalidateOpenOrderReads();
   // Control Tower reports on imported facts and must not block first-party sales.
   // Menu and daily dashboard remain required; their failures still fail closed.
   let controlTowerReady;
@@ -727,14 +728,31 @@ async function capturePayment() {
 }
 
 let openOrdersLoadInFlight = false;
+let openOrdersRequestSerial = 0;
+let openOrderResumeSerial = 0;
+
+// Cancel only *presentation*, never a server-side commerce operation. Old
+// recovery reads must not contaminate a new Tenant, Store or login session.
+function invalidateOpenOrderReads() {
+  ++openOrdersRequestSerial;
+  ++openOrderResumeSerial;
+  openOrdersLoadInFlight = false;
+  el("openOrderList").replaceChildren();
+}
 
 async function loadOpenOrdersForRecovery(offset = 0) {
   if (!canWriteCommerce() || !currentStoreId || openOrdersLoadInFlight) return;
   if (hasUnfinishedCheckout()) {
     return setStatus("Hoàn tất hoặc xác minh đơn hiện tại trước khi khôi phục đơn khác.", "error");
   }
+  const requestSerial = ++openOrdersRequestSerial;
+  const requestEpoch = viewEpoch;
   const selectedTenant = currentTenantId;
   const selectedStore = currentStoreId;
+  const selectedToken = sessionToken;
+  const stillCurrent = () => requestSerial === openOrdersRequestSerial
+    && requestEpoch === viewEpoch && selectedTenant === currentTenantId
+    && selectedStore === currentStoreId && selectedToken === sessionToken;
   openOrdersLoadInFlight = true;
   const root = el("openOrderList");
   try {
@@ -742,8 +760,7 @@ async function loadOpenOrdersForRecovery(offset = 0) {
       "/api/app/commerce-open-orders?storeId=" + encodeURIComponent(selectedStore) +
       "&offset=" + offset
     );
-    // Ignore a response if context changed while the page was fetching.
-    if (currentTenantId !== selectedTenant || currentStoreId !== selectedStore) return;
+    if (!stillCurrent()) return;
     if (offset === 0) root.replaceChildren();
     else {
       const more = root.querySelector(".open-order-more");
@@ -770,8 +787,11 @@ async function loadOpenOrdersForRecovery(offset = 0) {
       root.append(more);
     }
     setStatus("Chọn đơn mở để tiếp tục ghi Payment.", "ok");
+  } catch (error) {
+    if (stillCurrent()) throw error;
+    // An old Tenant/Store read is no longer relevant to the cashier.
   } finally {
-    openOrdersLoadInFlight = false;
+    if (requestSerial === openOrdersRequestSerial) openOrdersLoadInFlight = false;
   }
 }
 
@@ -780,11 +800,33 @@ async function resumeOpenOrder(orderId) {
   if (cartState.size && !window.confirm(
     "Giỏ hàng chưa gửi sẽ bị xóa khi khôi phục đơn mở. Tiếp tục?"
   )) return;
-  const payload = await appFetch(
-    "/api/app/commerce-order-status?orderId=" + encodeURIComponent(orderId)
-  );
+  const requestSerial = ++openOrderResumeSerial;
+  const requestEpoch = viewEpoch;
+  const selectedTenant = currentTenantId;
+  const selectedStore = currentStoreId;
+  const selectedToken = sessionToken;
+  // Do not erase a newer unsent cart if a status read was slow.
+  const startingCart = [...cartState].map(([id, row]) => [id, row.quantity]);
+  const stillCurrent = () => requestSerial === openOrderResumeSerial
+    && requestEpoch === viewEpoch && selectedTenant === currentTenantId
+    && selectedStore === currentStoreId && selectedToken === sessionToken;
+  let payload;
+  try {
+    payload = await appFetch(
+      "/api/app/commerce-order-status?orderId=" + encodeURIComponent(orderId)
+    );
+  } catch (error) {
+    if (stillCurrent()) throw error;
+    return;
+  }
+  if (!stillCurrent()) return;
+  if (currentOrder || pendingOrderSubmission || orderSubmitInFlight || paymentSubmitInFlight
+      || cartState.size !== startingCart.length
+      || startingCart.some(([id, quantity]) => cartState.get(id)?.quantity !== quantity)) {
+    throw new Error("Giỏ hàng đã thay đổi; chọn lại đơn cần khôi phục.");
+  }
   const order = payload.order;
-  if (order?.id !== orderId || order.storeId !== currentStoreId || order.status !== "open") {
+  if (order?.id !== orderId || order.storeId !== selectedStore || order.status !== "open") {
     throw new Error("Đơn không còn mở hoặc không thuộc Store hiện tại.");
   }
   cartState.clear();
