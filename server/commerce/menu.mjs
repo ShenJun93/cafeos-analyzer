@@ -12,6 +12,15 @@ import { UUID_RE, strictFields, parseCommerceMoney } from "./_shared.mjs";
 const CATEGORY_FIELDS = new Set(["kind", "name", "sortOrder"]);
 const ITEM_FIELDS = new Set(["kind", "categoryId", "sku", "name", "price"]);
 
+function validReadPrice(value) {
+  if ((typeof value !== "number" && typeof value !== "string")
+      || (typeof value === "number" && !Number.isFinite(value))) return false;
+  // Same two-decimal, bounded financial contract as the manager's Menu write.
+  const raw = String(value);
+  return /^(?:0|[1-9][0-9]*)(?:[.][0-9]{1,2})?$/.test(raw)
+    && Number(raw) <= 1000000000;
+}
+
 function boundedText(value, { code, message, max, nullable = false } = {}) {
   if (nullable && (value === undefined || value === null || value === "")) return null;
   // Menu labels and identifiers are strings, not JS-coerced arrays/booleans.
@@ -102,7 +111,7 @@ export async function handle(req, res, deps = {}) {
           || typeof row.name !== "string" || !row.name.trim() || row.active !== true)
           || items.some(row => !row || typeof row.id !== "string"
             || typeof row.name !== "string" || !row.name.trim()
-            || row.active !== true || row.price == null)) {
+            || row.active !== true || !validReadPrice(row.price))) {
         throw new AppHttpError(502, "COMMERCE_MENU_UPSTREAM_INVALID",
           "Menu data service returned an invalid catalog");
       }
