@@ -320,7 +320,8 @@ function renderRoleControls() {
   el("menuWriteControls").classList.toggle("hidden", !manager);
   el("menuReadOnlyNotice").classList.toggle("hidden", manager);
   el("closeManagerNotice").classList.toggle("hidden", manager);
-  el("closeDay").disabled = !manager || !currentDashboard
+  el("closeDay").disabled = !manager || !currentDashboard || menuWriteInFlight
+    || closeSubmitInFlight || hasUnfinishedCheckout()
     || Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
 }
 
@@ -666,15 +667,16 @@ function renderCart() {
 // confirms PAID, a failed Dashboard refresh must never imply payment failed,
 // invite a duplicate capture, or display stale closeable metrics.
 async function refreshDashboardAfterSale(confirmation) {
+  // The prior read may be pre-payment. Invalidate it *before* issuing a new
+  // Dashboard request, so an in-flight refresh can never leave Daily Close
+  // enabled with the pre-settlement totals.
+  invalidateCloseDashboard();
   try {
     await loadDashboard();
+    if (!currentDashboard) throw new Error("Dashboard has no confirmed refresh");
     setStatus(confirmation, "ok");
   } catch {
-    currentDashboard = null;
-    el("commerceMetrics").replaceChildren();
-    el("paymentMix").replaceChildren();
-    el("closePreview").textContent = "Dashboard chưa cập nhật. Refresh để xác nhận Daily Close.";
-    el("closeDay").disabled = true;
+    invalidateCloseDashboard();
     setStatus(confirmation + " Dashboard chưa cập nhật; làm mới sau, không ghi Payment lần nữa.", "warning");
   }
 }
@@ -702,6 +704,7 @@ async function submitOrder() {
     items: pendingOrderSubmission.items
   };
   orderSubmitInFlight = true;
+  el("closeDay").disabled = true;
   renderCart();
   setStatus("Đang tạo order…");
   try {
@@ -727,6 +730,7 @@ async function submitOrder() {
   } finally {
     orderSubmitInFlight = false;
     renderCart();
+    renderClosePreview();
   }
 }
 
@@ -734,6 +738,7 @@ async function capturePayment() {
   if (!canWriteCommerce() || !currentOrder || currentOrder.status !== "open" || paymentSubmitInFlight) return;
   paymentSubmitInFlight = true;
   el("capturePayment").disabled = true;
+  el("closeDay").disabled = true;
   setStatus("Đang ghi payment record…");
   try {
     const attemptedOrderId = currentOrder.id;
@@ -777,6 +782,7 @@ async function capturePayment() {
   } finally {
     paymentSubmitInFlight = false;
     renderCart();
+    renderClosePreview();
   }
 }
 
@@ -896,6 +902,8 @@ function setMenuWriteInFlight(busy) {
   menuWriteInFlight = busy;
   el("createCategoryButton").disabled = busy;
   el("createItemButton").disabled = busy;
+  // Do not close while a Menu write is still awaiting server confirmation.
+  renderClosePreview();
 }
 
 // Menu INSERT has no idempotency key in v1. Never auto-retry an uncertain POST,
@@ -1013,7 +1021,9 @@ function renderClosePreview() {
     money(currentDashboard.salesTotal) + " sales · " +
     currentDashboard.openOrderCount + " open orders" +
     (currentDashboard.closed ? " · CLOSED" : " · OPEN");
-  el("closeDay").disabled = !canManageCommerce() || closeSubmitInFlight || Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
+  el("closeDay").disabled = !canManageCommerce() || closeSubmitInFlight
+    || menuWriteInFlight || hasUnfinishedCheckout()
+    || Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
 }
 
 function invalidateCloseDashboard() {
@@ -1029,6 +1039,7 @@ function invalidateCloseDashboard() {
 async function closeBusinessDay() {
   if (!canManageCommerce()) throw new Error("Manager role required for Daily Close");
   if (!currentStoreId || !currentDashboard || closeSubmitInFlight
+      || menuWriteInFlight || hasUnfinishedCheckout()
       || currentDashboard.closed || Number(currentDashboard.openOrderCount) > 0) return;
   const selectedStore = currentStoreId;
   const businessDate = currentDashboard.businessDate;

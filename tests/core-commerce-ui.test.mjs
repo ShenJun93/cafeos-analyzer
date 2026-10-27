@@ -1373,3 +1373,133 @@ test("uncertain Menu write never auto-retries, retains form, and warns that dupl
   assert.equal(el("createItemButton").disabled, false);
   assert.equal(runInContext("menuWriteInFlight", ctx), false);
 });
+
+test("Daily Close cannot start while local POS or Menu operations are unsettled", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const script = html.split("<script>")[1]?.split("</script>")[0];
+  assert.ok(script);
+  const dom = new Map();
+  const node = id => {
+    if (!dom.has(id)) dom.set(id, {
+      value: "", textContent: "", disabled: false, dataset: {},
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener() {}, replaceChildren() {}, append() {}
+    });
+    return dom.get(id);
+  };
+  let confirms = 0;
+  const ctx = createContext({
+    document: { getElementById: node, querySelectorAll: () => [],
+      createElement: () => ({ value: "", textContent: "", append() {} }) },
+    window: { confirm: () => { confirms++; return true; } },
+    fetch: async () => ({ ok: true, json: async () => ({
+      supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test"
+    }) }),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "fixture" }
+  });
+  runInContext(script, ctx);
+  runInContext(`
+    sessionToken = "jwt"; currentTenantId = "tenant-A";
+    currentTenantRole = "manager"; currentStoreId = "store-A";
+    currentDashboard = { businessDate: "2026-10-27", orderCount: 2,
+      salesTotal: 70000, openOrderCount: 0, closed: false };
+    let closeWrites = 0;
+    appFetch = async () => { closeWrites++; throw new Error("Close must not be submitted"); };
+  `, ctx);
+  for (const state of [
+    'currentOrder = { id: "order-1", status: "open", total: 30000 }',
+    'pendingOrderSubmission = { clientOrderKey: "intent-1" }',
+    'orderSubmitInFlight = true',
+    'paymentSubmitInFlight = true',
+    'menuWriteInFlight = true'
+  ]) {
+    runInContext(`
+      currentOrder = null; pendingOrderSubmission = null;
+      orderSubmitInFlight = false; paymentSubmitInFlight = false;
+      menuWriteInFlight = false;
+    `, ctx);
+    runInContext(state, ctx);
+    runInContext("renderClosePreview(); renderRoleControls()", ctx);
+    assert.equal(node("closeDay").disabled, true, state + " disables close");
+    await runInContext("closeBusinessDay()", ctx);
+    assert.equal(runInContext("closeWrites", ctx), 0, state + " must not write");
+    assert.equal(confirms, 0, state + " must not show misleading close confirmation");
+  }
+  runInContext(`
+    currentOrder = null; pendingOrderSubmission = null;
+    orderSubmitInFlight = false; paymentSubmitInFlight = false;
+    menuWriteInFlight = false;
+    renderClosePreview();
+  `, ctx);
+  assert.equal(node("closeDay").disabled, false, "ready dashboard can re-enable close");
+});
+
+test("confirmed POS payment invalidates pre-sale Dashboard while refreshed totals are pending", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const script = html.split("<script>")[1]?.split("</script>")[0];
+  assert.ok(script);
+  const dom = new Map();
+  const makeNode = () => ({
+    value: "", textContent: "", disabled: false, dataset: {},
+    classList: { add() {}, remove() {}, toggle() {} },
+    addEventListener() {}, replaceChildren() {}, append() {}
+  });
+  const node = id => {
+    if (!dom.has(id)) dom.set(id, makeNode());
+    return dom.get(id);
+  };
+  const ctx = createContext({
+    document: { getElementById: node, querySelectorAll: () => [], createElement: makeNode },
+    window: { confirm: () => true },
+    fetch: async () => ({ ok: true, json: async () => ({
+      supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test"
+    }) }),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "fixture" }
+  });
+  runInContext(script, ctx);
+  node("paymentMethod").value = "cash";
+  runInContext(`
+    sessionToken = "jwt"; currentTenantId = "tenant-A";
+    currentTenantRole = "manager"; currentStoreId = "store-A";
+    currentOrder = { id: "order-1", status: "open", total: 30000 };
+    currentDashboard = { businessDate: "2026-10-27",
+      orderCount: 0, salesTotal: 0, openOrderCount: 0, closed: false };
+    let paymentWrites = 0; let closeWrites = 0; let dashboardReads = 0;
+    const ready = [];
+    appFetch = async path => {
+      if (path === "/api/app/commerce-payment") {
+        paymentWrites++;
+        return { orderId: "order-1", status: "paid" };
+      }
+      if (path === "/api/app/commerce-daily-close") { closeWrites++; throw new Error("premature close"); }
+      throw new Error("unexpected route " + path);
+    };
+    loadDashboard = async () => {
+      dashboardReads++;
+      await new Promise(resolve => ready.push(resolve));
+      currentDashboard = { businessDate: "2026-10-27",
+        orderCount: 1, salesTotal: 30000, openOrderCount: 0, closed: false };
+      renderClosePreview();
+    };
+    renderClosePreview();
+  `, ctx);
+  assert.equal(node("closeDay").disabled, true, "open order already blocks Daily Close");
+  const recording = runInContext("capturePayment()", ctx);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(runInContext("paymentWrites", ctx), 1);
+  assert.equal(runInContext("dashboardReads", ctx), 1);
+  assert.equal(runInContext("currentOrder", ctx), null, "server confirmed paid");
+  assert.equal(runInContext("currentDashboard", ctx), null, "old sales total invalidated before GET finishes");
+  assert.equal(node("closeDay").disabled, true);
+  await runInContext("closeBusinessDay()", ctx);
+  assert.equal(runInContext("closeWrites", ctx), 0, "no close before fresh paid totals");
+  runInContext("ready[0]()", ctx);
+  await recording;
+  assert.equal(runInContext("currentDashboard.salesTotal", ctx), 30000);
+  assert.equal(node("closeDay").disabled, false, "verified dashboard may enable close");
+  assert.equal(node("status").dataset.state, "ok");
+  assert.equal(runInContext("paymentWrites", ctx), 1, "no duplicate capture");
+});
