@@ -226,6 +226,8 @@ let menuState = { categories: [], items: [] };
 let paidReceiptState = null;
 let receiptReadSerial = 0;
 const cartState = new Map();
+// Fixed SQL commerce_create_order contract: at most 100 distinct cart lines.
+const MAX_POS_ORDER_LINES = 100;
 
 const el = id => document.getElementById(id);
 
@@ -616,6 +618,10 @@ function renderMenu() {
 function addToCart(menuItemId) {
   const item = menuState.items.find(row => row.id === menuItemId);
   if (!item || !canWriteCommerce() || currentOrder || pendingOrderSubmission || orderSubmitInFlight) return;
+  if (!cartState.has(menuItemId) && cartState.size >= MAX_POS_ORDER_LINES) {
+    setStatus("Một đơn chỉ hỗ trợ tối đa 100 món khác nhau. Bớt món hoặc tạo đơn riêng.", "error");
+    return;
+  }
   const current = cartState.get(menuItemId) || { item, quantity: 0 };
   if (current.quantity >= 1000) return;
   current.quantity += 1;
@@ -678,7 +684,8 @@ function renderCart() {
     cart.append(line);
   }
 
-  el("submitOrder").disabled = !canWriteCommerce() || !currentStoreId || !cartState.size || Boolean(currentOrder || orderSubmitInFlight);
+  el("submitOrder").disabled = !canWriteCommerce() || !currentStoreId || !cartState.size
+    || cartState.size > MAX_POS_ORDER_LINES || Boolean(currentOrder || orderSubmitInFlight);
   el("capturePayment").disabled = !canWriteCommerce() || paymentSubmitInFlight
     || !currentOrder || currentOrder.status !== "open";
   el("recoverOpenOrders").disabled = !canWriteCommerce() || hasUnfinishedCheckout();
@@ -807,6 +814,9 @@ async function refreshDashboardAfterSale(confirmation) {
 
 async function submitOrder() {
   if (!canWriteCommerce() || !currentStoreId || !cartState.size || currentOrder || orderSubmitInFlight) return;
+  if (cartState.size > MAX_POS_ORDER_LINES) {
+    throw new Error("Giỏ hàng vượt 100 dòng món. Điều chỉnh trước khi tạo đơn.");
+  }
 
   // Ambiguous network retries must preserve the exact same intent and key.
   if (!pendingOrderSubmission) {
