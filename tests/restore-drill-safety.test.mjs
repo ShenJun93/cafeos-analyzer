@@ -335,3 +335,24 @@ test("migration ledger checksum SQL remains read-only and used in local mutation
   assert.match(drill,/tampered synthetic SQL/);
   assert.match(drill,/baseline_fp/);
 });
+
+
+test("owner-only encrypted age identity escrow refuses noninteractive execution", async () => {
+  const file = new URL("../scripts/prepare-cafeos-age-recovery-escrow.sh", import.meta.url);
+  const source = await readFile(file, "utf8");
+  assert.match(source, /-t 0 && -t 1/);
+  assert.match(source, /"\$age" -p -o/);
+  assert.match(source, /"\$age" -d "\$work\/identity-recovery\.age"/);
+  assert.match(source, /"\$keygen" -y/);
+  assert.match(source, /OFF_HOST_RECOVERY_NOT_PROVEN/);
+  assert.match(source, /sha256sum -c manifest\.sha256/);
+  assert.doesNotMatch(source, /curl |wget |service_role|supabase db push/i);
+  const executable = fileURLToPath(file);
+  const syntax = spawnSync("bash", ["-n", executable], { encoding: "utf8", timeout: 6000 });
+  assert.equal(syntax.status, 0, syntax.stderr);
+  const attempt = spawnSync("bash", [executable], {
+    encoding: "utf8", input: "", timeout: 6000
+  });
+  assert.notEqual(attempt.status, 0, "escrow must refuse noninteractive agents");
+  assert.match(attempt.stderr, /interactive owner WSL terminal/);
+});
