@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { fileURLToPath } from "node:url";
 import { createVercelShapePreviewServer } from "../scripts/serve-vercel-preview.mjs";
 
 // Contract-level HTTP journey through the actual local Vercel-shaped router.
@@ -178,7 +179,7 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
   };
 
   const server = createVercelShapePreviewServer({
-    root: new URL("..", import.meta.url).pathname,
+    root: fileURLToPath(new URL("..", import.meta.url)),
     env: {
       SUPABASE_URL: "https://example.supabase.co",
       SUPABASE_PUBLISHABLE_KEY: "sb_publishable_synthetic"
