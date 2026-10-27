@@ -1120,7 +1120,9 @@ test("sign-in serial ignores superseded auth responses and never publishes a hal
     document: { getElementById: el, querySelectorAll: () => [],
       createElement: () => ({ value: "", textContent: "" }) },
     window: { confirm: () => true },
-    fetch: async () => ({ ok: true, json: async () => ({}) }),
+    fetch: async () => ({ ok: true, json: async () => ({
+      supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test"
+    }) }),
     pendingAuth: options => new Promise(resolve => pendingAuth.push({ options, resolve })),
     URLSearchParams, Intl, crypto: { randomUUID: () => "fixture" }
   });
@@ -1181,7 +1183,9 @@ test("sign-out invalidates delayed old membership response and failed login clea
     document: { getElementById: el, querySelectorAll: () => [],
       createElement: () => ({ value: "", textContent: "" }) },
     window: { confirm: () => true },
-    fetch: async () => ({ ok: true, json: async () => ({}) }),
+    fetch: async () => ({ ok: true, json: async () => ({
+      supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test"
+    }) }),
     deferSession: () => new Promise(resolve => waiting.push(resolve)),
     URLSearchParams, Intl, crypto: { randomUUID: () => "fixture" }
   });
