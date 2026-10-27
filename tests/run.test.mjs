@@ -632,8 +632,12 @@ test("Windows field kit launcher has explicit task-owned server cleanup", async 
 
 test("packaged field kit can run without npm dependency installation", async () => {
   const lock = JSON.parse(await readFile(new URL("../package-lock.json", import.meta.url), "utf8"));
+  // Build tooling is allowed in root devDependencies. The shipped field kit
+  // has its own minimal package.json and does not include the root lockfile.
   assert.equal(lock.packages[""].dependencies, undefined);
-  assert.equal(lock.packages[""].devDependencies, undefined);
+  const builder = await readFile(new URL("../scripts/build-field-kit.mjs", import.meta.url), "utf8");
+  assert.match(builder, /JSON\.stringify\(\{ type: 'module' \}, null, 2\)/);
+  assert.doesNotMatch(builder, /copyRelative\(['"]package(?:-lock)?\.json['"]/);
 });
 
 test("Windows field finalizer records only evidence answers and updates the PII-free registry", async () => {
