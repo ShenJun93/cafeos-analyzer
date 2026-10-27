@@ -509,6 +509,108 @@ test("payment, dashboard, and close handlers call only the fixed commerce RPCs",
   );
 });
 
+test("Dashboard rejects wrong Tenant/date, missing close state, and unreconciled financial mix", async () => {
+  const dashboard = {
+    source: "cafeos_pos", tenantId: TENANT_A, storeId: STORE_A,
+    businessDate: "2026-10-25", orderCount: 2, openOrderCount: 0,
+    salesTotal: "35000.29", paymentTotal: "35000.29",
+    aov: "17500.145", closed: false,
+    paymentMix: { cash: "30000.00", wallet: "5000.29" }
+  };
+  const invalid = [
+    { ...dashboard, tenantId: "20000000-0000-4000-8000-000000000002" },
+    { ...dashboard, storeId: ORDER_A },
+    { ...dashboard, businessDate: "2026-10-26" },
+    { ...dashboard, businessDate: "2026-02-30" },
+    { ...dashboard, orderCount: "2" },
+    { ...dashboard, openOrderCount: -1 },
+    { ...dashboard, closed: null },
+    { ...dashboard, salesTotal: "35000.30" },
+    { ...dashboard, paymentTotal: "35000.28" },
+    { ...dashboard, paymentMix: { cash: "30000.00", wallet: "5000.28" } },
+    { ...dashboard, paymentMix: { cash: "30000.00", unknown: "5000.29" } },
+    { ...dashboard, paymentMix: [] },
+    { ...dashboard, aov: "1" },
+    { ...dashboard, paymentTotal: true }
+  ];
+  for (const payload of invalid) {
+    let calls = 0;
+    const response = res();
+    await dashboardHandle(
+      req(authHeaders, "GET",
+        "/api/app/commerce-dashboard?storeId=" + STORE_A + "&businessDate=2026-10-25"),
+      response, { env, fetchImpl: authFetch("cashier", async (url, init) => {
+        assert.equal(url.pathname, "/rest/v1/rpc/commerce_daily_dashboard");
+        assert.equal(init.method, "POST");
+        calls++;
+        return jsonResponse(payload);
+      }) }
+    );
+    assert.equal(response.statusCode, 502, "unreconciled dashboard must fail closed");
+    assert.equal(parsed(response).error.code, "SUPABASE_UPSTREAM");
+    assert.equal(calls, 1);
+  }
+  const healthy = res();
+  await dashboardHandle(req(authHeaders, "GET",
+    "/api/app/commerce-dashboard?storeId=" + STORE_A + "&businessDate=2026-10-25"),
+  healthy, { env, fetchImpl: authFetch("cashier", async () => jsonResponse(dashboard)) });
+  assert.equal(healthy.statusCode, 200, "valid fractional AOV must remain displayable");
+});
+
+test("Daily Close refuses cross-Tenant receipts, wrong day and unbalanced accounting totals", async () => {
+  const close = {
+    id: "19000000-0000-4000-8000-000000000001",
+    tenantId: TENANT_A, storeId: STORE_A, businessDate: "2026-10-25",
+    orderCount: 2, salesTotal: "35000.29", paymentTotal: "35000.29",
+    cashTotal: "30000.00", nonCashTotal: "5000.29",
+    idempotent: false
+  };
+  const invalid = [
+    { ...close, tenantId: "20000000-0000-4000-8000-000000000002" },
+    { ...close, storeId: ORDER_A },
+    { ...close, businessDate: "2026-10-26" },
+    { ...close, businessDate: "2026-02-30" },
+    { ...close, id: "not-a-uuid" },
+    { ...close, orderCount: -1 },
+    { ...close, salesTotal: "35000.30" },
+    { ...close, paymentTotal: "35000.28" },
+    { ...close, cashTotal: "30000.01" },
+    { ...close, nonCashTotal: "NaN" },
+    { ...close, idempotent: null },
+    { ...close, cashTotal: true }
+  ];
+  for (const payload of invalid) {
+    let writes = 0;
+    const response = res();
+    await dailyCloseHandle(req(authHeaders, "POST",
+      "/api/app/commerce-daily-close",
+      { storeId: STORE_A, businessDate: "2026-10-25" }),
+    response, { env, fetchImpl: authFetch("manager", async (url, init) => {
+      assert.equal(url.pathname, "/rest/v1/rpc/commerce_close_day");
+      assert.equal(init.method, "POST");
+      writes++;
+      return jsonResponse(payload);
+    }) });
+    assert.equal(response.statusCode, 502, "unreconciled close cannot be announced as success");
+    assert.equal(parsed(response).error.code, "SUPABASE_UPSTREAM");
+    assert.equal(writes, 1, "never retry irreversible close automatically");
+  }
+
+  for (const payload of [
+    close,
+    { ...close, idempotent: true },
+    { ...close, orderCount: 0, salesTotal: "0.00", paymentTotal: "0.00",
+      cashTotal: "0.00", nonCashTotal: "0.00", idempotent: true }
+  ]) {
+    const healthy = res();
+    await dailyCloseHandle(req(authHeaders, "POST",
+      "/api/app/commerce-daily-close",
+      { storeId: STORE_A, businessDate: "2026-10-25" }),
+    healthy, { env, fetchImpl: authFetch("manager", async () => jsonResponse(payload)) });
+    assert.equal(healthy.statusCode, 201, "valid initial/duplicate/empty-day close remains supported");
+  }
+});
+
 test("workflow dispatcher maps commerce routes without adding another Vercel API source", async () => {
   for (const route of [
     "client-config",
