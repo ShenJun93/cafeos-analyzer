@@ -188,6 +188,8 @@
 <script>
 let clientConfig = null;
 let sessionToken = null;
+let authGeneration = 0;
+let signInInFlight = false;
 let currentTenantId = null;
 let currentStoreId = null;
 let tenantMemberships = [];
@@ -257,28 +259,52 @@ async function loadClientConfig() {
 }
 
 async function signIn() {
+  if (signInInFlight || sessionToken) return;
   const email = el("email").value.trim();
   const password = el("password").value;
   if (!email || !password) return setStatus("Nhập email và password.", "error");
+  if (!clientConfig?.supabaseUrl || !clientConfig?.publishableKey) {
+    throw new Error("CafeOS chưa tải cấu hình đăng nhập");
+  }
+  const attempt = ++authGeneration;
+  signInInFlight = true;
+  el("signIn").disabled = true;
   setStatus("Đang đăng nhập…");
-  const payload = await jsonFetch(
-    clientConfig.supabaseUrl + "/auth/v1/token?grant_type=password",
-    {
-      method: "POST",
-      headers: {
-        apikey: clientConfig.publishableKey,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({ email, password })
+  try {
+    const payload = await jsonFetch(
+      clientConfig.supabaseUrl + "/auth/v1/token?grant_type=password",
+      {
+        method: "POST",
+        headers: {
+          apikey: clientConfig.publishableKey,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({ email, password })
+      }
+    );
+    if (attempt !== authGeneration) return;
+    sessionToken = payload.access_token || null;
+    if (!sessionToken) throw new Error("Auth response did not include an access token");
+    // Only publish the shell after session membership and Store load succeed.
+    await loadSession();
+    if (attempt !== authGeneration) return;
+    el("identity").textContent = email;
+    el("authPanel").classList.add("hidden");
+    el("appPanel").classList.remove("hidden");
+    el("signOut").classList.remove("hidden");
+    setStatus("CafeOS đã xác thực phiên và tải Store.", "ok");
+  } catch (error) {
+    if (attempt !== authGeneration) return;
+    // Authentication may succeed while membership/Store lookup fails. Never
+    // leave a usable JWT or half-loaded commerce context behind in that case.
+    clearSessionState();
+    throw error;
+  } finally {
+    if (attempt === authGeneration) {
+      signInInFlight = false;
+      el("signIn").disabled = false;
     }
-  );
-  sessionToken = payload.access_token || null;
-  if (!sessionToken) throw new Error("Auth response did not include an access token");
-  el("identity").textContent = email;
-  el("authPanel").classList.add("hidden");
-  el("appPanel").classList.remove("hidden");
-  el("signOut").classList.remove("hidden");
-  await loadSession();
+  }
 }
 
 function canWriteCommerce() {
@@ -317,14 +343,11 @@ function preventUnsafeContextReset() {
   return true;
 }
 
-function signOut() {
-  if (orderSubmitInFlight || paymentSubmitInFlight || closeSubmitInFlight) {
-    return setStatus("Yêu cầu POS/Daily Close đang xử lý; không đăng xuất khi chưa có kết quả.", "error");
-  }
-  if (hasUnfinishedCheckout() && !window.confirm(
-    "Đơn chưa hoàn tất. Đăng xuất sẽ xóa bộ nhớ retry/payment trong trình duyệt. Tiếp tục?"
-  )) return;
+function clearSessionState() {
+  ++authGeneration;
   ++viewEpoch;
+  signInInFlight = false;
+  el("signIn").disabled = false;
   sessionToken = null;
   currentTenantId = null;
   currentStoreId = null;
@@ -337,12 +360,28 @@ function signOut() {
   paymentSubmitInFlight = false;
   closeSubmitInFlight = false;
   cartState.clear();
+  menuState = { categories: [], items: [] };
   invalidateOpenOrderReads();
+  for (const id of ["menuCatalog", "menuAdminList", "commerceMetrics", "paymentMix", "controlBrief"]) {
+    el(id).replaceChildren();
+  }
+  el("closePreview").textContent = "Đăng nhập để tải báo cáo Daily Close.";
   el("closeReceipt").textContent = "";
+  el("closeDay").disabled = true;
   el("appPanel").classList.add("hidden");
   el("authPanel").classList.remove("hidden");
   el("signOut").classList.add("hidden");
   el("identity").textContent = "Chưa đăng nhập";
+}
+
+function signOut() {
+  if (orderSubmitInFlight || paymentSubmitInFlight || closeSubmitInFlight) {
+    return setStatus("Yêu cầu POS/Daily Close đang xử lý; không đăng xuất khi chưa có kết quả.", "error");
+  }
+  if (hasUnfinishedCheckout() && !window.confirm(
+    "Đơn chưa hoàn tất. Đăng xuất sẽ xóa bộ nhớ retry/payment trong trình duyệt. Tiếp tục?"
+  )) return;
+  clearSessionState();
   setStatus("Đã đăng xuất.");
 }
 
@@ -357,7 +396,10 @@ function fillSelect(select, rows, { valueKey = "id", labelKey = "name", prefix =
 }
 
 async function loadSession() {
+  const requestedToken = sessionToken;
+  const requestedAuth = authGeneration;
   const session = await appFetch("/api/app/session", { tenant: false });
+  if (requestedAuth !== authGeneration || requestedToken !== sessionToken) return;
   if (!session.memberships?.length) throw new Error("User has no CafeOS tenant membership");
   tenantMemberships = session.memberships;
   fillSelect(el("tenant"), tenantMemberships, { valueKey: "tenantId", labelKey: "name" });

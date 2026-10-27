@@ -1099,3 +1099,131 @@ test("recovery selection discards stale response and protects newer unsent cart"
   assert.equal(runInContext("currentOrder", ctx), null);
   assert.equal(runInContext("cartState.get('coffee').quantity", ctx), 2, "old recovery must not erase new Store cart");
 });
+
+test("sign-in serial ignores superseded auth responses and never publishes a half-loaded shell", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const inline = html.split("<script>")[1]?.split("</script>")[0];
+  assert.ok(inline);
+  const dom = new Map();
+  function el(id) {
+    if (!dom.has(id)) dom.set(id, {
+      value: "", textContent: "", disabled: false, dataset: {}, children: [],
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener() {}, replaceChildren(...xs) { this.children = xs; },
+      append(...xs) { this.children.push(...xs); }
+    });
+    return dom.get(id);
+  }
+  const pendingAuth = [];
+  const ctx = createContext({
+    document: { getElementById: el, querySelectorAll: () => [],
+      createElement: () => ({ value: "", textContent: "" }) },
+    window: { confirm: () => true },
+    fetch: async () => ({ ok: true, json: async () => ({}) }),
+    pendingAuth: options => new Promise(resolve => pendingAuth.push({ options, resolve })),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "fixture" }
+  });
+  runInContext(inline, ctx);
+  runInContext(`
+    clientConfig = { supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test" };
+    jsonFetch = (url, options) => pendingAuth(options);
+    appFetch = async path => {
+      if (path === "/api/app/session") return { memberships: [{ tenantId: "tenant-B", role: "manager" }] };
+      throw new Error("unexpected path");
+    };
+    loadTenant = async () => {};
+  `, ctx);
+
+  el("email").value = "first@example.invalid";
+  el("password").value = "fixture-password";
+  const first = runInContext("signIn()", ctx);
+  assert.equal(el("signIn").disabled, true);
+  await runInContext("signIn()", ctx);
+  assert.equal(pendingAuth.length, 1, "double login must not issue a second auth request");
+  assert.equal(runInContext("sessionToken", ctx), null);
+
+  runInContext("signOut()", ctx);
+  assert.equal(el("signIn").disabled, false);
+  el("email").value = "second@example.invalid";
+  const second = runInContext("signIn()", ctx);
+  assert.equal(pendingAuth.length, 2);
+
+  pendingAuth[1].resolve({ access_token: "jwt-second" });
+  await second;
+  assert.equal(runInContext("sessionToken", ctx), "jwt-second");
+  assert.equal(el("identity").textContent, "second@example.invalid");
+  assert.equal(el("signIn").disabled, false);
+  pendingAuth[0].resolve({ access_token: "jwt-first" });
+  await first;
+  assert.equal(runInContext("sessionToken", ctx), "jwt-second");
+  assert.equal(el("identity").textContent, "second@example.invalid");
+  assert.equal(el("signIn").disabled, false);
+  assert.equal(runInContext("tenantMemberships[0].tenantId", ctx), "tenant-B");
+});
+
+test("sign-out invalidates delayed old membership response and failed login clears all session data", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const inline = html.split("<script>")[1]?.split("</script>")[0];
+  const dom = new Map();
+  function el(id) {
+    if (!dom.has(id)) dom.set(id, {
+      value: "", textContent: "", disabled: false, dataset: {}, children: [],
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener() {}, replaceChildren(...xs) { this.children = xs; },
+      append(...xs) { this.children.push(...xs); }
+    });
+    return dom.get(id);
+  }
+  const waiting = [];
+  const ctx = createContext({
+    document: { getElementById: el, querySelectorAll: () => [],
+      createElement: () => ({ value: "", textContent: "" }) },
+    window: { confirm: () => true },
+    fetch: async () => ({ ok: true, json: async () => ({}) }),
+    deferSession: () => new Promise(resolve => waiting.push(resolve)),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "fixture" }
+  });
+  runInContext(inline, ctx);
+  runInContext(`
+    clientConfig = { supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test" };
+    jsonFetch = async () => ({ access_token: "jwt-A" });
+    appFetch = deferSession;
+    loadTenant = async () => {};
+  `, ctx);
+  el("email").value = "first@example.invalid";
+  el("password").value = "fixture";
+  const first = runInContext("signIn()", ctx);
+  await Promise.resolve();
+  assert.equal(waiting.length, 1, "membership fetch should be outstanding");
+  assert.equal(runInContext("sessionToken", ctx), "jwt-A");
+  assert.equal(el("identity").textContent, "", "must not publish identity before membership confirmation");
+  runInContext("signOut()", ctx);
+  assert.equal(runInContext("sessionToken", ctx), null);
+
+  runInContext(`
+    jsonFetch = async () => ({ access_token: "jwt-B" });
+    appFetch = async () => ({ memberships: [{ tenantId: "tenant-B", role: "owner" }] });
+  `, ctx);
+  el("email").value = "second@example.invalid";
+  const second = runInContext("signIn()", ctx);
+  await second;
+  assert.equal(runInContext("sessionToken", ctx), "jwt-B");
+  waiting[0]({ memberships: [{ tenantId: "tenant-A", role: "owner" }] });
+  await first;
+  assert.equal(runInContext("tenantMemberships[0].tenantId", ctx), "tenant-B");
+  assert.equal(el("identity").textContent, "second@example.invalid");
+
+  runInContext("signOut()", ctx);
+  runInContext(`
+    jsonFetch = async () => ({ access_token: "jwt-no-membership" });
+    appFetch = async () => ({ memberships: [] });
+  `, ctx);
+  el("email").value = "no-membership@example.invalid";
+  await assert.rejects(runInContext("signIn()", ctx), /membership/);
+  assert.equal(runInContext("sessionToken", ctx), null);
+  assert.equal(runInContext("tenantMemberships.length", ctx), 0);
+  assert.equal(el("identity").textContent, "Chưa đăng nhập");
+  assert.equal(el("signIn").disabled, false);
+});
