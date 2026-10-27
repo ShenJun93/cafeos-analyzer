@@ -1233,3 +1233,143 @@ test("sign-out invalidates delayed old membership response and failed login clea
   assert.equal(el("identity").textContent, "Chưa đăng nhập");
   assert.equal(el("signIn").disabled, false);
 });
+
+async function menuMutationHarness() {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const script = html.split("<script>")[1]?.split("</script>")[0];
+  assert.ok(script);
+  const dom = new Map();
+  function newNode() {
+    return {
+      value: "", textContent: "", disabled: false, dataset: {}, children: [], resetCount: 0,
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener() {}, replaceChildren(...xs) { this.children = xs; },
+      append(...xs) { this.children.push(...xs); },
+      reset() { this.resetCount++; }
+    };
+  }
+  function el(id) {
+    if (!dom.has(id)) dom.set(id, newNode());
+    return dom.get(id);
+  }
+  const ctx = createContext({
+    document: { getElementById: el, querySelectorAll: () => [], createElement: newNode },
+    window: { confirm: () => false },
+    fetch: async () => ({
+      ok: true, json: async () => ({
+        supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test"
+      })
+    }),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "synthetic" }
+  });
+  runInContext(script, ctx);
+  runInContext(`
+    sessionToken = "jwt";
+    currentTenantId = "tenant-A";
+    currentTenantRole = "manager";
+    currentStoreId = "store-A";
+    let menuPosts = 0;
+    let menuReads = 0;
+  `, ctx);
+  el("tenant").value = "tenant-A";
+  el("store").value = "store-A";
+  return { ctx, el, runInContext };
+}
+
+test("manager Menu writes are single-flight and cannot be interrupted by Store/Tenant switch or sign-out", async () => {
+  const { ctx, el, runInContext } = await menuMutationHarness();
+  const pending = [];
+  const posts = [];
+  ctx.post = body => {
+    posts.push(body);
+    return new Promise(resolve => pending.push(resolve));
+  };
+  runInContext(`
+    appFetch = async (path, options) => {
+      if (path !== "/api/app/commerce-menu" || options?.method !== "POST") {
+        throw new Error("unexpected Menu API");
+      }
+      menuPosts++;
+      return post(options.body);
+    };
+    loadMenu = async () => { menuReads++; };
+  `, ctx);
+  el("categoryName").value = "Coffee";
+  const first = runInContext("createCategory({ preventDefault() {} })", ctx);
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].kind, "category");
+  assert.equal(runInContext("menuWriteInFlight", ctx), true);
+  assert.equal(el("createCategoryButton").disabled, true);
+  assert.equal(el("createItemButton").disabled, true);
+
+  el("itemName").value = "Latte";
+  await runInContext("createCategory({ preventDefault() {} })", ctx);
+  await runInContext("createItem({ preventDefault() {} })", ctx);
+  assert.equal(posts.length, 1, "multiple form submissions cannot duplicate writes");
+
+  el("store").value = "store-B";
+  await runInContext("refreshStore()", ctx);
+  assert.equal(el("store").value, "store-A");
+  el("tenant").value = "tenant-B";
+  await runInContext("loadTenant()", ctx);
+  assert.equal(el("tenant").value, "tenant-A");
+  runInContext("signOut()", ctx);
+  assert.equal(runInContext("sessionToken", ctx), "jwt");
+  assert.equal(posts.length, 1);
+
+  pending[0]({ category: { id: "category-A" } });
+  await first;
+  assert.equal(runInContext("menuWriteInFlight", ctx), false);
+  assert.equal(runInContext("menuReads", ctx), 1);
+  assert.equal(el("categoryForm").resetCount, 1);
+  assert.equal(el("createCategoryButton").disabled, false);
+  assert.equal(el("createItemButton").disabled, false);
+  assert.equal(el("status").dataset.state, "ok");
+});
+
+test("confirmed Menu insert followed by read-model failure remains success with warning, not a retry", async () => {
+  const { ctx, el, runInContext } = await menuMutationHarness();
+  el("itemName").value = "Bạc xỉu";
+  el("itemAmount").value = "35000";
+  runInContext(`
+    menuState.items = [{ id: "old", name: "Old", price: 1000 }];
+    appFetch = async (path, options) => {
+      if (path !== "/api/app/commerce-menu" || options?.method !== "POST") throw new Error("unexpected");
+      menuPosts++;
+      return { item: { id: "new" } };
+    };
+    loadMenu = async () => { menuReads++; throw new Error("Menu read offline"); };
+  `, ctx);
+  await runInContext("createItem({ preventDefault() {} })", ctx);
+  assert.equal(runInContext("menuPosts", ctx), 1);
+  assert.equal(runInContext("menuReads", ctx), 1);
+  assert.equal(el("itemForm").resetCount, 1, "form clears after confirmed database write");
+  assert.equal(runInContext("menuState.items.length", ctx), 0, "stale menu prices must be cleared");
+  assert.equal(el("status").dataset.state, "warning");
+  assert.match(el("status").textContent, /Đã tạo menu item.*chưa tải lại/);
+  assert.match(el("status").textContent, /không tạo lại/);
+  assert.equal(el("createItemButton").disabled, false);
+  assert.equal(runInContext("menuWriteInFlight", ctx), false);
+});
+
+test("uncertain Menu write never auto-retries, retains form, and warns that duplicate insert is possible", async () => {
+  const { ctx, el, runInContext } = await menuMutationHarness();
+  el("itemName").value = "New item";
+  el("itemAmount").value = "45000";
+  runInContext(`
+    appFetch = async (path, options) => {
+      if (path !== "/api/app/commerce-menu" || options?.method !== "POST") throw new Error("unexpected");
+      menuPosts++;
+      throw new Error("POST response lost");
+    };
+    loadMenu = async () => { menuReads++; };
+  `, ctx);
+  await assert.rejects(runInContext("createItem({ preventDefault() {} })", ctx), /Kiểm tra danh sách Menu trước khi gửi lại/);
+  assert.equal(runInContext("menuPosts", ctx), 1);
+  assert.equal(runInContext("menuReads", ctx), 0);
+  assert.equal(el("itemForm").resetCount, 0, "uncertain request preserves operator entry");
+  assert.equal(el("itemName").value, "New item");
+  assert.equal(el("createItemButton").disabled, false);
+  assert.equal(runInContext("menuWriteInFlight", ctx), false);
+});

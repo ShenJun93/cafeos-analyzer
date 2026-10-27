@@ -128,7 +128,7 @@
           <div class="section-label">New category</div>
           <label class="field-group">Name<input id="categoryName" maxlength="200" required></label>
           <label class="field-group">Sort order<input id="categorySort" type="number" value="0" step="1"></label>
-          <button type="submit">Create category</button>
+          <button id="createCategoryButton" type="submit">Create category</button>
         </form>
 
         <form id="itemForm" class="commerce-form">
@@ -137,7 +137,7 @@
           <label class="field-group">Name<input id="itemName" maxlength="300" required></label>
           <label class="field-group">SKU<input id="itemSku" maxlength="100"></label>
           <label class="field-group">Price<input id="itemAmount" type="number" min="0" step="1000" required></label>
-          <button type="submit">Create item</button>
+          <button id="createItemButton" type="submit">Create item</button>
         </form>
       </div>
 
@@ -200,6 +200,7 @@ let pendingOrderSubmission = null;
 let orderSubmitInFlight = false;
 let paymentSubmitInFlight = false;
 let closeSubmitInFlight = false;
+let menuWriteInFlight = false;
 // Increment whenever the authenticated Tenant/Store view is reset. Results
 // from an older view must never overwrite another Store's menu/close numbers.
 let viewEpoch = 0;
@@ -328,6 +329,12 @@ function hasUnfinishedCheckout() {
 }
 
 function preventUnsafeContextReset() {
+  if (menuWriteInFlight) {
+    el("tenant").value = currentTenantId || "";
+    el("store").value = currentStoreId || "";
+    setStatus("Đang lưu Menu. Không đổi Tenant/Store hoặc Refresh trước khi xác nhận.", "error");
+    return true;
+  }
   if (closeSubmitInFlight) {
     el("tenant").value = currentTenantId || "";
     el("store").value = currentStoreId || "";
@@ -360,6 +367,9 @@ function clearSessionState() {
   orderSubmitInFlight = false;
   paymentSubmitInFlight = false;
   closeSubmitInFlight = false;
+  menuWriteInFlight = false;
+  el("createCategoryButton").disabled = false;
+  el("createItemButton").disabled = false;
   cartState.clear();
   menuState = { categories: [], items: [] };
   invalidateOpenOrderReads();
@@ -376,8 +386,8 @@ function clearSessionState() {
 }
 
 function signOut() {
-  if (orderSubmitInFlight || paymentSubmitInFlight || closeSubmitInFlight) {
-    return setStatus("Yêu cầu POS/Daily Close đang xử lý; không đăng xuất khi chưa có kết quả.", "error");
+  if (orderSubmitInFlight || paymentSubmitInFlight || closeSubmitInFlight || menuWriteInFlight) {
+    return setStatus("Yêu cầu POS/Menu/Daily Close đang xử lý; không đăng xuất khi chưa có kết quả.", "error");
   }
   if (hasUnfinishedCheckout() && !window.confirm(
     "Đơn chưa hoàn tất. Đăng xuất sẽ xóa bộ nhớ retry/payment trong trình duyệt. Tiếp tục?"
@@ -882,41 +892,64 @@ async function resumeOpenOrder(orderId) {
   setStatus("Đã khôi phục đơn mở; kiểm tra server total rồi ghi Payment.", "ok");
 }
 
+function setMenuWriteInFlight(busy) {
+  menuWriteInFlight = busy;
+  el("createCategoryButton").disabled = busy;
+  el("createItemButton").disabled = busy;
+}
+
+// Menu INSERT has no idempotency key in v1. Never auto-retry an uncertain POST,
+// and never describe a confirmed INSERT as failed only because GET went offline.
+async function writeMenuRecord(body, formId, successMessage) {
+  if (menuWriteInFlight) return;
+  menuWriteInFlight = true;
+  setMenuWriteInFlight(true);
+  setStatus("Đang lưu Menu…");
+  try {
+    try {
+      await appFetch("/api/app/commerce-menu", { method: "POST", body });
+    } catch (error) {
+      throw new Error("Chưa xác nhận Menu đã được lưu. Kiểm tra danh sách Menu trước khi gửi lại để tránh trùng. " + error.message);
+    }
+    el(formId).reset();
+    if (formId === "categoryForm") el("categorySort").value = "0";
+    try {
+      await loadMenu();
+      setStatus(successMessage, "ok");
+    } catch {
+      // A successful POST is still successful. Force reloading the Menu
+      // before trusting its previously cached list/prices in the cashier UI.
+      menuState = { categories: [], items: [] };
+      renderMenu();
+      setStatus(successMessage + " Danh sách Menu chưa tải lại được; Refresh để kiểm tra, không tạo lại.", "warning");
+    }
+  } finally {
+    setMenuWriteInFlight(false);
+  }
+}
+
 async function createCategory(event) {
   event.preventDefault();
   if (!canManageCommerce()) throw new Error("Manager role required to edit Menu");
-  setStatus("Đang tạo category…");
-  await appFetch("/api/app/commerce-menu", {
-    method: "POST",
-    body: {
-      kind: "category",
-      name: el("categoryName").value.trim(),
-      sortOrder: Number(el("categorySort").value || 0)
-    }
-  });
-  el("categoryForm").reset();
-  el("categorySort").value = "0";
-  await loadMenu();
-  setStatus("Đã tạo category.", "ok");
+  if (menuWriteInFlight) return;
+  return writeMenuRecord({
+    kind: "category",
+    name: el("categoryName").value.trim(),
+    sortOrder: Number(el("categorySort").value || 0)
+  }, "categoryForm", "Đã tạo category.");
 }
 
 async function createItem(event) {
   event.preventDefault();
   if (!canManageCommerce()) throw new Error("Manager role required to edit Menu");
-  setStatus("Đang tạo menu item…");
-  await appFetch("/api/app/commerce-menu", {
-    method: "POST",
-    body: {
-      kind: "item",
-      categoryId: el("itemCategory").value || null,
-      sku: el("itemSku").value.trim() || null,
-      name: el("itemName").value.trim(),
-      price: Number(el("itemAmount").value)
-    }
-  });
-  el("itemForm").reset();
-  await loadMenu();
-  setStatus("Đã tạo menu item.", "ok");
+  if (menuWriteInFlight) return;
+  return writeMenuRecord({
+    kind: "item",
+    categoryId: el("itemCategory").value || null,
+    sku: el("itemSku").value.trim() || null,
+    name: el("itemName").value.trim(),
+    price: Number(el("itemAmount").value)
+  }, "itemForm", "Đã tạo menu item.");
 }
 
 function metric(label, value) {
