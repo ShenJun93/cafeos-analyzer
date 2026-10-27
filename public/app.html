@@ -109,6 +109,16 @@
             <button id="capturePayment" type="button">Record Payment</button>
             <p class="muted">Payment record only — not payment acquiring or card processing.</p>
           </section>
+          <section id="paidReceipt" class="paid-receipt hidden" aria-live="polite">
+            <div class="section-label">CafeOS · Hóa đơn đã thanh toán</div>
+            <h4 id="receiptStore"></h4>
+            <div id="receiptMeta" class="muted"></div>
+            <div id="receiptLines" class="receipt-lines"></div>
+            <div id="receiptTotal" class="receipt-total"></div>
+            <div id="receiptMethod" class="receipt-method"></div>
+            <p id="receiptMessage" class="muted"></p>
+            <button id="printPaidReceipt" class="secondary receipt-print-button" type="button" disabled>In hóa đơn</button>
+          </section>
         </aside>
       </div>
     </section>
@@ -208,6 +218,8 @@ let dashboardReadSerial = 0;
 let menuReadSerial = 0;
 let controlReadSerial = 0;
 let menuState = { categories: [], items: [] };
+let paidReceiptState = null;
+let receiptReadSerial = 0;
 const cartState = new Map();
 
 const el = id => document.getElementById(id);
@@ -374,6 +386,7 @@ function clearSessionState() {
   cartState.clear();
   menuState = { categories: [], items: [] };
   invalidateOpenOrderReads();
+  clearPaidReceipt();
   for (const id of ["menuCatalog", "menuAdminList", "commerceMetrics", "paymentMix", "controlBrief"]) {
     el(id).replaceChildren();
   }
@@ -439,6 +452,7 @@ async function loadTenant() {
   el("paymentMix").replaceChildren();
   el("closePreview").textContent = "Đang tải Store của Tenant…";
   el("closeReceipt").textContent = "";
+  clearPaidReceipt();
   renderRoleControls();
 
   const stores = await appFetch("/api/app/stores");
@@ -463,6 +477,7 @@ async function refreshStore() {
   el("closePreview").textContent = "Đang xác minh báo cáo Store mới…";
   el("closeReceipt").textContent = "";
   el("closeDay").disabled = true;
+  clearPaidReceipt();
   menuState = { categories: [], items: [] };
   el("menuCatalog").replaceChildren();
   el("menuAdminList").replaceChildren();
@@ -596,6 +611,7 @@ function addToCart(menuItemId) {
   const current = cartState.get(menuItemId) || { item, quantity: 0 };
   if (current.quantity >= 1000) return;
   current.quantity += 1;
+  clearPaidReceipt();
   cartState.set(menuItemId, current);
   renderCart();
 }
@@ -606,6 +622,7 @@ function changeQuantity(menuItemId, delta) {
   const next = current.quantity + delta;
   if (next > 1000) return;
   current.quantity = next;
+  clearPaidReceipt();
   if (current.quantity <= 0) cartState.delete(menuItemId);
   renderCart();
 }
@@ -663,6 +680,85 @@ function renderCart() {
   }
 }
 
+// Receipts are on-demand, read-only views of paid Store/Tenant facts.
+// All variable content uses textContent, never HTML or client cart prices.
+function clearPaidReceipt() {
+  ++receiptReadSerial;
+  paidReceiptState = null;
+  el("paidReceipt").classList.add("hidden");
+  el("receiptStore").textContent = "";
+  el("receiptMeta").textContent = "";
+  el("receiptLines").replaceChildren();
+  el("receiptTotal").textContent = "";
+  el("receiptMethod").textContent = "";
+  el("receiptMessage").textContent = "";
+  el("printPaidReceipt").disabled = true;
+}
+
+async function loadPaidReceipt(orderId) {
+  clearPaidReceipt();
+  if (!sessionToken || !currentStoreId || !canWriteCommerce()) return;
+  const serial = receiptReadSerial;
+  const epoch = viewEpoch;
+  const tenant = currentTenantId;
+  const store = currentStoreId;
+  const token = sessionToken;
+  const sameContext = () => receiptReadSerial === serial && viewEpoch === epoch
+    && currentTenantId === tenant && currentStoreId === store
+    && sessionToken === token;
+  el("paidReceipt").classList.remove("hidden");
+  el("receiptMessage").textContent = "Đang xác minh hóa đơn đã thanh toán…";
+  try {
+    const result = await appFetch(
+      "/api/app/commerce-receipt?orderId=" + encodeURIComponent(orderId)
+      + "&storeId=" + encodeURIComponent(store)
+    );
+    if (!sameContext()) return;
+    const receipt = result?.receipt;
+    if (!receipt || receipt.orderId !== orderId || receipt.storeId !== store
+        || receipt.status !== "paid" || !Array.isArray(receipt.items)
+        || !receipt.items.length || !receipt.payment) {
+      throw new Error("Dữ liệu hóa đơn chưa được server xác nhận");
+    }
+    paidReceiptState = receipt;
+    el("receiptStore").textContent = receipt.storeName;
+    el("receiptMeta").textContent = "Đơn " + receipt.orderNumber + " · "
+      + receipt.businessDate + " · " + receipt.channel;
+    const root = el("receiptLines");
+    root.replaceChildren();
+    for (const line of receipt.items) {
+      const row = document.createElement("div");
+      row.className = "receipt-line";
+      const title = document.createElement("span");
+      title.textContent = line.name + " × " + line.quantity
+        + " · " + money(line.unitPrice);
+      const total = document.createElement("strong");
+      total.textContent = money(line.lineTotal);
+      row.append(title, total);
+      root.append(row);
+    }
+    el("receiptTotal").textContent = "Tổng thanh toán: " + money(receipt.total);
+    el("receiptMethod").textContent = "Đã thanh toán · "
+      + receipt.payment.method + " · " + receipt.paidAt;
+    el("receiptMessage").textContent = "Hóa đơn từ dữ liệu đã ghi nhận tại server.";
+    el("printPaidReceipt").disabled = false;
+  } catch (error) {
+    if (!sameContext()) return;
+    // Receipt read failures are not payment-write failures. No repeat capture.
+    paidReceiptState = null;
+    el("receiptMessage").textContent =
+      "Thanh toán đã xác nhận. Chưa tải được hóa đơn; kiểm tra kết nối, không ghi Payment lần nữa.";
+    el("printPaidReceipt").disabled = true;
+  }
+}
+
+function printPaidReceipt() {
+  if (!paidReceiptState || !sessionToken || !canWriteCommerce()
+      || paidReceiptState.storeId !== currentStoreId
+      || paidReceiptState.status !== "paid") return;
+  window.print();
+}
+
 // Settlement truth is independent of reporting availability. Once the server
 // confirms PAID, a failed Dashboard refresh must never imply payment failed,
 // invite a duplicate capture, or display stale closeable metrics.
@@ -716,9 +812,11 @@ async function submitOrder() {
     pendingOrderSubmission = null;
     if (currentOrder.status === "paid") {
       const paidNumber = currentOrder.orderNumber;
+      const paidId = currentOrder.id;
       cartState.clear();
       currentOrder = null;
       renderCart();
+      await loadPaidReceipt(paidId);
       await refreshDashboardAfterSale("Order " + paidNumber + " đã được thanh toán từ lần trước.");
       return;
     }
@@ -774,6 +872,7 @@ async function capturePayment() {
     cartState.clear();
     currentOrder = null;
     renderCart();
+    await loadPaidReceipt(attemptedOrderId);
     await refreshDashboardAfterSale(
       recovered
         ? "Đã xác nhận payment thành công từ trạng thái server sau lỗi phản hồi."
@@ -889,6 +988,7 @@ async function resumeOpenOrder(orderId) {
     throw new Error("Đơn không còn mở hoặc không thuộc Store hiện tại.");
   }
   cartState.clear();
+  clearPaidReceipt();
   currentOrder = {
     id: order.id, status: "open", total: order.total,
     orderNumber: order.orderNumber || order.id
@@ -1160,6 +1260,7 @@ el("posMenuSearch").addEventListener("input", renderMenu);
 el("posMenuCategory").addEventListener("change", renderMenu);
 el("submitOrder").addEventListener("click", () => guarded(submitOrder));
 el("capturePayment").addEventListener("click", () => guarded(capturePayment));
+el("printPaidReceipt").addEventListener("click", printPaidReceipt);
 el("recoverOpenOrders").addEventListener("click", () => guarded(() => loadOpenOrdersForRecovery()));
 el("categoryForm").addEventListener("submit", event => guarded(() => createCategory(event)));
 el("itemForm").addEventListener("submit", event => guarded(() => createItem(event)));

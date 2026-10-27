@@ -1503,3 +1503,127 @@ test("confirmed POS payment invalidates pre-sale Dashboard while refreshed total
   assert.equal(node("status").dataset.state, "ok");
   assert.equal(runInContext("paymentWrites", ctx), 1, "no duplicate capture");
 });
+
+test("paid receipt is server-sourced, printable on click, and treats item names as text", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  assert.match(html, /id="paidReceipt"/);
+  assert.match(html, /id="printPaidReceipt"/);
+  const inline = html.split("<script>")[1]?.split("</script>")[0];
+  const dom = new Map();
+  function element() {
+    const classes = new Set();
+    return {
+      value: "", textContent: "", disabled: false, dataset: {}, children: [],
+      classList: {
+        add(x) { classes.add(x); }, remove(x) { classes.delete(x); },
+        toggle(x, enabled) { if (enabled) classes.add(x); else classes.delete(x); },
+        contains(x) { return classes.has(x); }
+      },
+      addEventListener() {}, replaceChildren(...xs) { this.children = xs; },
+      append(...xs) { this.children.push(...xs); }
+    };
+  }
+  function el(id) {
+    if (!dom.has(id)) dom.set(id, element());
+    return dom.get(id);
+  }
+  let printCalls = 0;
+  const ctx = createContext({
+    document: { getElementById: el, querySelectorAll: () => [], createElement: element },
+    window: { confirm: () => false, print: () => { printCalls++; } },
+    fetch: async () => ({ ok: true, json: async () => ({
+      supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test"
+    }) }),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "test" }
+  });
+  runInContext(inline, ctx);
+  runInContext(`
+    sessionToken = "jwt-A"; currentTenantId = "tenant-A";
+    currentTenantRole = "cashier"; currentStoreId = "store-A";
+    appFetch = async (path) => {
+      if (!path.includes("commerce-receipt?orderId=order-A&storeId=store-A")) {
+        throw new Error("Unexpected receipt URL");
+      }
+      return { receipt: {
+        orderId: "order-A", storeId: "store-A", storeName: "CafeOS Shop",
+        orderNumber: "C-0088", businessDate: "2026-10-27", channel: "counter",
+        paidAt: "2026-10-27T10:00:00Z", status: "paid", total: "70000.00",
+        items: [{ name: "<img src=x onerror=alert(1)>", quantity: "2.000",
+          unitPrice: "35000.00", lineTotal: "70000.00" }],
+        payment: { method: "cash", amount: "70000.00" }
+      } };
+    };
+  `, ctx);
+  runInContext("printPaidReceipt()", ctx);
+  assert.equal(printCalls, 0, "unverified receipt cannot print");
+  await runInContext('loadPaidReceipt("order-A")', ctx);
+  assert.equal(el("paidReceipt").classList.contains("hidden"), false);
+  assert.equal(el("receiptStore").textContent, "CafeOS Shop");
+  assert.match(el("receiptMeta").textContent, /C-0088/);
+  assert.equal(el("receiptLines").children.length, 1);
+  assert.match(el("receiptLines").children[0].children[0].textContent, /<img src=x onerror=alert\(1\)>/);
+  assert.match(el("receiptTotal").textContent, /70/);
+  assert.equal(el("printPaidReceipt").disabled, false);
+  runInContext("printPaidReceipt()", ctx);
+  assert.equal(printCalls, 1, "print is always initiated by the cashier");
+  runInContext("clearPaidReceipt()", ctx);
+  assert.equal(el("receiptLines").children.length, 0);
+  assert.equal(el("printPaidReceipt").disabled, true);
+  runInContext("printPaidReceipt()", ctx);
+  assert.equal(printCalls, 1);
+});
+
+test("late paid receipt from old Store is discarded and receipt GET failure never retries payment", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const inline = html.split("<script>")[1]?.split("</script>")[0];
+  const dom = new Map();
+  function el(id) {
+    if (!dom.has(id)) dom.set(id, {
+      value: "", textContent: "", disabled: false, dataset: {},
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener() {}, replaceChildren() {}, append() {}
+    });
+    return dom.get(id);
+  }
+  const waiting = [];
+  const ctx = createContext({
+    document: { getElementById: el, querySelectorAll: () => [],
+      createElement: () => ({ textContent: "", append() {} }) },
+    window: { confirm: () => false, print() {} },
+    fetch: async () => ({ ok: true, json: async () => ({
+      supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test"
+    }) }),
+    deferred: path => new Promise(resolve => waiting.push({ path, resolve })),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "test" }
+  });
+  runInContext(inline, ctx);
+  runInContext(`
+    sessionToken = "jwt"; currentTenantId = "tenant-A";
+    currentTenantRole = "cashier"; currentStoreId = "store-A";
+    appFetch = deferred;
+    loadMenu = async () => {};
+    loadDashboard = async () => {};
+    loadOptionalControlTower = async () => true;
+  `, ctx);
+  const obsolete = runInContext('loadPaidReceipt("order-A")', ctx);
+  assert.equal(waiting.length, 1);
+  el("store").value = "store-B";
+  await runInContext("refreshStore()", ctx);
+  waiting[0].resolve({ receipt: {
+    orderId: "order-A", storeId: "store-A", status: "paid",
+    items: [{ name: "Old", quantity: 1 }], payment: { method: "cash" }
+  } });
+  await obsolete;
+  assert.equal(runInContext("paidReceiptState", ctx), null);
+  assert.equal(el("printPaidReceipt").disabled, true);
+  assert.equal(el("receiptStore").textContent, "");
+
+  runInContext('appFetch = async () => { throw new Error("Network offline"); }', ctx);
+  await runInContext('loadPaidReceipt("order-B")', ctx);
+  assert.equal(runInContext("paidReceiptState", ctx), null);
+  assert.equal(el("printPaidReceipt").disabled, true);
+  assert.match(el("receiptMessage").textContent, /không ghi Payment lần nữa/);
+  assert.equal(waiting.length, 1, "receipt lookup failure must not issue any payment call");
+});
