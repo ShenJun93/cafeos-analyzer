@@ -96,9 +96,16 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
     if (path === "/rest/v1/pos_orders") {
       assert.equal(url.searchParams.get("tenant_id"), "eq." + TENANT);
       if (url.searchParams.get("id")) {
-        return json(order && url.searchParams.get("id") === "eq." + ORDER
-          ? [{ id: order.id, store_id: STORE, status: order.status, total: order.total }]
-          : []);
+        if (!order || url.searchParams.get("id") !== "eq." + ORDER
+            || (url.searchParams.get("store_id") && url.searchParams.get("store_id") !== "eq." + STORE)) {
+          return json([]);
+        }
+        const receiptRead = url.searchParams.get("select")?.includes("order_number");
+        return json(receiptRead
+          ? [{ id: order.id, store_id: STORE, order_number: order.orderNumber,
+            channel: "counter", business_date: DATE, status: order.status,
+            total: order.total, paid_at: order.status === "paid" ? DATE + "T08:30:00Z" : null }]
+          : [{ id: order.id, store_id: STORE, status: order.status, total: order.total }]);
       }
       assert.equal(url.searchParams.get("status"), "eq.open");
       assert.equal(url.searchParams.get("store_id"), "eq." + STORE);
@@ -108,6 +115,21 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
           status: "open", total: order.total, created_at: DATE + "T07:00:00Z"
         }]
         : []);
+    }
+    if (path === "/rest/v1/pos_order_items") {
+      assert.equal(url.searchParams.get("tenant_id"), "eq." + TENANT);
+      assert.equal(url.searchParams.get("order_id"), "eq." + ORDER);
+      return json([{ id: "line-1", order_id: ORDER,
+        item_name: "Latte", unit_price: "35000.00", quantity: "2.000",
+        line_total: "70000.00" }]);
+    }
+    if (path === "/rest/v1/pos_payments") {
+      assert.equal(url.searchParams.get("tenant_id"), "eq." + TENANT);
+      assert.equal(url.searchParams.get("order_id"), "eq." + ORDER);
+      return json(payment ? [{
+        order_id: ORDER, amount: payment.amount, method: payment.method,
+        status: "captured", paid_at: DATE + "T08:30:00Z"
+      }] : []);
     }
     if (path === "/rest/v1/rpc/commerce_capture_payment") {
       assert.equal(body.p_tenant_id, TENANT);
@@ -273,6 +295,21 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
     const status = await call("/api/app/commerce-order-status?orderId=" + ORDER);
     assert.equal(status.status, 200);
     assert.equal(status.body.order.status, "paid");
+    const receipt = await call("/api/app/commerce-receipt?orderId=" + ORDER + "&storeId=" + STORE);
+    assert.equal(receipt.status, 200);
+    assert.equal(receipt.body.receipt.orderId, ORDER);
+    assert.equal(receipt.body.receipt.storeName, "Test Store");
+    assert.equal(receipt.body.receipt.orderNumber, "C-0001");
+    assert.equal(receipt.body.receipt.total, 70000);
+    assert.equal(receipt.body.receipt.items[0].unitPrice, "35000.00");
+    assert.equal(receipt.body.receipt.items[0].quantity, "2.000");
+    assert.equal(receipt.body.receipt.payment.method, "cash");
+    const viewerReceipt = await call("/api/app/commerce-receipt?orderId=" + ORDER + "&storeId=" + STORE, "viewer-token");
+    assert.equal(viewerReceipt.status, 403);
+    const anonymousReceipt = await fetch(base + "/api/app/commerce-receipt?orderId=" + ORDER + "&storeId=" + STORE);
+    assert.equal(anonymousReceipt.status, 401);
+    const wrongStoreReceipt = await call("/api/app/commerce-receipt?orderId=" + ORDER + "&storeId=" + OTHER);
+    assert.equal(wrongStoreReceipt.status, 404);
     const second = await call("/api/app/commerce-payment", "cashier-token", "POST",
       { orderId: ORDER, method: "cash", amount: 70000 });
     assert.equal(second.status, 409);

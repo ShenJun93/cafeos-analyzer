@@ -8,6 +8,7 @@ import { handle as menuHandle } from '../../server/commerce/menu.mjs';
 import { handle as orderHandle } from '../../server/commerce/order.mjs';
 import { handle as paymentHandle } from '../../server/commerce/payment.mjs';
 import { handle as orderStatusHandle } from '../../server/commerce/order-status.mjs';
+import { handle as receiptHandle } from '../../server/commerce/receipt.mjs';
 import { handle as openOrdersHandle } from '../../server/commerce/open-orders.mjs';
 import { handle as dashboardHandle } from '../../server/commerce/dashboard.mjs';
 import { handle as dailyCloseHandle } from '../../server/commerce/daily-close.mjs';
@@ -22,6 +23,7 @@ export const WORKFLOW_ROUTES = Object.freeze({
   'commerce-order': orderHandle,
   'commerce-payment': paymentHandle,
   'commerce-order-status': orderStatusHandle,
+  'commerce-receipt': receiptHandle,
   'commerce-open-orders': openOrdersHandle,
   'commerce-dashboard': dashboardHandle,
   'commerce-daily-close': dailyCloseHandle

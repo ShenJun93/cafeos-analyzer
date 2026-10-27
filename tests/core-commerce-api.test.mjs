@@ -11,6 +11,7 @@ import { handle as menuHandle } from "../server/commerce/menu.mjs";
 import { handle as orderHandle } from "../server/commerce/order.mjs";
 import { handle as paymentHandle } from "../server/commerce/payment.mjs";
 import { handle as orderStatusHandle } from "../server/commerce/order-status.mjs";
+import { handle as receiptHandle } from "../server/commerce/receipt.mjs";
 import { handle as openOrdersHandle } from "../server/commerce/open-orders.mjs";
 import { handle as dashboardHandle } from "../server/commerce/dashboard.mjs";
 import { handle as dailyCloseHandle } from "../server/commerce/daily-close.mjs";
@@ -407,6 +408,7 @@ test("workflow dispatcher maps commerce routes without adding another Vercel API
     "commerce-order",
     "commerce-payment",
     "commerce-order-status",
+    "commerce-receipt",
     "commerce-open-orders",
     "commerce-dashboard",
     "commerce-daily-close"
@@ -421,6 +423,7 @@ test("workflow dispatcher maps commerce routes without adding another Vercel API
     ["/api/app/commerce-order", "/api/app/workflow?route=commerce-order"],
     ["/api/app/commerce-payment", "/api/app/workflow?route=commerce-payment"],
     ["/api/app/commerce-order-status", "/api/app/workflow?route=commerce-order-status"],
+    ["/api/app/commerce-receipt", "/api/app/workflow?route=commerce-receipt"],
     ["/api/app/commerce-open-orders", "/api/app/workflow?route=commerce-open-orders"],
     ["/api/app/commerce-dashboard", "/api/app/workflow?route=commerce-dashboard"],
     ["/api/app/commerce-daily-close", "/api/app/workflow?route=commerce-daily-close"]
@@ -635,5 +638,117 @@ test("Payment amount rejects invalid scale/types but accepts common floating-dec
     }), response, { env, fetchImpl: authFetch("cashier") });
     assert.equal(response.statusCode, 400, "Payment must reject: " + String(amount));
     assert.equal(parsed(response).error.code, "COMMERCE_PAYMENT_AMOUNT_INVALID");
+  }
+});
+
+
+test("paid receipt reads Store/Tenant-scoped immutable items and payment without any writes", async () => {
+  const calls = [];
+  const paidAt = "2026-10-27T09:30:00Z";
+  const business = async (url, init) => {
+    calls.push({ url, method: init.method ?? "GET" });
+    assert.equal(url.searchParams.get("tenant_id"), "eq." + TENANT_A);
+    if (url.pathname === "/rest/v1/pos_orders") {
+      assert.equal(url.searchParams.get("id"), "eq." + ORDER_A);
+      assert.equal(url.searchParams.get("store_id"), "eq." + STORE_A);
+      return jsonResponse([{ id: ORDER_A, store_id: STORE_A, order_number: "C-0042",
+        channel: "counter", business_date: "2026-10-27", status: "paid",
+        total: "70000.00", paid_at: paidAt }]);
+    }
+    if (url.pathname === "/rest/v1/pos_order_items") {
+      assert.equal(url.searchParams.get("order_id"), "eq." + ORDER_A);
+      return jsonResponse([{ id: "line-1", order_id: ORDER_A,
+        item_name: "Cà phê sữa & <script>unsafe</script>", unit_price: "35000.00",
+        quantity: "2.000", line_total: "70000.00" }]);
+    }
+    if (url.pathname === "/rest/v1/pos_payments") {
+      assert.equal(url.searchParams.get("order_id"), "eq." + ORDER_A);
+      assert.equal(url.searchParams.get("status"), "eq.captured");
+      return jsonResponse([{ order_id: ORDER_A, method: "cash",
+        amount: "70000.00", status: "captured", paid_at: paidAt }]);
+    }
+    if (url.pathname === "/rest/v1/stores") {
+      assert.equal(url.searchParams.get("id"), "eq." + STORE_A);
+      return jsonResponse([{ id: STORE_A, name: "CafeOS Test Store" }]);
+    }
+    throw new Error("Unexpected receipt read " + url.pathname);
+  };
+  const response = res();
+  await receiptHandle(req(authHeaders, "GET",
+    "/api/app/commerce-receipt?orderId=" + ORDER_A + "&storeId=" + STORE_A),
+  response, { env, fetchImpl: authFetch("cashier", business) });
+  assert.equal(response.statusCode, 200);
+  const receipt = parsed(response).receipt;
+  assert.equal(receipt.status, "paid");
+  assert.equal(receipt.orderNumber, "C-0042");
+  assert.equal(receipt.total, "70000.00");
+  assert.equal(receipt.items[0].name, "Cà phê sữa & <script>unsafe</script>");
+  assert.equal(receipt.items[0].unitPrice, "35000.00");
+  assert.deepEqual(receipt.payment, { method: "cash", amount: "70000.00", paidAt });
+  assert.deepEqual(calls.map(x => x.url.pathname).sort(), [
+    "/rest/v1/pos_order_items", "/rest/v1/pos_orders",
+    "/rest/v1/pos_payments", "/rest/v1/stores"
+  ]);
+  assert.ok(calls.every(x => x.method === "GET"), "receipt must not write a commerce record");
+});
+
+test("paid receipt refuses role misuse, cross-store, unpaid, missing and partial evidence", async () => {
+  const route = "/api/app/commerce-receipt?orderId=" + ORDER_A + "&storeId=" + STORE_A;
+  let calls = 0;
+  const order = {
+    id: ORDER_A, store_id: STORE_A, order_number: "C-0042",
+    channel: "counter", business_date: "2026-10-27", status: "paid",
+    total: "70000.00", paid_at: "2026-10-27T09:30:00Z"
+  };
+  const payments = [{ order_id: ORDER_A, method: "cash", amount: "70000.00",
+    status: "captured", paid_at: order.paid_at }];
+  const lines = [{ id: "line-1", order_id: ORDER_A, item_name: "Latte",
+    unit_price: "35000.00", quantity: 2, line_total: "70000.00" }];
+  const fake = (orderRows, itemRows = lines, payRows = payments) => authFetch("cashier", async url => {
+    calls++;
+    if (url.pathname === "/rest/v1/pos_orders") return jsonResponse(orderRows);
+    if (url.pathname === "/rest/v1/pos_order_items") return jsonResponse(itemRows);
+    if (url.pathname === "/rest/v1/pos_payments") return jsonResponse(payRows);
+    if (url.pathname === "/rest/v1/stores") return jsonResponse([{ id: STORE_A, name: "Store A" }]);
+    return jsonResponse({}, 500);
+  });
+  for (const [url, code] of [
+    ["/api/app/commerce-receipt?storeId=" + STORE_A + "&orderId=nope", "COMMERCE_ORDER_INVALID"],
+    ["/api/app/commerce-receipt?orderId=" + ORDER_A + "&storeId=nope", "COMMERCE_STORE_INVALID"]
+  ]) {
+    const response = res();
+    await receiptHandle(req(authHeaders, "GET", url), response, { env, fetchImpl: fake([order]) });
+    assert.equal(response.statusCode, 400);
+    assert.equal(parsed(response).error.code, code);
+  }
+  assert.equal(calls, 0, "invalid identifiers must be rejected before DB reads");
+
+  const viewer = res();
+  await receiptHandle(req(authHeaders, "GET", route), viewer,
+    { env, fetchImpl: authFetch("viewer") });
+  assert.equal(viewer.statusCode, 403);
+  const anonymous = res();
+  await receiptHandle(req({}, "GET", route), anonymous,
+    { env, fetchImpl: fake([order]) });
+  assert.equal(anonymous.statusCode, 401);
+  const method = res();
+  await receiptHandle(req(authHeaders, "POST", route, {}), method,
+    { env, fetchImpl: fake([order]) });
+  assert.equal(method.statusCode, 405);
+  assert.equal(method.headers.allow, "GET");
+
+  for (const [orderRows, itemRows, payRows, status, code] of [
+    [[], lines, payments, 404, "COMMERCE_ORDER_NOT_FOUND"],
+    [[{ ...order, status: "open" }], lines, payments, 409, "COMMERCE_RECEIPT_NOT_PAID"],
+    [[order], [], payments, 502, "COMMERCE_RECEIPT_INCOMPLETE"],
+    [[order], lines, [], 502, "COMMERCE_RECEIPT_INCOMPLETE"],
+    [[order], lines, [...payments, ...payments], 502, "COMMERCE_RECEIPT_INCOMPLETE"],
+    [[order], [{ ...lines[0], order_id: STORE_A }], payments, 502, "COMMERCE_RECEIPT_INCOMPLETE"]
+  ]) {
+    const response = res();
+    await receiptHandle(req(authHeaders, "GET", route), response,
+      { env, fetchImpl: fake(orderRows, itemRows, payRows) });
+    assert.equal(response.statusCode, status);
+    assert.equal(parsed(response).error.code, code);
   }
 });
