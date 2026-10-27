@@ -792,13 +792,32 @@ test("paid receipt reconciles items, discounts, tax, and captured payment in exa
   assert.equal(adjusted.statusCode, 200, "legitimate discounts and taxes remain printable");
   assert.equal(parsed(adjusted).receipt.discountTotal, "5000.07");
   assert.equal(parsed(adjusted).receipt.taxTotal, "2000.29");
+
+  // PostgreSQL generates numeric(18,2) line_total from numeric(18,2) price
+  // multiplied by numeric(12,3) quantity: positive half-cent ties round up.
+  const fractional = await probe({ ...base, subtotal: "70000.01", total: "70000.01" }, [
+    item,
+    { ...item, id: "line-half-cent", unit_price: "0.01",
+      quantity: "0.500", line_total: "0.01" },
+    { ...item, id: "line-below-half", unit_price: "0.01",
+      quantity: "0.499", line_total: "0.00" }
+  ], "70000.01");
+  assert.equal(fractional.statusCode, 200,
+    "valid PostgreSQL numeric(18,2) rounding remains printable");
+  assert.equal(parsed(fractional).receipt.items.length, 3);
+
   for (const [order, items, amount] of [
     [{ ...base, total: "69999.99" }, [item], "69999.99"],
     [{ ...base, subtotal: "69999.99" }, [item], "70000.00"],
     [base, [ { ...item, line_total: "69999.99" } ], "70000.00"],
     [base, [item], "69999.99"],
     [{ ...base, total: "NaN" }, [item], "70000.00"],
-    [base, [ { ...item, unit_price: "malformed" } ], "70000.00"]
+    [base, [ { ...item, unit_price: "malformed" } ], "70000.00"],
+    [base, [ { ...item, unit_price: "35001.00" } ], "70000.00"],
+    [base, [ { ...item, quantity: "1.999" } ], "70000.00"],
+    [base, [ { ...item, quantity: "2.0001" } ], "70000.00"],
+    [base, [ { ...item, quantity: "0.000" } ], "70000.00"],
+    [base, [ { ...item, quantity: true } ], "70000.00"]
   ]) {
     const response = await probe(order, items, amount);
     assert.equal(response.statusCode, 502);
