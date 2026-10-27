@@ -816,7 +816,9 @@ async function submitOrder() {
       cartState.clear();
       currentOrder = null;
       renderCart();
-      await loadPaidReceipt(paidId);
+      // Receipt reading is optional and must not delay confirmed settlement
+      // or its Dashboard reconciliation. It has its own stale-context guards.
+      void loadPaidReceipt(paidId);
       await refreshDashboardAfterSale("Order " + paidNumber + " đã được thanh toán từ lần trước.");
       return;
     }
@@ -872,7 +874,8 @@ async function capturePayment() {
     cartState.clear();
     currentOrder = null;
     renderCart();
-    await loadPaidReceipt(attemptedOrderId);
+    // A slow printer/receipt read is independent of PAID settlement truth.
+    void loadPaidReceipt(attemptedOrderId);
     await refreshDashboardAfterSale(
       recovered
         ? "Đã xác nhận payment thành công từ trạng thái server sau lỗi phản hồi."
