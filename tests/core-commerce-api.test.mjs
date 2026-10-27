@@ -304,7 +304,7 @@ test("POS order confirmation requires original Tenant, Store, idempotency intent
     items: [{ menuItemId: ITEM_A, quantity: 1 }]
   };
   const invalid = [
-    { ...valid, order: { ...valid.order, id: STORE_A } },
+    { ...valid, order: { ...valid.order, id: "bad-order-uuid" } },
     { ...valid, order: { ...valid.order, tenantId: "20000000-0000-4000-8000-000000000002" } },
     { ...valid, order: { ...valid.order, storeId: "21000000-0000-4000-8000-000000000002" } },
     { ...valid, order: { ...valid.order, clientOrderKey: "another-intent" } },
