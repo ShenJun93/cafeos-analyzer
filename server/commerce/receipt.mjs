@@ -97,6 +97,7 @@ export async function handle(req, res, deps = {}) {
         || !Array.isArray(payments) || payments.length !== 1
         || payments[0].order_id !== orderId || payments[0].status !== "captured"
         || payments[0].amount == null || !payments[0].method
+        || !payments[0].paid_at || payments[0].paid_at !== order.paid_at
         || !Array.isArray(stores) || stores.length !== 1
         || stores[0].id !== storeId || !stores[0].name
         || !order.order_number || order.total == null || !order.paid_at) {
