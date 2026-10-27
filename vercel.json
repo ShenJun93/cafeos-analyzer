@@ -32,6 +32,10 @@
       "destination": "/api/app/workflow?route=commerce-open-orders"
     },
     {
+      "source": "/api/app/commerce-paid-orders",
+      "destination": "/api/app/workflow?route=commerce-paid-orders"
+    },
+    {
       "source": "/api/app/commerce-dashboard",
       "destination": "/api/app/workflow?route=commerce-dashboard"
     },

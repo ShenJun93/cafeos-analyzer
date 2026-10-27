@@ -1627,3 +1627,144 @@ test("late paid receipt from old Store is discarded and receipt GET failure neve
   assert.match(el("receiptMessage").textContent, /không ghi Payment lần nữa/);
   assert.equal(waiting.length, 1, "receipt lookup failure must not issue any payment call");
 });
+
+test("paid-order reprint list renders authorized settled receipts and paginates without commerce writes", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  assert.match(html, /id="browsePaidOrders"/);
+  assert.match(html, /id="paidOrderList"/);
+  const script = html.split("<script>")[1]?.split("</script>")[0];
+  const elements = new Map();
+  function newElement() {
+    return {
+      value: "", textContent: "", disabled: false, dataset: {}, className: "",
+      children: [], listeners: {},
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener(name, cb) { this.listeners[name] = cb; },
+      replaceChildren(...items) { this.children = [...items]; },
+      append(...items) { this.children.push(...items); },
+      querySelector(sel) {
+        return this.children.find(x => x.className?.includes(sel.slice(1))) || null;
+      },
+      remove() { elements.get("paidOrderList").children =
+        elements.get("paidOrderList").children.filter(x => x !== this); }
+    };
+  }
+  const el = id => {
+    if (!elements.has(id)) elements.set(id, newElement());
+    return elements.get(id);
+  };
+  const calls = [];
+  const ctx = createContext({
+    document: { getElementById: el, querySelectorAll: () => [], createElement: newElement },
+    window: { confirm: () => false, print() {} },
+    fetch: async () => ({ ok: true, json: async () => ({
+      supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test"
+    }) }),
+    historyFetch: path => {
+      calls.push(path);
+      const row = offset => ({
+        id: "paid-" + offset, orderNumber: "C-" + offset,
+        storeId: "store-A", status: "paid", total: "35000.00",
+        paidAt: "2026-10-27T08:30:00Z", businessDate: "2026-10-27"
+      });
+      if (path.includes("offset=0")) return Promise.resolve({
+        orders: [row(0)], nextOffset: 20
+      });
+      if (path.includes("offset=20")) return Promise.resolve({
+        orders: [row(20)], nextOffset: null
+      });
+      throw new Error("Unexpected read " + path);
+    },
+    URLSearchParams, Intl, crypto: { randomUUID: () => "fixture" }
+  });
+  runInContext(script, ctx);
+  runInContext(`
+    sessionToken = "jwt"; currentTenantId = "tenant-A";
+    currentTenantRole = "cashier"; currentStoreId = "store-A";
+    appFetch = historyFetch;
+  `, ctx);
+  const first = runInContext("browsePaidOrders()", ctx);
+  assert.equal(el("browsePaidOrders").disabled, true);
+  await first;
+  assert.equal(el("browsePaidOrders").disabled, false);
+  assert.equal(el("paidOrderList").children.length, 2);
+  assert.match(el("paidOrderList").children[0].textContent, /C-0/);
+  assert.match(el("paidOrderList").children[1].textContent, /Xem thêm/);
+  assert.equal(typeof el("paidOrderList").children[0].listeners.click, "function");
+
+  await runInContext("browsePaidOrders(20)", ctx);
+  assert.equal(el("paidOrderList").children.length, 2, "remove prior More before appending");
+  assert.match(el("paidOrderList").children[1].textContent, /C-20/);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(path => path.startsWith("/api/app/commerce-paid-orders?")));
+  assert.equal(runInContext("paidReceiptState", ctx), null, "history fetch must not forge a paid receipt");
+});
+
+test("paid history drops obsolete Store responses and refuses unpaid/other-Store results", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const script = html.split("<script>")[1]?.split("</script>")[0];
+  const nodes = new Map();
+  function newNode() {
+    return {
+      value: "", textContent: "", disabled: false, dataset: {},
+      className: "", children: [],
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener() {}, replaceChildren(...xs) { this.children = [...xs]; },
+      append(...xs) { this.children.push(...xs); }
+    };
+  }
+  const el = id => {
+    if (!nodes.has(id)) nodes.set(id, newNode());
+    return nodes.get(id);
+  };
+  const pending = [];
+  const ctx = createContext({
+    document: { getElementById: el, querySelectorAll: () => [], createElement: newNode },
+    window: { confirm: () => false, print() {} },
+    fetch: async () => ({ ok: true, json: async () => ({
+      supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test"
+    }) }),
+    deferred: path => new Promise(resolve => pending.push({ path, resolve })),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "fixture" }
+  });
+  runInContext(script, ctx);
+  runInContext(`
+    sessionToken = "jwt"; currentTenantId = "tenant-A";
+    currentTenantRole = "cashier"; currentStoreId = "store-A";
+    appFetch = deferred;
+    loadMenu = async () => {};
+    loadDashboard = async () => {};
+    loadOptionalControlTower = async () => true;
+  `, ctx);
+  const row = (store, id) => ({
+    id, storeId: store, orderNumber: id, status: "paid",
+    total: 30000, paidAt: "2026-10-27T09:00:00Z", businessDate: "2026-10-27"
+  });
+  const obsolete = runInContext("browsePaidOrders()", ctx);
+  assert.equal(pending.length, 1);
+  assert.match(pending[0].path, /store-A/);
+  el("store").value = "store-B";
+  await runInContext("refreshStore()", ctx);
+  assert.equal(runInContext("paidOrdersLoadInFlight", ctx), false);
+  const fresh = runInContext("browsePaidOrders()", ctx);
+  assert.equal(pending.length, 2);
+  assert.match(pending[1].path, /store-B/);
+  pending[0].resolve({ orders: [row("store-A", "old")], nextOffset: null });
+  await obsolete;
+  assert.equal(el("paidOrderList").children.length, 0);
+  assert.equal(runInContext("paidOrdersLoadInFlight", ctx), true);
+  pending[1].resolve({ orders: [row("store-B", "new")], nextOffset: null });
+  await fresh;
+  assert.equal(el("paidOrderList").children.length, 1);
+  assert.match(el("paidOrderList").children[0].textContent, /new/);
+  assert.equal(el("browsePaidOrders").disabled, false);
+
+  runInContext('appFetch = async () => ({ orders: [{ id: "unpaid", storeId: "store-B", status: "open" }], nextOffset: null })', ctx);
+  await assert.rejects(runInContext("browsePaidOrders()", ctx), /không hợp lệ/);
+  assert.equal(el("paidOrderList").children.length, 1, "invalid response cannot replace verified history");
+  runInContext('appFetch = async () => ({ orders: [{ id: "wrong", storeId: "store-A", status: "paid" }], nextOffset: null })', ctx);
+  await assert.rejects(runInContext("browsePaidOrders()", ctx), /không hợp lệ/);
+  assert.equal(el("paidOrderList").children.length, 1);
+});

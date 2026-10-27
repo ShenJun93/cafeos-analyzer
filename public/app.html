@@ -90,6 +90,11 @@
           <button id="submitOrder" type="button" disabled>Create Order</button>
           <button id="recoverOpenOrders" type="button" class="secondary">Khôi phục đơn chưa thanh toán</button>
           <div id="openOrderList" class="open-order-list" aria-live="polite"></div>
+          <section class="paid-order-history">
+            <div class="section-label">Hóa đơn đã thanh toán</div>
+            <button id="browsePaidOrders" class="secondary" type="button">Tra cứu / in lại hóa đơn</button>
+            <div id="paidOrderList" class="open-order-list" aria-live="polite"></div>
+          </section>
 
           <section id="paymentPanel" class="payment-panel hidden">
             <div class="section-label">Settlement record</div>
@@ -386,6 +391,7 @@ function clearSessionState() {
   cartState.clear();
   menuState = { categories: [], items: [] };
   invalidateOpenOrderReads();
+  invalidatePaidOrderReads();
   clearPaidReceipt();
   for (const id of ["menuCatalog", "menuAdminList", "commerceMetrics", "paymentMix", "controlBrief"]) {
     el(id).replaceChildren();
@@ -445,6 +451,7 @@ async function loadTenant() {
   paymentSubmitInFlight = false;
   cartState.clear();
   invalidateOpenOrderReads();
+  invalidatePaidOrderReads();
   menuState = { categories: [], items: [] };
   el("menuCatalog").replaceChildren();
   el("menuAdminList").replaceChildren();
@@ -487,6 +494,7 @@ async function refreshStore() {
   el("posMenuSearch").value = "";
   el("posMenuCategory").value = "";
   invalidateOpenOrderReads();
+  invalidatePaidOrderReads();
   // Control Tower reports on imported facts and must not block first-party sales.
   // Menu and daily dashboard remain required; their failures still fail closed.
   let controlTowerReady;
@@ -811,6 +819,7 @@ async function submitOrder() {
     currentOrder = payload.order;
     pendingOrderSubmission = null;
     if (currentOrder.status === "paid") {
+      invalidatePaidOrderReads();
       const paidNumber = currentOrder.orderNumber;
       const paidId = currentOrder.id;
       cartState.clear();
@@ -870,6 +879,7 @@ async function capturePayment() {
       );
     }
     currentOrder.status = "paid";
+    invalidatePaidOrderReads();
     el("paymentPanel").classList.add("hidden");
     cartState.clear();
     currentOrder = null;
@@ -885,6 +895,82 @@ async function capturePayment() {
     paymentSubmitInFlight = false;
     renderCart();
     renderClosePreview();
+  }
+}
+
+let paidOrdersLoadInFlight = false;
+let paidOrdersReadSerial = 0;
+
+function invalidatePaidOrderReads() {
+  ++paidOrdersReadSerial;
+  paidOrdersLoadInFlight = false;
+  el("paidOrderList").replaceChildren();
+}
+
+async function browsePaidOrders(offset = 0) {
+  if (!canWriteCommerce() || !currentStoreId || paidOrdersLoadInFlight) return;
+  if (hasUnfinishedCheckout()) {
+    return setStatus("Hoàn tất hoặc xác minh đơn đang xử lý trước khi tra cứu hóa đơn khác.", "error");
+  }
+  const serial = ++paidOrdersReadSerial;
+  const epoch = viewEpoch;
+  const tenant = currentTenantId;
+  const store = currentStoreId;
+  const token = sessionToken;
+  const stillCurrent = () => serial === paidOrdersReadSerial && epoch === viewEpoch
+    && tenant === currentTenantId && store === currentStoreId && token === sessionToken;
+  const root = el("paidOrderList");
+  paidOrdersLoadInFlight = true;
+  el("browsePaidOrders").disabled = true;
+  try {
+    const payload = await appFetch(
+      "/api/app/commerce-paid-orders?storeId=" + encodeURIComponent(store)
+      + "&offset=" + offset
+    );
+    if (!stillCurrent()) return;
+    if (!Array.isArray(payload?.orders) || payload.orders.length > 20
+        || payload.orders.some(order => !order?.id || order.storeId !== store
+          || order.status !== "paid" || !order.orderNumber
+          || order.total == null || !order.paidAt || !order.businessDate)
+        || (payload.nextOffset !== null && payload.nextOffset !== undefined
+          && (!Number.isInteger(payload.nextOffset)
+            || payload.nextOffset !== offset + 20 || payload.nextOffset > 10020))) {
+      throw new Error("Dữ liệu lịch sử hóa đơn không hợp lệ");
+    }
+    if (offset === 0) root.replaceChildren();
+    else {
+      const more = root.querySelector(".paid-order-more");
+      if (more) more.remove();
+    }
+    if (!payload.orders.length && offset === 0) {
+      root.textContent = "Chưa có hóa đơn đã thanh toán ở Store này.";
+      return;
+    }
+    for (const order of payload.orders) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary";
+      button.textContent = (order.orderNumber || order.id) + " · "
+        + money(order.total) + " · " + order.businessDate;
+      button.addEventListener("click", () => guarded(() => loadPaidReceipt(order.id)));
+      root.append(button);
+    }
+    if (payload.nextOffset !== null && payload.nextOffset !== undefined) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "secondary paid-order-more";
+      more.textContent = "Xem thêm hóa đơn cũ";
+      more.addEventListener("click", () => guarded(() => browsePaidOrders(payload.nextOffset)));
+      root.append(more);
+    }
+    setStatus("Chọn hóa đơn đã thanh toán để xem và in lại.", "ok");
+  } catch (error) {
+    if (stillCurrent()) throw error;
+  } finally {
+    if (serial === paidOrdersReadSerial) {
+      paidOrdersLoadInFlight = false;
+      el("browsePaidOrders").disabled = false;
+    }
   }
 }
 
@@ -1265,6 +1351,7 @@ el("submitOrder").addEventListener("click", () => guarded(submitOrder));
 el("capturePayment").addEventListener("click", () => guarded(capturePayment));
 el("printPaidReceipt").addEventListener("click", printPaidReceipt);
 el("recoverOpenOrders").addEventListener("click", () => guarded(() => loadOpenOrdersForRecovery()));
+el("browsePaidOrders").addEventListener("click", () => guarded(() => browsePaidOrders()));
 el("categoryForm").addEventListener("submit", event => guarded(() => createCategory(event)));
 el("itemForm").addEventListener("submit", event => guarded(() => createItem(event)));
 el("closeDay").addEventListener("click", () => guarded(closeBusinessDay));

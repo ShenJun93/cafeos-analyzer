@@ -10,6 +10,7 @@ import { handle as paymentHandle } from '../../server/commerce/payment.mjs';
 import { handle as orderStatusHandle } from '../../server/commerce/order-status.mjs';
 import { handle as receiptHandle } from '../../server/commerce/receipt.mjs';
 import { handle as openOrdersHandle } from '../../server/commerce/open-orders.mjs';
+import { handle as paidOrdersHandle } from '../../server/commerce/paid-orders.mjs';
 import { handle as dashboardHandle } from '../../server/commerce/dashboard.mjs';
 import { handle as dailyCloseHandle } from '../../server/commerce/daily-close.mjs';
 
@@ -25,6 +26,7 @@ export const WORKFLOW_ROUTES = Object.freeze({
   'commerce-order-status': orderStatusHandle,
   'commerce-receipt': receiptHandle,
   'commerce-open-orders': openOrdersHandle,
+  'commerce-paid-orders': paidOrdersHandle,
   'commerce-dashboard': dashboardHandle,
   'commerce-daily-close': dailyCloseHandle
 });

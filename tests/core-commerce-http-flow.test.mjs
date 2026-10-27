@@ -107,12 +107,16 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
             total: order.total, paid_at: order.status === "paid" ? DATE + "T08:30:00Z" : null }]
           : [{ id: order.id, store_id: STORE, status: order.status, total: order.total }]);
       }
-      assert.equal(url.searchParams.get("status"), "eq.open");
       assert.equal(url.searchParams.get("store_id"), "eq." + STORE);
-      return json(order?.status === "open" && url.searchParams.get("offset") !== "20"
+      const filter = url.searchParams.get("status");
+      assert.ok(["eq.open", "eq.paid"].includes(filter), "only read open or paid orders");
+      const expectedStatus = filter.slice(3);
+      return json(order?.status === expectedStatus && url.searchParams.get("offset") !== "20"
         ? [{
           id: ORDER, store_id: STORE, order_number: "C-0001", channel: "counter",
-          status: "open", total: order.total, created_at: DATE + "T07:00:00Z"
+          status: expectedStatus, total: order.total, created_at: DATE + "T07:00:00Z",
+          paid_at: expectedStatus === "paid" ? DATE + "T08:30:00Z" : null,
+          business_date: DATE
         }]
         : []);
     }
@@ -317,6 +321,18 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
     const after = await call("/api/app/commerce-open-orders?storeId=" + STORE);
     assert.equal(after.status, 200);
     assert.deepEqual(after.body.orders, []);
+    const paidList = await call("/api/app/commerce-paid-orders?storeId=" + STORE);
+    assert.equal(paidList.status, 200);
+    assert.deepEqual(paidList.body.orders.map(x => x.id), [ORDER]);
+    assert.equal(paidList.body.orders[0].status, "paid");
+    assert.equal(paidList.body.nextOffset, null);
+    const paidPaged = await call("/api/app/commerce-paid-orders?storeId=" + STORE + "&offset=20");
+    assert.equal(paidPaged.status, 200);
+    assert.deepEqual(paidPaged.body.orders, []);
+    const viewerPaid = await call("/api/app/commerce-paid-orders?storeId=" + STORE, "viewer-token");
+    assert.equal(viewerPaid.status, 403);
+    const anonymousPaid = await fetch(base + "/api/app/commerce-paid-orders?storeId=" + STORE);
+    assert.equal(anonymousPaid.status, 401);
 
     const dashboard = await call("/api/app/commerce-dashboard?storeId=" + STORE);
     assert.equal(dashboard.status, 200);

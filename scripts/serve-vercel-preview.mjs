@@ -44,6 +44,7 @@ const workflowRoutes = new Map([
   ['/api/app/commerce-order-status', 'commerce-order-status'],
   ['/api/app/commerce-receipt', 'commerce-receipt'],
   ['/api/app/commerce-open-orders', 'commerce-open-orders'],
+  ['/api/app/commerce-paid-orders', 'commerce-paid-orders'],
   ['/api/app/commerce-dashboard', 'commerce-dashboard'],
   ['/api/app/commerce-daily-close', 'commerce-daily-close']
 ]);

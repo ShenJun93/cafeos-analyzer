@@ -388,3 +388,7 @@ textarea{min-height:110px;resize:vertical}
   body.commerce-body .receipt-line{break-inside:avoid;font-size:12px}
   body.commerce-body .receipt-line strong{white-space:normal}
 }
+
+.paid-order-history{margin-top:18px;padding-top:15px;border-top:1px solid var(--line)}
+.paid-order-history .section-label{margin-bottom:8px}
+.paid-order-history > button{width:100%;min-height:44px}

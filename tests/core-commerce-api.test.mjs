@@ -13,6 +13,7 @@ import { handle as paymentHandle } from "../server/commerce/payment.mjs";
 import { handle as orderStatusHandle } from "../server/commerce/order-status.mjs";
 import { handle as receiptHandle } from "../server/commerce/receipt.mjs";
 import { handle as openOrdersHandle } from "../server/commerce/open-orders.mjs";
+import { handle as paidOrdersHandle } from "../server/commerce/paid-orders.mjs";
 import { handle as dashboardHandle } from "../server/commerce/dashboard.mjs";
 import { handle as dailyCloseHandle } from "../server/commerce/daily-close.mjs";
 
@@ -410,6 +411,7 @@ test("workflow dispatcher maps commerce routes without adding another Vercel API
     "commerce-order-status",
     "commerce-receipt",
     "commerce-open-orders",
+    "commerce-paid-orders",
     "commerce-dashboard",
     "commerce-daily-close"
   ]) {
@@ -425,6 +427,7 @@ test("workflow dispatcher maps commerce routes without adding another Vercel API
     ["/api/app/commerce-order-status", "/api/app/workflow?route=commerce-order-status"],
     ["/api/app/commerce-receipt", "/api/app/workflow?route=commerce-receipt"],
     ["/api/app/commerce-open-orders", "/api/app/workflow?route=commerce-open-orders"],
+    ["/api/app/commerce-paid-orders", "/api/app/workflow?route=commerce-paid-orders"],
     ["/api/app/commerce-dashboard", "/api/app/workflow?route=commerce-dashboard"],
     ["/api/app/commerce-daily-close", "/api/app/workflow?route=commerce-daily-close"]
   ]);
@@ -750,5 +753,97 @@ test("paid receipt refuses role misuse, cross-store, unpaid, missing and partial
       { env, fetchImpl: fake(orderRows, itemRows, payRows) });
     assert.equal(response.statusCode, status);
     assert.equal(parsed(response).error.code, code);
+  }
+});
+
+test("paid-order receipt browse is tenant/store scoped, limited, and read-only", async () => {
+  const rows = Array.from({ length: 21 }, (_, i) => ({
+    id: "16000000-0000-4000-8000-" + String(i+1).padStart(12, "0"),
+    store_id: STORE_A, order_number: "C-" + i, status: "paid",
+    total: "35000.00", paid_at: "2026-10-27T09:00:00Z",
+    business_date: "2026-10-27"
+  }));
+  let reads = 0;
+  const deps = {
+    env,
+    fetchImpl: authFetch("cashier", async (url, init) => {
+      reads++;
+      assert.equal(init.method ?? "GET", "GET");
+      assert.equal(url.pathname, "/rest/v1/pos_orders");
+      assert.equal(url.searchParams.get("tenant_id"), "eq." + TENANT_A);
+      assert.equal(url.searchParams.get("store_id"), "eq." + STORE_A);
+      assert.equal(url.searchParams.get("status"), "eq.paid");
+      assert.equal(url.searchParams.get("order"), "paid_at.desc,id.desc");
+      assert.equal(url.searchParams.get("limit"), "21");
+      assert.equal(url.searchParams.get("select"),
+        "id,order_number,store_id,status,total,paid_at,business_date");
+      return jsonResponse(rows);
+    })
+  };
+  const uri = "/api/app/commerce-paid-orders?storeId=" + STORE_A;
+  const first = res();
+  await paidOrdersHandle(req(authHeaders, "GET", uri), first, deps);
+  assert.equal(first.statusCode, 200);
+  assert.equal(parsed(first).orders.length, 20);
+  assert.equal(parsed(first).nextOffset, 20);
+  assert.equal(parsed(first).orders[0].orderNumber, "C-0");
+  const next = res();
+  await paidOrdersHandle(req(authHeaders, "GET", uri + "&offset=20"), next, deps);
+  assert.equal(next.statusCode, 200);
+  assert.equal(parsed(next).nextOffset, 40);
+  assert.equal(reads, 2, "exactly one scoped read per page");
+
+  for (const offset of ["-1", "10001", "1.5", "foo", "001"]) {
+    const invalid = res();
+    await paidOrdersHandle(req(authHeaders, "GET", uri + "&offset=" + offset), invalid, deps);
+    assert.equal(invalid.statusCode, 400);
+    assert.equal(parsed(invalid).error.code, "COMMERCE_PAID_ORDERS_OFFSET_INVALID");
+  }
+  for (const [path, code] of [
+    ["/api/app/commerce-paid-orders?storeId=not-uuid", "COMMERCE_STORE_INVALID"]
+  ]) {
+    const invalid = res();
+    await paidOrdersHandle(req(authHeaders, "GET", path), invalid, deps);
+    assert.equal(invalid.statusCode, 400);
+    assert.equal(parsed(invalid).error.code, code);
+  }
+  assert.equal(reads, 2, "invalid queries must not reach paid-order data");
+});
+
+test("paid-order browsing denies unauthorized callers and fails closed on malformed upstream rows", async () => {
+  const uri = "/api/app/commerce-paid-orders?storeId=" + STORE_A;
+  for (const [headers, role, expected] of [
+    [authHeaders, "viewer", 403],
+    [{}, "cashier", 401]
+  ]) {
+    const response = res();
+    await paidOrdersHandle(req(headers, "GET", uri), response,
+      { env, fetchImpl: authFetch(role) });
+    assert.equal(response.statusCode, expected);
+  }
+  const notGet = res();
+  await paidOrdersHandle(req(authHeaders, "POST", uri, {}), notGet,
+    { env, fetchImpl: authFetch("cashier") });
+  assert.equal(notGet.statusCode, 405);
+  const expected = {
+    id: ORDER_A, store_id: STORE_A, order_number: "C-1",
+    total: "35000.00", status: "paid",
+    business_date: "2026-10-27", paid_at: "2026-10-27T08:30:00Z"
+  };
+  const responses = [
+    [{ ...expected, store_id: TENANT_A }],
+    [{ ...expected, status: "open" }],
+    [{ ...expected, paid_at: null }],
+    [{ ...expected, order_number: "" }],
+    Array.from({ length: 22 }, () => expected),
+    { orders: [expected] }
+  ];
+  for (const payload of responses) {
+    const response = res();
+    await paidOrdersHandle(req(authHeaders, "GET", uri), response, {
+      env, fetchImpl: authFetch("cashier", async () => jsonResponse(payload))
+    });
+    assert.equal(response.statusCode, 502, "untrusted paid list must fail closed");
+    assert.equal(parsed(response).error.code, "SUPABASE_UPSTREAM");
   }
 });
