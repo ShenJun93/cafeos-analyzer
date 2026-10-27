@@ -1,5 +1,13 @@
 import { AppHttpError, appContext, appError, appJson, onlyGet, supabaseJson } from "../../api/_app-auth.mjs";
-import { requiredUuid } from "./_shared.mjs";
+import { requiredUuid, UUID_RE } from "./_shared.mjs";
+
+function validSettlementTotal(value) {
+  if ((typeof value !== "string" && typeof value !== "number")
+      || (typeof value === "number" && !Number.isFinite(value))) return false;
+  const raw = String(value);
+  return /^(?:0|[1-9][0-9]*)(?:[.][0-9]{1,2})?$/.test(raw)
+    && Number(raw) > 0 && Number(raw) <= 1000000000000;
+}
 
 // A read-only, authenticated status check to resolve ambiguous payment responses.
 export async function handle(req, res, deps = {}) {
@@ -17,9 +25,15 @@ export async function handle(req, res, deps = {}) {
     const rows = await supabaseJson("/rest/v1/pos_orders?" + params, {
       token: ctx.token, ...deps
     });
-    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!Array.isArray(rows) || rows.length > 1) {
+      throw new AppHttpError(502, "SUPABASE_UPSTREAM", "Invalid order status response");
+    }
+    const row = rows[0];
     if (!row) throw new AppHttpError(404, "COMMERCE_ORDER_NOT_FOUND", "Order not found in tenant");
-    if (row.id !== orderId || !["open", "paid", "voided"].includes(row.status)) {
+    if (row.id !== orderId || typeof row.store_id !== "string"
+        || !UUID_RE.test(row.store_id)
+        || !["open", "paid", "voided"].includes(row.status)
+        || !validSettlementTotal(row.total)) {
       throw new AppHttpError(502, "SUPABASE_UPSTREAM", "Invalid order state");
     }
     return appJson(res, 200, {
