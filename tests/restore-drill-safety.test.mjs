@@ -345,6 +345,10 @@ test("owner-only encrypted age identity escrow refuses noninteractive execution"
   assert.match(source, /"\$age" -d "\$work\/identity-recovery\.age"/);
   assert.match(source, /"\$keygen" -y/);
   assert.match(source, /OFF_HOST_RECOVERY_NOT_PROVEN/);
+  assert.match(source, /At the SECOND age prompt/);
+  assert.match(source, /Do not press Enter on an empty second prompt/);
+  assert.match(source, /If a passphrase appeared in chat or logs, DISCARD IT/);
+  assert.match(source, /unpublished envelope discarded/);
   assert.match(source, /sha256sum -c manifest\.sha256/);
   // Off-machine validation must be self-contained: the expected PUBLIC key
   // travels in the checksummed envelope, not solely on the original PC.
