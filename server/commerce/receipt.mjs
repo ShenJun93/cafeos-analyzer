@@ -4,6 +4,18 @@ import {
 } from "../../api/_app-auth.mjs";
 import { requiredUuid } from "./_shared.mjs";
 
+// PostgREST may encode SQL NUMERIC as a JSON number or decimal string.
+// Compare exact integer cents, never IEEE-754 products or rounded displays.
+// Values beyond safe JSON precision fail closed instead of misprinting.
+function receiptCents(value) {
+  if ((typeof value !== "string" && typeof value !== "number")
+      || (typeof value === "number"
+        && (!Number.isFinite(value) || value > Number.MAX_SAFE_INTEGER / 100))) return null;
+  const match = /^(0|[1-9][0-9]{0,15})(?:\.([0-9]{1,2}))?$/.exec(String(value));
+  if (!match) return null;
+  return BigInt(match[1]) * 100n + BigInt((match[2] ?? "").padEnd(2, "0"));
+}
+
 // Read-only paid receipt from immutable server-owned order-item price snapshots.
 // Requires the caller's actual Tenant+Store and never accepts client totals.
 export async function handle(req, res, deps = {}) {
@@ -18,7 +30,7 @@ export async function handle(req, res, deps = {}) {
       url.searchParams.get("storeId"), "COMMERCE_STORE_INVALID", "Invalid Store"
     );
     const orderParams = new URLSearchParams({
-      select: "id,store_id,order_number,channel,business_date,status,total,paid_at",
+      select: "id,store_id,order_number,channel,business_date,status,subtotal,discount_total,tax_total,total,paid_at",
       tenant_id: "eq." + ctx.tenant.id,
       store_id: "eq." + storeId,
       id: "eq." + orderId,
@@ -79,6 +91,30 @@ export async function handle(req, res, deps = {}) {
       throw new AppHttpError(502, "COMMERCE_RECEIPT_INCOMPLETE", "Server receipt is incomplete");
     }
 
+    const subtotal = receiptCents(order.subtotal);
+    const discount = receiptCents(order.discount_total);
+    const tax = receiptCents(order.tax_total);
+    const total = receiptCents(order.total);
+    const paymentAmount = receiptCents(payments[0].amount);
+    let itemsSubtotal = 0n;
+    for (const line of lines) {
+      const lineAmount = receiptCents(line.line_total);
+      if (lineAmount === null || receiptCents(line.unit_price) === null
+          || !/^(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,3})?$/.test(String(line.quantity))
+          || Number(line.quantity) <= 0) {
+        throw new AppHttpError(502, "COMMERCE_RECEIPT_TOTAL_MISMATCH",
+          "Receipt line has invalid financial data");
+      }
+      itemsSubtotal += lineAmount;
+    }
+    if ([subtotal, discount, tax, total, paymentAmount].some(value => value === null)
+        || itemsSubtotal !== subtotal
+        || total !== subtotal - discount + tax
+        || paymentAmount !== total) {
+      throw new AppHttpError(502, "COMMERCE_RECEIPT_TOTAL_MISMATCH",
+        "Receipt totals do not reconcile");
+    }
+
     return appJson(res, 200, {
       tenant: ctx.tenant,
       receipt: {
@@ -89,6 +125,9 @@ export async function handle(req, res, deps = {}) {
         paidAt: order.paid_at,
         status: "paid",
         total: order.total,
+        subtotal: order.subtotal,
+        discountTotal: order.discount_total,
+        taxTotal: order.tax_total,
         items: lines.map(line => ({
           name: line.item_name,
           quantity: line.quantity,
