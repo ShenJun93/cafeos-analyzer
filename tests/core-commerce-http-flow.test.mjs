@@ -104,7 +104,8 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
         return json(receiptRead
           ? [{ id: order.id, store_id: STORE, order_number: order.orderNumber,
             channel: "counter", business_date: DATE, status: order.status,
-            total: order.total, paid_at: order.status === "paid" ? DATE + "T08:30:00Z" : null }]
+            subtotal: order.total, discount_total: 0, tax_total: 0,
+             total: order.total, paid_at: order.status === "paid" ? DATE + "T08:30:00Z" : null }]
           : [{ id: order.id, store_id: STORE, status: order.status, total: order.total }]);
       }
       assert.equal(url.searchParams.get("store_id"), "eq." + STORE);
