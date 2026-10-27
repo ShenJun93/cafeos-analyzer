@@ -257,7 +257,7 @@ test("order handler accepts only bounded intent fields and delegates trusted tot
       fetchImpl: authFetch("cashier", async (u, init) => {
         calls.push({ u, init });
         if (u.pathname === "/rest/v1/rpc/commerce_create_order") {
-          return jsonResponse({ order: { id: ORDER_A, total: 100000 }, items: [] });
+          return jsonResponse({ order: { id: ORDER_A, tenantId: TENANT_A, storeId: STORE_A, clientOrderKey: "terminal-1-0001", channel: "counter", orderNumber: "C-001", status: "open", total: 100000 }, items: [{ menuItemId: ITEM_A, quantity: 2 }] });
         }
         return jsonResponse({}, 500);
       })
@@ -288,6 +288,56 @@ test("order handler accepts only bounded intent fields and delegates trusted tot
   );
   assert.equal(forbidden.statusCode, 400);
   assert.equal(parsed(forbidden).error.code, "BODY_FIELD_FORBIDDEN");
+});
+
+test("POS order confirmation requires original Tenant, Store, idempotency intent and valid total", async () => {
+  const intent = {
+    storeId: STORE_A, clientOrderKey: "intent-identity-01",
+    channel: "counter", items: [{ menuItemId: ITEM_A, quantity: 1 }]
+  };
+  const valid = {
+    order: {
+      id: ORDER_A, tenantId: TENANT_A, storeId: STORE_A,
+      clientOrderKey: intent.clientOrderKey, channel: "counter",
+      orderNumber: "C-123", status: "open", total: "35000.29"
+    },
+    items: [{ menuItemId: ITEM_A, quantity: 1 }]
+  };
+  const invalid = [
+    { ...valid, order: { ...valid.order, id: STORE_A } },
+    { ...valid, order: { ...valid.order, tenantId: TENANT_B } },
+    { ...valid, order: { ...valid.order, storeId: TENANT_B } },
+    { ...valid, order: { ...valid.order, clientOrderKey: "another-intent" } },
+    { ...valid, order: { ...valid.order, channel: "delivery" } },
+    { ...valid, order: { ...valid.order, status: "bogus" } },
+    { ...valid, order: { ...valid.order, orderNumber: "" } },
+    { ...valid, order: { ...valid.order, total: "35000.290" } },
+    { ...valid, order: { ...valid.order, total: true } },
+    { ...valid, order: { ...valid.order, total: -1 } },
+    { ...valid, order: { ...valid.order, total: 0 } },
+    { ...valid, order: { ...valid.order, total: "NaN" } },
+    { ...valid, items: [] },
+    { ...valid, items: null }
+  ];
+  for (const responsePayload of invalid) {
+    let writes = 0;
+    const response = res();
+    await orderHandle(req(authHeaders, "POST", "/api/app/commerce-order", intent),
+      response, { env, fetchImpl: authFetch("cashier", async (url, init) => {
+        assert.equal(url.pathname, "/rest/v1/rpc/commerce_create_order");
+        assert.equal(init.method, "POST");
+        writes++;
+        return jsonResponse(responsePayload);
+      }) });
+    assert.equal(response.statusCode, 502, "do not confirm another order or bad totals");
+    assert.equal(parsed(response).error.code, "SUPABASE_UPSTREAM");
+    assert.equal(writes, 1, "failed evidence must not retry writes automatically");
+  }
+  const healthy = res();
+  await orderHandle(req(authHeaders, "POST", "/api/app/commerce-order", intent),
+    healthy, { env, fetchImpl: authFetch("cashier", async () => jsonResponse(valid)) });
+  assert.equal(healthy.statusCode, 201);
+  assert.equal(parsed(healthy).order.clientOrderKey, intent.clientOrderKey);
 });
 
 test("POS rejects quantity coercion and excess scale before creating a trusted order", async () => {
@@ -331,7 +381,7 @@ test("POS rejects quantity coercion and excess scale before creating a trusted o
       env, fetchImpl: authFetch("cashier", async (url, init) => {
         assert.equal(url.pathname, "/rest/v1/rpc/commerce_create_order");
         captured = JSON.parse(init.body).p_items[0].quantity;
-        return jsonResponse({ order: { id: ORDER_A, total: 50000 }, items: [] });
+        return jsonResponse({ order: { id: ORDER_A, tenantId: TENANT_A, storeId: STORE_A, clientOrderKey: "valid-quantity", channel: "counter", orderNumber: "C-001", status: "open", total: 50000 }, items: [{ menuItemId: ITEM_A, quantity: 1 }] });
       })
     });
     assert.equal(response.statusCode, 201, "must accept quantity " + String(quantity));
