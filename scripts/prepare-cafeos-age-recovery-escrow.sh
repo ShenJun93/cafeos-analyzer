@@ -44,7 +44,7 @@ work=''
 cleanup() {
   local code=$?
   if [[ -n "$work" && -d "$work" ]]; then
-    rm -f -- "$work/identity-recovery.age" "$work/manifest.sha256" "$work/RECOVER.txt"
+    rm -f -- "$work/identity-recovery.age" "$work/expected-recipient.txt" "$work/manifest.sha256" "$work/RECOVER.txt"
     rmdir -- "$work" 2>/dev/null || true
   fi
   exit "$code"
@@ -66,22 +66,33 @@ recovered="$("$age" -d "$work/identity-recovery.age" | "$keygen" -y 2>/dev/null)
 [[ "$recovered" == "$expected" ]] || {
   echo 'STOP: decrypted key does not match source public recipient' >&2; exit 13
 }
+# Include the independently attested PUBLIC recipient, never the private identity.
+# Without this file a second recovery machine cannot establish which key
+# the decrypted identity was expected to reproduce.
+printf '%s\n' "$expected" > "$work/expected-recipient.txt"
+chmod 600 "$work/expected-recipient.txt"
+[[ "$(cat "$work/expected-recipient.txt")" == "$expected" ]]
 unset recovered expected
 cat > "$work/RECOVER.txt" <<'TEXT'
 CafeOS staging: PASSHRASE-ENCRYPTED age recovery identity, NOT OFF-HOST YET.
-Copy identity-recovery.age, manifest.sha256, RECOVER.txt to separate
-owner-controlled USB or encrypted remote storage. Store the passphrase
-independently in a password manager, not alongside these files.
-On a SECOND trusted machine with age and age-keygen installed, run:
+Copy identity-recovery.age, expected-recipient.txt, manifest.sha256
+and RECOVER.txt together to a separate owner-controlled USB or encrypted
+remote storage. The recipient is PUBLIC; the identity inside the .age
+file is SECRET. Keep the passphrase independently in a password manager.
+On a SECOND trusted machine with age and age-keygen installed, use Bash:
+  set -euo pipefail
   sha256sum -c manifest.sha256
-  age -d identity-recovery.age | age-keygen -y
-Compare the resulting public recipient with the saved CafeOS age public
-recipient. Record the independent recovery result before any real DB dump.
+  recovered="$(age -d identity-recovery.age | age-keygen -y)"
+  test "$recovered" = "$(cat expected-recipient.txt)"
+  unset recovered
+Record that the checksum and the recovered PUBLIC recipient both matched
+on the second machine before using any actual staging backup. A local
+checksum or decryption test on MAIN-PC alone is NOT off-host recovery.
 Do not send decrypted key or passphrase through ChatGPT, Git, or CI.
 Keep the original WSL age identity unchanged.
 TEXT
 chmod 600 "$work/RECOVER.txt"
-(cd "$work" && sha256sum identity-recovery.age RECOVER.txt > manifest.sha256 && sha256sum -c manifest.sha256 >/dev/null)
+(cd "$work" && sha256sum identity-recovery.age expected-recipient.txt RECOVER.txt > manifest.sha256 && sha256sum -c manifest.sha256 >/dev/null)
 chmod 600 "$work/manifest.sha256"
 mv -T --no-clobber -- "$work" "$final"
 [[ -d "$final" && ! -d "$work" ]] || { echo 'STOP: atomic publication failed' >&2; exit 14; }

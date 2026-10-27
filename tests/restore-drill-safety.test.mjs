@@ -346,6 +346,12 @@ test("owner-only encrypted age identity escrow refuses noninteractive execution"
   assert.match(source, /"\$keygen" -y/);
   assert.match(source, /OFF_HOST_RECOVERY_NOT_PROVEN/);
   assert.match(source, /sha256sum -c manifest\.sha256/);
+  // Off-machine validation must be self-contained: the expected PUBLIC key
+  // travels in the checksummed envelope, not solely on the original PC.
+  assert.match(source, /printf '%s\\n' "\$expected" > "\$work\/expected-recipient\.txt"/);
+  assert.match(source, /sha256sum identity-recovery\.age expected-recipient\.txt RECOVER\.txt/);
+  assert.ok(source.includes('test "$recovered" = "$(cat expected-recipient.txt)"'));
+  assert.match(source, /rm -f -- .*expected-recipient\.txt/);
   assert.doesNotMatch(source, /curl |wget |service_role|supabase db push/i);
   const executable = fileURLToPath(file);
   const syntax = spawnSync("bash", ["-n", executable], { encoding: "utf8", timeout: 6000 });
