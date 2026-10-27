@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "devDependencies": {
+    "typescript": "5.8.3"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/stamp-dist.mjs",
     "test": "npm run build && node --test tests/run.test.mjs tests/fingerprint.test.mjs tests/deploy-script.test.mjs tests/indexability.test.mjs tests/control-tower-schema.test.mjs tests/supabase-migration-sync.test.mjs tests/control-tower-api.test.mjs tests/control-tower-preview-smoke.test.mjs tests/restore-drill-safety.test.mjs tests/operator-offboarding.test.mjs tests/operator-tenant-offboarding.test.mjs tests/operator-offboarding-live.test.mjs tests/validation-integrity.test.mjs tests/feedback-contract.test.mjs tests/field-kit-package.test.mjs tests/control-tower-validation.test.mjs tests/control-tower-e1-ui.test.mjs tests/hallmark-ui-contract.test.mjs tests/core-commerce-product-contract.test.mjs tests/core-commerce-schema.test.mjs tests/core-commerce-api.test.mjs tests/core-commerce-ui.test.mjs tests/core-commerce-http-flow.test.mjs",
