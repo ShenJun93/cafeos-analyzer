@@ -88,7 +88,7 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
       if (!order) {
         order = {
           id: ORDER, tenantId: TENANT, storeId: STORE,
-          clientOrderKey: body.p_client_order_key,
+          clientOrderKey: body.p_client_order_key, channel: body.p_channel,
           orderNumber: "C-0001", status: "open", total: item.price * body.p_items[0].quantity
         };
       }
