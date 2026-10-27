@@ -1548,10 +1548,12 @@ test("paid receipt is server-sourced, printable on click, and treats item names 
       return { receipt: {
         orderId: "order-A", storeId: "store-A", storeName: "CafeOS Shop",
         orderNumber: "C-0088", businessDate: "2026-10-27", channel: "counter",
-        paidAt: "2026-10-27T10:00:00Z", status: "paid", total: "70000.00",
+        paidAt: "2026-10-27T10:00:00Z", status: "paid",
+        subtotal: "70000.00", discountTotal: "5000.07", taxTotal: "2000.29",
+        total: "67000.22",
         items: [{ name: "<img src=x onerror=alert(1)>", quantity: "2.000",
           unitPrice: "35000.00", lineTotal: "70000.00" }],
-        payment: { method: "cash", amount: "70000.00" }
+        payment: { method: "cash", amount: "67000.22" }
       } };
     };
   `, ctx);
@@ -1561,9 +1563,14 @@ test("paid receipt is server-sourced, printable on click, and treats item names 
   assert.equal(el("paidReceipt").classList.contains("hidden"), false);
   assert.equal(el("receiptStore").textContent, "CafeOS Shop");
   assert.match(el("receiptMeta").textContent, /C-0088/);
-  assert.equal(el("receiptLines").children.length, 1);
+  assert.equal(el("receiptLines").children.length, 4);
   assert.match(el("receiptLines").children[0].children[0].textContent, /<img src=x onerror=alert\(1\)>/);
-  assert.match(el("receiptTotal").textContent, /70/);
+  assert.equal(el("receiptLines").children[1].children[0].textContent, "Tạm tính");
+  assert.equal(el("receiptLines").children[2].children[0].textContent, "Giảm giá");
+  assert.equal(el("receiptLines").children[3].children[0].textContent, "Thuế");
+  assert.match(el("receiptTotal").textContent, /67/);
+  assert.match(el("receiptTotal").textContent, /,22/);
+  assert.match(runInContext('money("0.07")', ctx), /0,07/);
   assert.equal(el("printPaidReceipt").disabled, false);
   runInContext("printPaidReceipt()", ctx);
   assert.equal(printCalls, 1, "print is always initiated by the cashier");
