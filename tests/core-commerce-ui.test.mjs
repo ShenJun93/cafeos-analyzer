@@ -762,3 +762,109 @@ test("cashier can search POS menu by name/SKU and filter category without mutati
   assert.equal(elem("menuCatalog").children.length, 3);
 });
 
+
+test("stale dashboard response cannot replace a newer Store or same-Store read", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const code = html.split("<script>")[1].split("</script>")[0];
+  const nodes = new Map();
+  const node = id => {
+    if (!nodes.has(id)) nodes.set(id, {
+      value: "", textContent: "", disabled: false, dataset: {}, children: [],
+      classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {},
+      append(...v) { this.children.push(...v); },
+      replaceChildren(...v) { this.children = [...v]; }
+    });
+    return nodes.get(id);
+  };
+  const pending = [];
+  const ctx = createContext({
+    document: {
+      getElementById: node, querySelectorAll: () => [],
+      createElement: () => ({ textContent: "", append() {} })
+    },
+    window: { confirm: () => false },
+    fetch: async () => ({ ok: true, json: async () => ({}) }),
+    deferred: path => new Promise(resolve => pending.push({ path, resolve })),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "test-id" }
+  });
+  runInContext(code, ctx);
+  runInContext(`
+    sessionToken = "test"; currentTenantId = "tenant";
+    currentTenantRole = "manager"; currentStoreId = "store-A";
+    currentDashboard = { salesTotal: 999, openOrderCount: 0 };
+    appFetch = deferred;
+    loadMenu = async () => {};
+    loadOptionalControlTower = async () => true;
+  `, ctx);
+  const old = runInContext("loadDashboard()", ctx);
+  node("store").value = "store-B";
+  const updated = runInContext("refreshStore()", ctx);
+  assert.equal(runInContext("currentDashboard", ctx), null);
+  assert.equal(node("closeDay").disabled, true);
+  assert.equal(pending.length, 2);
+  const result = amount => ({ dashboard: {
+    businessDate: "2026-10-27", orderCount: 1,
+    salesTotal: amount, aov: amount, openOrderCount: 0, closed: false, paymentMix: {}
+  } });
+  pending[1].resolve(result(222));
+  await updated;
+  assert.equal(runInContext("currentDashboard.salesTotal", ctx), 222);
+  pending[0].resolve(result(999));
+  await old;
+  assert.equal(runInContext("currentDashboard.salesTotal", ctx), 222);
+  const slow = runInContext("loadDashboard()", ctx);
+  const fast = runInContext("loadDashboard()", ctx);
+  pending[3].resolve(result(333)); await fast;
+  pending[2].resolve(result(111)); await slow;
+  assert.equal(runInContext("currentDashboard.salesTotal", ctx), 333);
+});
+
+test("stale Tenant Store-list response cannot replace a newer Tenant selection", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const inline = html.split("<script>")[1].split("</script>")[0];
+  const nodes = new Map();
+  function el(id) {
+    if (!nodes.has(id)) nodes.set(id, {
+      value: "", textContent: "", disabled: false, dataset: {}, children: [],
+      classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {},
+      append(...v) { this.children.push(...v); },
+      replaceChildren(...v) { this.children = [...v]; }
+    });
+    return nodes.get(id);
+  }
+  const pending = [];
+  const ctx = createContext({
+    document: { getElementById: el, querySelectorAll: () => [],
+      createElement: () => ({ value: "", textContent: "" }) },
+    window: { confirm: () => false },
+    fetch: async () => ({ ok: true, json: async () => ({}) }),
+    deferred: path => new Promise(resolve => pending.push({ path, resolve })),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "test-id" }
+  });
+  runInContext(inline, ctx);
+  runInContext(`
+    sessionToken = "test";
+    tenantMemberships = [{ tenantId: "A", role: "cashier" }, { tenantId: "B", role: "manager" }];
+    let refreshCount = 0;
+    appFetch = deferred;
+    refreshStore = async () => { refreshCount++; };
+  `, ctx);
+  el("tenant").value = "A";
+  const old = runInContext("loadTenant()", ctx);
+  el("tenant").value = "B";
+  const latest = runInContext("loadTenant()", ctx);
+  assert.equal(pending.length, 2);
+  pending[1].resolve({ stores: [{ id: "store-B", active: true }] });
+  await latest;
+  assert.equal(runInContext("currentTenantId", ctx), "B");
+  assert.equal(runInContext("currentTenantRole", ctx), "manager");
+  assert.equal(runInContext("refreshCount", ctx), 1);
+  assert.equal(el("store").children[0].value, "store-B");
+  pending[0].resolve({ stores: [{ id: "store-A", active: true }] });
+  await old;
+  assert.equal(runInContext("currentTenantId", ctx), "B");
+  assert.equal(el("store").children[0].value, "store-B");
+  assert.equal(runInContext("refreshCount", ctx), 1);
+});

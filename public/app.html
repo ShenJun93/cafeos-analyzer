@@ -198,6 +198,12 @@ let pendingOrderSubmission = null;
 let orderSubmitInFlight = false;
 let paymentSubmitInFlight = false;
 let closeSubmitInFlight = false;
+// Increment whenever the authenticated Tenant/Store view is reset. Results
+// from an older view must never overwrite another Store's menu/close numbers.
+let viewEpoch = 0;
+let dashboardReadSerial = 0;
+let menuReadSerial = 0;
+let controlReadSerial = 0;
 let menuState = { categories: [], items: [] };
 const cartState = new Map();
 
@@ -318,6 +324,7 @@ function signOut() {
   if (hasUnfinishedCheckout() && !window.confirm(
     "Đơn chưa hoàn tất. Đăng xuất sẽ xóa bộ nhớ retry/payment trong trình duyệt. Tiếp tục?"
   )) return;
+  ++viewEpoch;
   sessionToken = null;
   currentTenantId = null;
   currentStoreId = null;
@@ -359,6 +366,7 @@ async function loadSession() {
 
 async function loadTenant() {
   if (preventUnsafeContextReset()) return;
+  const requestedEpoch = ++viewEpoch;
   currentTenantId = el("tenant").value;
   currentTenantRole = tenantMemberships.find(row => row.tenantId === currentTenantId)?.role ?? null;
   currentStoreId = null;
@@ -368,9 +376,17 @@ async function loadTenant() {
   orderSubmitInFlight = false;
   paymentSubmitInFlight = false;
   cartState.clear();
+  menuState = { categories: [], items: [] };
+  el("menuCatalog").replaceChildren();
+  el("menuAdminList").replaceChildren();
+  el("commerceMetrics").replaceChildren();
+  el("paymentMix").replaceChildren();
+  el("closePreview").textContent = "Đang tải Store của Tenant…";
   renderRoleControls();
 
   const stores = await appFetch("/api/app/stores");
+  // A newer Tenant selection or sign-out supersedes this stores response.
+  if (requestedEpoch !== viewEpoch) return;
   const active = (stores.stores || []).filter(store => store.active !== false);
   if (!active.length) throw new Error("Tenant has no active Store");
   fillSelect(el("store"), active);
@@ -380,7 +396,18 @@ async function loadTenant() {
 
 async function refreshStore() {
   if (preventUnsafeContextReset()) return;
+  const requestedEpoch = ++viewEpoch;
   currentStoreId = el("store").value;
+  // Never leave a previously loaded Store's close totals usable while the
+  // newly selected Store is still loading or has failed to load.
+  currentDashboard = null;
+  el("commerceMetrics").replaceChildren();
+  el("paymentMix").replaceChildren();
+  el("closePreview").textContent = "Đang xác minh báo cáo Store mới…";
+  el("closeDay").disabled = true;
+  menuState = { categories: [], items: [] };
+  el("menuCatalog").replaceChildren();
+  el("menuAdminList").replaceChildren();
   currentOrder = null;
   pendingOrderSubmission = null;
   cartState.clear();
@@ -389,11 +416,18 @@ async function refreshStore() {
   el("openOrderList").replaceChildren();
   // Control Tower reports on imported facts and must not block first-party sales.
   // Menu and daily dashboard remain required; their failures still fail closed.
-  const [, , controlTowerReady] = await Promise.all([
-    loadMenu(),
-    loadDashboard(),
-    loadOptionalControlTower()
-  ]);
+  let controlTowerReady;
+  try {
+    [, , controlTowerReady] = await Promise.all([
+      loadMenu(),
+      loadDashboard(),
+      loadOptionalControlTower()
+    ]);
+  } catch (error) {
+    if (requestedEpoch !== viewEpoch) return;
+    throw error;
+  }
+  if (requestedEpoch !== viewEpoch) return;
   renderCart();
   setStatus(
     controlTowerReady
@@ -404,7 +438,13 @@ async function refreshStore() {
 }
 
 async function loadMenu() {
+  const requestedSerial = ++menuReadSerial;
+  const requestedEpoch = viewEpoch;
+  const requestedTenant = currentTenantId;
+  const requestedToken = sessionToken;
   const payload = await appFetch("/api/app/commerce-menu");
+  if (requestedSerial !== menuReadSerial || requestedEpoch !== viewEpoch
+      || requestedTenant !== currentTenantId || requestedToken !== sessionToken) return;
   menuState = {
     categories: payload.categories || [],
     items: payload.items || []
@@ -806,7 +846,15 @@ function metric(label, value) {
 
 async function loadDashboard() {
   if (!currentStoreId) return;
-  const payload = await appFetch("/api/app/commerce-dashboard?storeId=" + encodeURIComponent(currentStoreId));
+  const requestedSerial = ++dashboardReadSerial;
+  const requestedEpoch = viewEpoch;
+  const requestedTenant = currentTenantId;
+  const requestedStore = currentStoreId;
+  const requestedToken = sessionToken;
+  const payload = await appFetch("/api/app/commerce-dashboard?storeId=" + encodeURIComponent(requestedStore));
+  if (requestedSerial !== dashboardReadSerial || requestedEpoch !== viewEpoch
+      || requestedTenant !== currentTenantId || requestedStore !== currentStoreId
+      || requestedToken !== sessionToken) return;
   currentDashboard = payload.dashboard;
 
   const metrics = el("commerceMetrics");
@@ -884,10 +932,12 @@ async function closeBusinessDay() {
 }
 
 async function loadOptionalControlTower() {
+  const requestedEpoch = viewEpoch;
   try {
     await loadControlTower();
-    return true;
+    return requestedEpoch === viewEpoch;
   } catch (error) {
+    if (requestedEpoch !== viewEpoch) return false;
     const root = el("controlBrief");
     root.replaceChildren();
     root.textContent = "Control Tower chưa khả dụng: " + error.message;
@@ -896,7 +946,13 @@ async function loadOptionalControlTower() {
 }
 
 async function loadControlTower() {
+  const requestedSerial = ++controlReadSerial;
+  const requestedEpoch = viewEpoch;
+  const requestedTenant = currentTenantId;
+  const requestedToken = sessionToken;
   const payload = await appFetch("/api/app/brief");
+  if (requestedSerial !== controlReadSerial || requestedEpoch !== viewEpoch
+      || requestedTenant !== currentTenantId || requestedToken !== sessionToken) return;
   const root = el("controlBrief");
   root.replaceChildren();
   const metrics = document.createElement("div");
