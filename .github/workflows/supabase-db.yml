@@ -12,6 +12,9 @@ on:
       - "scripts/run-local-age-backup-drill.sh"
       - "scripts/backup-cafeos-staging-age.sh"
       - "scripts/verify-cafeos-staging-age-archive.sh"
+      - "scripts/verify-cafeos-age-recovery-offhost.sh"
+      - "scripts/run-local-age-offhost-recovery-drill.sh"
+      - "scripts/prepare-cafeos-age-recovery-recipient.sh"
       - "scripts/sql/cafeos-staging-receipt-fingerprint.sql"
       - "scripts/sql/cafeos-staging-post-repair-readonly-gate.sql"
       - "scripts/sql/cafeos-staging-post-guards-readonly-gate.sql"
@@ -28,6 +31,9 @@ on:
       - "scripts/run-local-age-backup-drill.sh"
       - "scripts/backup-cafeos-staging-age.sh"
       - "scripts/verify-cafeos-staging-age-archive.sh"
+      - "scripts/verify-cafeos-age-recovery-offhost.sh"
+      - "scripts/run-local-age-offhost-recovery-drill.sh"
+      - "scripts/prepare-cafeos-age-recovery-recipient.sh"
       - "scripts/sql/cafeos-staging-receipt-fingerprint.sql"
       - "scripts/sql/cafeos-staging-post-repair-readonly-gate.sql"
       - "scripts/sql/cafeos-staging-post-guards-readonly-gate.sql"
@@ -96,6 +102,9 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-17
           echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - name: Prove off-host recovery cryptography with disposable age identities and negative controls
+        run: bash scripts/run-local-age-offhost-recovery-drill.sh
 
       - name: Restore age-encrypted synthetic PostgreSQL backup to a separate local database
         run: bash scripts/run-local-age-backup-drill.sh
