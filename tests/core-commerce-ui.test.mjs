@@ -577,3 +577,117 @@ test("Daily Close requires an explicit summary confirmation and blocks duplicate
   assert.equal(node("closeDay").disabled, true, "successfully closed day cannot close again");
   assert.match(node("closeReceipt").textContent, /Close 2026-10-25/);
 });
+
+
+test("paid POS outcome survives Dashboard outage without a second payment or stale close controls", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const inline = html.split("<script>")[1]?.split("</script>")[0];
+  assert.ok(inline);
+  const elements = new Map();
+  function elem(id) {
+    if (!elements.has(id)) elements.set(id, {
+      value: "", textContent: "", dataset: {}, disabled: false,
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener() {}, replaceChildren() {}, append() {}, reset() {}
+    });
+    return elements.get(id);
+  }
+  const ctx = createContext({
+    document: {
+      getElementById: elem, querySelectorAll: () => [],
+      createElement: () => elem("new_" + elements.size)
+    },
+    window: { confirm: () => true },
+    fetch: async () => ({
+      ok: true, status: 200,
+      json: async () => ({ supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test" })
+    }),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "fixed-intent" }
+  });
+  runInContext(inline, ctx);
+  elem("paymentMethod").value = "cash";
+  runInContext(`
+    sessionToken = "synthetic-user";
+    currentTenantId = "tenant-1";
+    currentTenantRole = "cashier";
+    currentStoreId = "store-1";
+    currentOrder = { id: "order-1", status: "open", total: 50000 };
+    currentDashboard = { closed: false, openOrderCount: 0 };
+    let paymentWrites = 0;
+    let dashboardCalls = 0;
+    loadDashboard = async () => { dashboardCalls += 1; throw new Error("read model offline"); };
+    appFetch = async (path) => {
+      if (path === "/api/app/commerce-payment") {
+        paymentWrites += 1;
+        return { orderId: "order-1", status: "paid" };
+      }
+      throw new Error("unexpected route: " + path);
+    };
+  `, ctx);
+  await runInContext("capturePayment()", ctx);
+  assert.equal(runInContext("paymentWrites", ctx), 1);
+  assert.equal(runInContext("dashboardCalls", ctx), 1);
+  assert.equal(runInContext("currentOrder", ctx), null, "paid checkout must be cleared");
+  assert.equal(runInContext("currentDashboard", ctx), null, "stale read model invalidated");
+  assert.equal(elem("closeDay").disabled, true, "cannot close against stale metrics");
+  assert.equal(elem("capturePayment").disabled, true, "no duplicate capture affordance");
+  assert.equal(elem("status").dataset.state, "warning");
+  assert.match(elem("status").textContent, /paid.*Dashboard chưa cập nhật/i);
+  await runInContext("capturePayment()", ctx);
+  assert.equal(runInContext("paymentWrites", ctx), 1, "must not send a second payment");
+
+  runInContext(`
+    currentDashboard = { closed: false, openOrderCount: 0 };
+    currentOrder = null;
+    cartState.set("item-1", { item: { id: "item-1", name: "Coffee", price: 50000 }, quantity: 1 });
+    appFetch = async (path) => {
+      if (path === "/api/app/commerce-order") {
+        return { order: { id: "order-1", orderNumber: "C-1", status: "paid", total: 50000 }, items: [] };
+      }
+      throw new Error("unexpected route: " + path);
+    };
+  `, ctx);
+  await runInContext("submitOrder()", ctx);
+  assert.equal(runInContext("currentOrder", ctx), null);
+  assert.equal(runInContext("pendingOrderSubmission", ctx), null);
+  assert.equal(runInContext("cartState.size", ctx), 0);
+  assert.equal(runInContext("currentDashboard", ctx), null);
+  assert.equal(elem("closeDay").disabled, true);
+  assert.match(elem("status").textContent, /thanh toán từ lần trước.*Dashboard chưa cập nhật/);
+});
+
+test("cart buttons never exceed maximum POS quantity supported by trusted create-order RPC", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const inline = html.split("<script>")[1]?.split("</script>")[0];
+  const elements = new Map();
+  function elem(id) {
+    if (!elements.has(id)) elements.set(id, {
+      value: "", textContent: "", dataset: {}, disabled: false,
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener() {}, replaceChildren() {}, append() {}, reset() {}
+    });
+    return elements.get(id);
+  }
+  const ctx = createContext({
+    document: { getElementById: elem, querySelectorAll: () => [], createElement: () => elem("created_" + elements.size) },
+    window: { confirm: () => false },
+    fetch: async () => ({ ok: true, status: 200, json: async () => ({ supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test" }) }),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "fixed" }
+  });
+  runInContext(inline, ctx);
+  runInContext(`
+    currentTenantRole = "cashier";
+    currentStoreId = "store-1";
+    menuState.items = [{ id: "item-1", name: "Coffee", price: 35000 }];
+    cartState.set("item-1", { item: menuState.items[0], quantity: 1000 });
+  `, ctx);
+  await runInContext('addToCart("item-1")', ctx);
+  await runInContext('changeQuantity("item-1", 1)', ctx);
+  assert.equal(runInContext('cartState.get("item-1").quantity', ctx), 1000);
+  await runInContext('changeQuantity("item-1", -1)', ctx);
+  assert.equal(runInContext('cartState.get("item-1").quantity', ctx), 999);
+  await runInContext('addToCart("item-1")', ctx);
+  assert.equal(runInContext('cartState.get("item-1").quantity', ctx), 1000);
+});

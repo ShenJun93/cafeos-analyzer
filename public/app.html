@@ -456,6 +456,7 @@ function addToCart(menuItemId) {
   const item = menuState.items.find(row => row.id === menuItemId);
   if (!item || !canWriteCommerce() || currentOrder || pendingOrderSubmission || orderSubmitInFlight) return;
   const current = cartState.get(menuItemId) || { item, quantity: 0 };
+  if (current.quantity >= 1000) return;
   current.quantity += 1;
   cartState.set(menuItemId, current);
   renderCart();
@@ -464,7 +465,9 @@ function addToCart(menuItemId) {
 function changeQuantity(menuItemId, delta) {
   const current = cartState.get(menuItemId);
   if (!current || !canWriteCommerce() || currentOrder || pendingOrderSubmission || orderSubmitInFlight) return;
-  current.quantity += delta;
+  const next = current.quantity + delta;
+  if (next > 1000) return;
+  current.quantity = next;
   if (current.quantity <= 0) cartState.delete(menuItemId);
   renderCart();
 }
@@ -505,7 +508,7 @@ function renderCart() {
     plus.type = "button";
     plus.className = "secondary";
     plus.textContent = "+";
-    plus.disabled = Boolean(currentOrder || pendingOrderSubmission || orderSubmitInFlight);
+    plus.disabled = row.quantity >= 1000 || Boolean(currentOrder || pendingOrderSubmission || orderSubmitInFlight);
     plus.addEventListener("click", () => changeQuantity(id, 1));
     controls.append(minus, qty, plus);
     line.append(detail, controls);
@@ -513,11 +516,29 @@ function renderCart() {
   }
 
   el("submitOrder").disabled = !canWriteCommerce() || !currentStoreId || !cartState.size || Boolean(currentOrder || orderSubmitInFlight);
-  el("capturePayment").disabled = !canWriteCommerce() || paymentSubmitInFlight;
+  el("capturePayment").disabled = !canWriteCommerce() || paymentSubmitInFlight
+    || !currentOrder || currentOrder.status !== "open";
   el("recoverOpenOrders").disabled = !canWriteCommerce() || hasUnfinishedCheckout();
   el("paymentPanel").classList.toggle("hidden", !currentOrder || currentOrder.status !== "open");
   if (currentOrder) {
     el("serverOrderTotal").textContent = "Server total · " + money(currentOrder.total);
+  }
+}
+
+// Settlement truth is independent of reporting availability. Once the server
+// confirms PAID, a failed Dashboard refresh must never imply payment failed,
+// invite a duplicate capture, or display stale closeable metrics.
+async function refreshDashboardAfterSale(confirmation) {
+  try {
+    await loadDashboard();
+    setStatus(confirmation, "ok");
+  } catch {
+    currentDashboard = null;
+    el("commerceMetrics").replaceChildren();
+    el("paymentMix").replaceChildren();
+    el("closePreview").textContent = "Dashboard chưa cập nhật. Refresh để xác nhận Daily Close.";
+    el("closeDay").disabled = true;
+    setStatus(confirmation + " Dashboard chưa cập nhật; làm mới sau, không ghi Payment lần nữa.", "warning");
   }
 }
 
@@ -558,8 +579,7 @@ async function submitOrder() {
       cartState.clear();
       currentOrder = null;
       renderCart();
-      await loadDashboard();
-      setStatus("Order " + paidNumber + " đã được thanh toán từ lần trước.", "ok");
+      await refreshDashboardAfterSale("Order " + paidNumber + " đã được thanh toán từ lần trước.");
       return;
     }
     setStatus("Order " + currentOrder.orderNumber + " đã được tạo. Server total " + money(currentOrder.total) + ".", "ok");
@@ -612,16 +632,14 @@ async function capturePayment() {
     cartState.clear();
     currentOrder = null;
     renderCart();
-    setStatus(
+    await refreshDashboardAfterSale(
       recovered
         ? "Đã xác nhận payment thành công từ trạng thái server sau lỗi phản hồi."
-        : "Payment record đã captured. Order đã paid.",
-      "ok"
+        : "Payment record đã captured. Order đã paid."
     );
-    await loadDashboard();
   } finally {
     paymentSubmitInFlight = false;
-    el("capturePayment").disabled = !canWriteCommerce();
+    renderCart();
   }
 }
 
