@@ -45,6 +45,7 @@ SELECT from PostgreSQL catalogs and built-in privilege introspection confirmed:
 - `pos_orders`, `pos_order_items`, `pos_payments`, `daily_closes`: RLS is on and `authenticated` lacks direct INSERT/UPDATE/DELETE on every table. Writes via the three deliberately privileged RPC paths require separate review and authenticated E2E.
 
 Fresh Supabase Security Advisor still reports **3** `authenticated_security_definer_function_executable` findings and **1** `auth_leaked_password_protection` finding. These are **open WARN findings**, not suppressed or declared fixed.
+- Connected Supabase organization metadata confirms the hosting plan is **`free` / `tier_free`**. Current Supabase [password security documentation](https://supabase.com/docs/guides/auth/password-security) explicitly limits **leaked-password protection to Pro and higher**. This fourth warning cannot simply be toggled on while the project stays on its current Free plan. Require an owner-approved upgrade **or** a documented, independently reviewed compensating-control/risk decision; neither is approved or implemented here. Do not purchase a plan or change Auth settings by inference.
 
 References: [Supabase SECURITY DEFINER linter](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable); [Supabase Auth password security](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
 
