@@ -393,7 +393,7 @@ test("POS order identifiers and settlement references reject implicit string coe
       env, fetchImpl: authFetch("cashier", async (url, init) => {
         assert.equal(url.pathname, "/rest/v1/rpc/commerce_capture_payment");
         observed = JSON.parse(init.body).p_reference;
-        return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { amount: 50000 } });
+        return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { method: "cash", status: "captured", amount: 50000 } });
       })
     });
     assert.equal(response.statusCode, 201);
@@ -406,7 +406,7 @@ test("payment, dashboard, and close handlers call only the fixed commerce RPCs",
   const fetchImpl = authFetch("manager", async (u, init) => {
     seen.push({ path: u.pathname, init });
     if (u.pathname === "/rest/v1/rpc/commerce_capture_payment") {
-      return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { amount: 100000 } });
+      return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { method: "cash", status: "captured", amount: 100000 } });
     }
     if (u.pathname === "/rest/v1/rpc/commerce_daily_dashboard") {
       return jsonResponse({ storeId: STORE_A, businessDate: "2026-10-25", source: "cafeos_pos" });
@@ -718,7 +718,7 @@ test("Payment amount rejects invalid scale/types but accepts common floating-dec
     }), response, { env, fetchImpl: authFetch("cashier", async (url, init) => {
       assert.equal(url.pathname, "/rest/v1/rpc/commerce_capture_payment");
       transmitted = JSON.parse(init.body).p_amount;
-      return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { amount: transmitted } });
+      return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { method: "cash", status: "captured", amount: transmitted } });
     }) });
     assert.equal(response.statusCode, 201, "Payment should accept: " + amount);
     assert.equal(transmitted, Number(amount));
@@ -733,6 +733,52 @@ test("Payment amount rejects invalid scale/types but accepts common floating-dec
   }
 });
 
+
+test("Payment confirmation refuses mismatched capture evidence without retry or a second write", async () => {
+  const request = {
+    orderId: ORDER_A, method: "cash", amount: "35000.29", reference: "terminal-1"
+  };
+  const accepted = {
+    orderId: ORDER_A, status: "paid",
+    payment: { method: "cash", status: "captured", amount: "35000.29" }
+  };
+  const invalid = [
+    { ...accepted, orderId: STORE_A },
+    { ...accepted, orderId: null },
+    { ...accepted, status: "open" },
+    { ...accepted, payment: null },
+    { ...accepted, payment: [] },
+    { ...accepted, payment: { ...accepted.payment, method: "wallet" } },
+    { ...accepted, payment: { ...accepted.payment, status: "pending" } },
+    { ...accepted, payment: { ...accepted.payment, amount: "35000.28" } },
+    { ...accepted, payment: { ...accepted.payment, amount: "35000.290" } },
+    { ...accepted, payment: { ...accepted.payment, amount: "NaN" } },
+    { ...accepted, payment: { ...accepted.payment, amount: true } },
+    { ...accepted, payment: { ...accepted.payment, amount: 0 } }
+  ];
+  for (const payload of invalid) {
+    let rpcWrites = 0;
+    const response = res();
+    await paymentHandle(req(authHeaders, "POST", "/api/app/commerce-payment", request),
+      response, { env, fetchImpl: authFetch("cashier", async (url, init) => {
+        assert.equal(url.pathname, "/rest/v1/rpc/commerce_capture_payment");
+        assert.equal(init.method, "POST");
+        rpcWrites++;
+        return jsonResponse(payload);
+      }) });
+    assert.equal(response.statusCode, 502, "inconsistent capture must not be acknowledged as paid");
+    assert.equal(parsed(response).error.code, "SUPABASE_UPSTREAM");
+    assert.equal(rpcWrites, 1, "never make a second capture attempt");
+  }
+
+  const valid = res();
+  await paymentHandle(req(authHeaders, "POST", "/api/app/commerce-payment", request),
+    valid, { env, fetchImpl: authFetch("cashier", async () => jsonResponse({
+      ...accepted, payment: { ...accepted.payment, amount: 35000.29 }
+    })) });
+  assert.equal(valid.statusCode, 201, "valid Postgres numeric-to-JSON decimal remains confirmed");
+  assert.equal(parsed(valid).payment.amount, 35000.29);
+});
 
 test("paid receipt reads Store/Tenant-scoped immutable items and payment without any writes", async () => {
   const calls = [];
