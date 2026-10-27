@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import { createVercelShapePreviewServer } from "../scripts/serve-vercel-preview.mjs";
 
@@ -112,7 +113,7 @@ test("app route is wired into Vercel, local preview, and deploy artifact", async
 
 test("real local preview serves /app and shared CSS", async () => {
   const server = createVercelShapePreviewServer({
-    root: new URL("..", import.meta.url).pathname
+    root: fileURLToPath(new URL("..", import.meta.url))
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -341,7 +342,7 @@ test("lost payment response reconciles paid order and preserves an open order", 
 
 test("local workflow router keeps orderId/storeId query params and denies anonymous reads", async () => {
   const server = createVercelShapePreviewServer({
-    root: new URL("..", import.meta.url).pathname,
+    root: fileURLToPath(new URL("..", import.meta.url)),
     env: { SUPABASE_URL: "https://example.supabase.co", SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test" }
   });
   server.listen(0, "127.0.0.1");
