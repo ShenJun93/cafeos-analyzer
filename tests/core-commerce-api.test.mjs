@@ -128,6 +128,60 @@ test("menu GET is tenant scoped and menu POST is manager bounded with strict bod
   assert.equal(parsed(unknownResponse).error.code, "BODY_FIELD_FORBIDDEN");
 });
 
+
+test("Menu manager writes reject implicit coercion of category, SKU, names and record kind", async () => {
+  let insertCalls = 0;
+  const deps = {
+    env,
+    fetchImpl: authFetch("manager", async (url, init) => {
+      if (init.method === "POST" && /^\/rest\/v1\/menu_(items|categories)$/.test(url.pathname)) {
+        insertCalls++;
+        return jsonResponse([{ id: ITEM_A }], 201);
+      }
+      return jsonResponse({}, 500);
+    })
+  };
+  const invalidCases = [
+    ...[true, 9, [], ["Tea"], {}, null].map(name => ({
+      body: { kind: "category", name }, code: "MENU_CATEGORY_NAME_INVALID"
+    })),
+    ...["1", null, true, [], [1], {}].map(sortOrder => ({
+      body: { kind: "category", name: "Tea", sortOrder }, code: "MENU_CATEGORY_SORT_INVALID"
+    })),
+    ...[true, 9, [], ["Coffee"], {}].map(name => ({
+      body: { kind: "item", name, price: 35000 }, code: "MENU_ITEM_NAME_INVALID"
+    })),
+    ...[true, 123, [], ["SKU-1"], {}].map(sku => ({
+      body: { kind: "item", name: "Latte", price: 35000, sku }, code: "MENU_ITEM_SKU_INVALID"
+    })),
+    ...[[ITEM_A], true, 123, {}].map(categoryId => ({
+      body: { kind: "item", name: "Latte", price: 35000, categoryId }, code: "MENU_CATEGORY_INVALID"
+    })),
+    ...[["item"], { value: "item" }, true, 1].map(kind => ({
+      body: { kind, name: "Latte", price: 35000 }, code: "MENU_KIND_INVALID"
+    }))
+  ];
+  for (const { body, code } of invalidCases) {
+    const response = res();
+    await menuHandle(req(authHeaders, "POST", "/api/app/commerce-menu", body), response, deps);
+    assert.equal(response.statusCode, 400, "must reject " + JSON.stringify(body));
+    assert.equal(parsed(response).error.code, code);
+  }
+  assert.equal(insertCalls, 0, "malformed Menu records must never reach Supabase INSERT");
+
+  for (const body of [
+    { kind: "category", name: "Tea", sortOrder: 0 },
+    { kind: "category", name: "Coffee", sortOrder: -2 },
+    { kind: "item", name: "Latte", sku: null, categoryId: ITEM_A, price: 35000 },
+    { kind: "item", name: "Tea", sku: "TEA-01", categoryId: null, price: "20000.25" }
+  ]) {
+    const response = res();
+    await menuHandle(req(authHeaders, "POST", "/api/app/commerce-menu", body), response, deps);
+    assert.equal(response.statusCode, 201, "must preserve well-typed Menu record " + JSON.stringify(body));
+  }
+  assert.equal(insertCalls, 4);
+});
+
 test("order handler accepts only bounded intent fields and delegates trusted totals to fixed RPC", async () => {
   const calls = [];
   const response = res();

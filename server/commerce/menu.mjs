@@ -13,8 +13,10 @@ const CATEGORY_FIELDS = new Set(["kind", "name", "sortOrder"]);
 const ITEM_FIELDS = new Set(["kind", "categoryId", "sku", "name", "price"]);
 
 function boundedText(value, { code, message, max, nullable = false } = {}) {
-  if (nullable && (value === undefined || value === null || String(value).trim() === "")) return null;
-  const text = String(value ?? "").trim();
+  if (nullable && (value === undefined || value === null || value === "")) return null;
+  // Menu labels and identifiers are strings, not JS-coerced arrays/booleans.
+  if (typeof value !== "string") throw new AppHttpError(400, code, message);
+  const text = value.trim();
   if (!text || text.length > max) throw new AppHttpError(400, code, message);
   return text;
 }
@@ -26,8 +28,9 @@ function categoryBody(body, tenantId) {
     message: "Category name is invalid",
     max: 200
   });
-  const sortOrder = body.sortOrder === undefined ? 0 : Number(body.sortOrder);
-  if (!Number.isInteger(sortOrder) || Math.abs(sortOrder) > 100000) {
+  const sortOrder = body.sortOrder === undefined ? 0 : body.sortOrder;
+  if (typeof sortOrder !== "number" || !Number.isSafeInteger(sortOrder)
+      || Math.abs(sortOrder) > 100000) {
     throw new AppHttpError(400, "MENU_CATEGORY_SORT_INVALID", "Category sort order is invalid");
   }
   return { tenant_id: tenantId, name, sort_order: sortOrder, active: true };
@@ -42,8 +45,8 @@ function itemBody(body, tenantId) {
   });
   const categoryId = body.categoryId === undefined || body.categoryId === null || body.categoryId === ""
     ? null
-    : String(body.categoryId).trim();
-  if (categoryId !== null && !UUID_RE.test(categoryId)) {
+    : body.categoryId;
+  if (categoryId !== null && (typeof categoryId !== "string" || !UUID_RE.test(categoryId))) {
     throw new AppHttpError(400, "MENU_CATEGORY_INVALID", "Invalid Menu category");
   }
   const sku = boundedText(body.sku, {
@@ -93,7 +96,7 @@ export async function handle(req, res, deps = {}) {
     if (req.method === "POST") {
       const ctx = requireCommerceManagerRole(await appContext(req, deps));
       const body = requestJsonObject(req);
-      const kind = String(body.kind ?? "").trim();
+      const kind = typeof body.kind === "string" ? body.kind.trim() : "";
       if (kind === "category") {
         const insert = categoryBody(body, ctx.tenant.id);
         const params = new URLSearchParams({
