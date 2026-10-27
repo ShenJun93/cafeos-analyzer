@@ -292,7 +292,8 @@ async function signIn() {
     el("authPanel").classList.add("hidden");
     el("appPanel").classList.remove("hidden");
     el("signOut").classList.remove("hidden");
-    setStatus("CafeOS đã xác thực phiên và tải Store.", "ok");
+    // Keep Store loader's OK/warning status: auth success does not prove
+    // optional Control Tower reporting is ready.
   } catch (error) {
     if (attempt !== authGeneration) return;
     // Authentication may succeed while membership/Store lookup fails. Never

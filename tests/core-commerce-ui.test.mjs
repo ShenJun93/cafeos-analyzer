@@ -1134,7 +1134,7 @@ test("sign-in serial ignores superseded auth responses and never publishes a hal
       if (path === "/api/app/session") return { memberships: [{ tenantId: "tenant-B", role: "manager" }] };
       throw new Error("unexpected path");
     };
-    loadTenant = async () => {};
+    loadTenant = async () => { setStatus("Control Tower không tải được", "warning"); };
   `, ctx);
 
   el("email").value = "first@example.invalid";
@@ -1156,6 +1156,8 @@ test("sign-in serial ignores superseded auth responses and never publishes a hal
   assert.equal(runInContext("sessionToken", ctx), "jwt-second");
   assert.equal(el("identity").textContent, "second@example.invalid");
   assert.equal(el("signIn").disabled, false);
+  assert.equal(el("status").dataset.state, "warning", "auth cannot overwrite Store warning");
+  assert.match(el("status").textContent, /Control Tower không tải được/);
   pendingAuth[0].resolve({ access_token: "jwt-first" });
   await first;
   assert.equal(runInContext("sessionToken", ctx), "jwt-second");
