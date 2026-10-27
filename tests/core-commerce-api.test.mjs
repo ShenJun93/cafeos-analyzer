@@ -656,6 +656,7 @@ test("paid receipt reads Store/Tenant-scoped immutable items and payment without
       assert.equal(url.searchParams.get("store_id"), "eq." + STORE_A);
       return jsonResponse([{ id: ORDER_A, store_id: STORE_A, order_number: "C-0042",
         channel: "counter", business_date: "2026-10-27", status: "paid",
+        subtotal: "70000.00", discount_total: "0.00", tax_total: "0.00",
         total: "70000.00", paid_at: paidAt }]);
     }
     if (url.pathname === "/rest/v1/pos_order_items") {
@@ -701,6 +702,7 @@ test("paid receipt refuses role misuse, cross-store, unpaid, missing and partial
   const order = {
     id: ORDER_A, store_id: STORE_A, order_number: "C-0042",
     channel: "counter", business_date: "2026-10-27", status: "paid",
+    subtotal: "70000.00", discount_total: "0.00", tax_total: "0.00",
     total: "70000.00", paid_at: "2026-10-27T09:30:00Z"
   };
   const payments = [{ order_id: ORDER_A, method: "cash", amount: "70000.00",
@@ -753,6 +755,54 @@ test("paid receipt refuses role misuse, cross-store, unpaid, missing and partial
       { env, fetchImpl: fake(orderRows, itemRows, payRows) });
     assert.equal(response.statusCode, status);
     assert.equal(parsed(response).error.code, code);
+  }
+});
+
+test("paid receipt reconciles items, discounts, tax, and captured payment in exact cents", async () => {
+  const route = "/api/app/commerce-receipt?orderId=" + ORDER_A + "&storeId=" + STORE_A;
+  const base = {
+    id: ORDER_A, store_id: STORE_A, order_number: "C-0042",
+    channel: "counter", business_date: "2026-10-27", status: "paid",
+    subtotal: "70000.00", discount_total: "0.00", tax_total: "0.00",
+    total: "70000.00", paid_at: "2026-10-27T09:30:00Z"
+  };
+  const item = {
+    id: "line-1", order_id: ORDER_A, item_name: "Latte",
+    unit_price: "35000.00", quantity: "2.000", line_total: "70000.00"
+  };
+  async function probe(order, items = [item], paidAmount = "70000.00") {
+    const response = res();
+    await receiptHandle(req(authHeaders, "GET", route), response, {
+      env, fetchImpl: authFetch("cashier", async url => {
+        if (url.pathname === "/rest/v1/pos_orders") return jsonResponse([order]);
+        if (url.pathname === "/rest/v1/pos_order_items") return jsonResponse(items);
+        if (url.pathname === "/rest/v1/pos_payments") return jsonResponse([{
+          order_id: ORDER_A, method: "cash", amount: paidAmount,
+          status: "captured", paid_at: order.paid_at
+        }]);
+        if (url.pathname === "/rest/v1/stores") return jsonResponse([{ id: STORE_A, name: "Store A" }]);
+        return jsonResponse({}, 500);
+      })
+    });
+    return response;
+  }
+  const adjusted = await probe({
+    ...base, discount_total: "5000.07", tax_total: "2000.29", total: "67000.22"
+  }, [item], "67000.22");
+  assert.equal(adjusted.statusCode, 200, "legitimate discounts and taxes remain printable");
+  assert.equal(parsed(adjusted).receipt.discountTotal, "5000.07");
+  assert.equal(parsed(adjusted).receipt.taxTotal, "2000.29");
+  for (const [order, items, amount] of [
+    [{ ...base, total: "69999.99" }, [item], "69999.99"],
+    [{ ...base, subtotal: "69999.99" }, [item], "70000.00"],
+    [base, [ { ...item, line_total: "69999.99" } ], "70000.00"],
+    [base, [item], "69999.99"],
+    [{ ...base, total: "NaN" }, [item], "70000.00"],
+    [base, [ { ...item, unit_price: "malformed" } ], "70000.00"]
+  ]) {
+    const response = await probe(order, items, amount);
+    assert.equal(response.statusCode, 502);
+    assert.equal(parsed(response).error.code, "COMMERCE_RECEIPT_TOTAL_MISMATCH");
   }
 });
 
