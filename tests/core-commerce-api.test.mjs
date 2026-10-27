@@ -555,6 +555,38 @@ test("order status endpoint is authenticated, GET-only, tenant-scoped and read-o
   assert.equal(post.statusCode, 405);
 });
 
+test("ambiguous checkout recovery rejects malformed order status and settlement totals", async () => {
+  const route = "/api/app/commerce-order-status?orderId=" + ORDER_A;
+  const good = { id: ORDER_A, store_id: STORE_A, status: "open", total: "35000.00" };
+  for (const rows of [
+    { rows: [good] },
+    [{ ...good }, { ...good }],
+    [{ ...good, id: STORE_A }],
+    [{ ...good, store_id: "bad-store-id" }],
+    [{ ...good, status: "pending" }],
+    [{ ...good, total: null }],
+    [{ ...good, total: "NaN" }],
+    [{ ...good, total: "0.001" }],
+    [{ ...good, total: 0 }],
+    [{ ...good, total: -100 }],
+    [{ ...good, total: true }],
+    [{ ...good, total: 1000000000000.01 }]
+  ]) {
+    const response = res();
+    await orderStatusHandle(req(authHeaders, "GET", route), response, {
+      env, fetchImpl: authFetch("cashier", async () => jsonResponse(rows))
+    });
+    assert.equal(response.statusCode, 502, "untrusted status/total must not enable checkout");
+    assert.equal(parsed(response).error.code, "SUPABASE_UPSTREAM");
+  }
+  const valid = res();
+  await orderStatusHandle(req(authHeaders, "GET", route), valid, {
+    env, fetchImpl: authFetch("cashier", async () => jsonResponse([good]))
+  });
+  assert.equal(valid.statusCode, 200);
+  assert.equal(parsed(valid).order.total, "35000.00");
+});
+
 test("cashier can list bounded open orders for own tenant/store; viewer, wrong status and anon denied", async () => {
   const calls = [];
   const response = res();
