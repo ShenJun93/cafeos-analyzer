@@ -18,6 +18,14 @@ import {
 const ALLOWED_FIELDS = new Set(["storeId", "clientOrderKey", "channel", "items"]);
 const CHANNELS = new Set(["counter", "takeaway", "pickup", "delivery"]);
 
+function validReturnedTotal(value) {
+  if ((typeof value !== "number" && typeof value !== "string")
+      || (typeof value === "number" && !Number.isFinite(value))) return false;
+  const raw = String(value);
+  return /^(?:0|[1-9][0-9]*)(?:[.][0-9]{1,2})?$/.test(raw)
+    && Number(raw) > 0 && Number(raw) <= 1000000000000;
+}
+
 function normalizeItems(value) {
   if (!Array.isArray(value) || value.length < 1 || value.length > 100) {
     throw new AppHttpError(400, "COMMERCE_ITEMS_INVALID", "Order items are invalid");
@@ -80,8 +88,24 @@ export async function handle(req, res, deps = {}) {
       mapError: commerceUpstreamError,
       ...deps
     });
-    if (!payload?.order?.id || !Array.isArray(payload.items)) {
-      throw new AppHttpError(502, "SUPABASE_UPSTREAM", "Commerce data service returned an error");
+    // Do not publish success based only on a 2xx RPC response. A retried
+    // idempotency key must resolve to the same Tenant, Store and request.
+    // If a write committed but transport evidence is malformed, the browser
+    // retains the exact intent/key for safe reconciliation rather than
+    // generating a replacement order with a fresh key.
+    const confirmed = payload?.order;
+    if (!confirmed || typeof confirmed !== "object" || Array.isArray(confirmed)
+        || typeof confirmed.id !== "string" || !UUID_RE.test(confirmed.id)
+        || confirmed.tenantId !== ctx.tenant.id
+        || confirmed.storeId !== storeId
+        || confirmed.clientOrderKey !== clientOrderKey
+        || confirmed.channel !== channel
+        || !["open", "paid", "voided"].includes(confirmed.status)
+        || typeof confirmed.orderNumber !== "string" || !confirmed.orderNumber.trim()
+        || !validReturnedTotal(confirmed.total)
+        || !Array.isArray(payload.items) || payload.items.length !== items.length) {
+      throw new AppHttpError(502, "SUPABASE_UPSTREAM",
+        "Commerce order service returned inconsistent order evidence");
     }
     return appJson(res, 201, { tenant: ctx.tenant, ...payload });
   } catch (error) {
