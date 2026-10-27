@@ -71,6 +71,14 @@
       <div class="pos-layout">
         <section>
           <div class="section-label">Menu catalog</div>
+          <div class="pos-menu-filters">
+            <label class="field-group">Tìm món theo tên / SKU
+              <input id="posMenuSearch" type="search" autocomplete="off" placeholder="Ví dụ: cà phê, LAT-01">
+            </label>
+            <label class="field-group">Nhóm món
+              <select id="posMenuCategory"><option value="">Tất cả nhóm</option></select>
+            </label>
+          </div>
           <div id="menuCatalog" class="menu-catalog" aria-live="polite"></div>
         </section>
 
@@ -376,6 +384,8 @@ async function refreshStore() {
   currentOrder = null;
   pendingOrderSubmission = null;
   cartState.clear();
+  el("posMenuSearch").value = "";
+  el("posMenuCategory").value = "";
   el("openOrderList").replaceChildren();
   // Control Tower reports on imported facts and must not block first-party sales.
   // Menu and daily dashboard remain required; their failures still fail closed.
@@ -406,7 +416,37 @@ function renderMenu() {
   const catalog = el("menuCatalog");
   catalog.replaceChildren();
 
-  for (const item of menuState.items) {
+  // Local-only cashier discovery: filtering never changes menu prices or
+  // mutates the trusted order source of record.
+  const categoryFilter = el("posMenuCategory");
+  const selectedCategory = categoryFilter.value;
+  categoryFilter.replaceChildren();
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = "Tất cả nhóm";
+  categoryFilter.append(all);
+  for (const category of menuState.categories) {
+    const option = document.createElement("option");
+    option.value = category.id;
+    option.textContent = category.name;
+    categoryFilter.append(option);
+  }
+  categoryFilter.value = menuState.categories.some(row => row.id === selectedCategory)
+    ? selectedCategory : "";
+  const query = el("posMenuSearch").value.trim().toLocaleLowerCase("vi-VN");
+  const visibleItems = menuState.items.filter(item => {
+    if (categoryFilter.value && item.category_id !== categoryFilter.value) return false;
+    return !query || String(item.name ?? "").toLocaleLowerCase("vi-VN").includes(query)
+      || String(item.sku ?? "").toLocaleLowerCase("vi-VN").includes(query);
+  });
+  if (!visibleItems.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "Không tìm thấy món phù hợp.";
+    catalog.append(empty);
+  }
+
+  for (const item of visibleItems) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "menu-item-button";
@@ -902,6 +942,8 @@ el("signOut").addEventListener("click", signOut);
 el("tenant").addEventListener("change", () => guarded(loadTenant));
 el("store").addEventListener("change", () => guarded(refreshStore));
 el("refreshApp").addEventListener("click", () => guarded(refreshStore));
+el("posMenuSearch").addEventListener("input", renderMenu);
+el("posMenuCategory").addEventListener("change", renderMenu);
 el("submitOrder").addEventListener("click", () => guarded(submitOrder));
 el("capturePayment").addEventListener("click", () => guarded(capturePayment));
 el("recoverOpenOrders").addEventListener("click", () => guarded(() => loadOpenOrdersForRecovery()));

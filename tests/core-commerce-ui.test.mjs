@@ -691,3 +691,74 @@ test("cart buttons never exceed maximum POS quantity supported by trusted create
   await runInContext('addToCart("item-1")', ctx);
   assert.equal(runInContext('cartState.get("item-1").quantity', ctx), 1000);
 });
+
+
+test("cashier can search POS menu by name/SKU and filter category without mutating priced items", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  assert.match(html, /id="posMenuSearch"/);
+  assert.match(html, /id="posMenuCategory"/);
+  assert.match(html, /posMenuSearch"\).addEventListener\("input", renderMenu\)/);
+  const source = html.split("<script>")[1]?.split("</script>")[0];
+  const nodes = new Map();
+  const createNode = () => ({
+    value: "", textContent: "", dataset: {}, disabled: false, children: [],
+    classList: { add() {}, remove() {}, toggle() {} },
+    addEventListener() {},
+    replaceChildren(...items) { this.children = [...items]; },
+    append(...items) { this.children.push(...items); }
+  });
+  const elem = id => {
+    if (!nodes.has(id)) nodes.set(id, createNode());
+    return nodes.get(id);
+  };
+  const context = createContext({
+    document: {
+      getElementById: elem, querySelectorAll: () => [],
+      createElement: () => createNode()
+    },
+    window: { confirm: () => false },
+    fetch: async () => ({
+      ok: true, status: 200,
+      json: async () => ({ supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test" })
+    }),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "fixed" }
+  });
+  runInContext(source, context);
+  runInContext(`
+    currentTenantRole = "cashier";
+    menuState.categories = [{ id: "coffee", name: "Cà phê" }, { id: "tea", name: "Trà" }];
+    menuState.items = [
+      { id: "a", name: "Cà phê sữa đá", sku: "CF-01", category_id: "coffee", price: 29000 },
+      { id: "b", name: "Latte", sku: "LAT-02", category_id: "coffee", price: 49000 },
+      { id: "c", name: "Trà đào", sku: "TEA-10", category_id: "tea", price: 39000 }
+    ];
+  `, context);
+  runInContext("renderMenu()", context);
+  assert.equal(elem("menuCatalog").children.length, 3);
+
+  elem("posMenuSearch").value = "lat-02";
+  runInContext("renderMenu()", context);
+  assert.equal(elem("menuCatalog").children.length, 1);
+  assert.equal(elem("menuCatalog").children[0].children[0].textContent, "Latte");
+
+  elem("posMenuSearch").value = "";
+  elem("posMenuCategory").value = "tea";
+  runInContext("renderMenu()", context);
+  assert.equal(elem("menuCatalog").children.length, 1);
+  assert.equal(elem("menuCatalog").children[0].children[0].textContent, "Trà đào");
+  assert.equal(elem("posMenuCategory").value, "tea");
+
+  elem("posMenuSearch").value = "KHÔNG TỒN TẠI";
+  runInContext("renderMenu()", context);
+  assert.match(elem("menuCatalog").children[0].textContent, /Không tìm thấy/);
+  assert.equal(runInContext("menuState.items[0].price", context), 29000);
+
+  // A category removed by a fresh menu load cannot leave a stale active filter.
+  runInContext('menuState.categories = [{ id: "coffee", name: "Cà phê" }]', context);
+  elem("posMenuSearch").value = "";
+  runInContext("renderMenu()", context);
+  assert.equal(elem("posMenuCategory").value, "");
+  assert.equal(elem("menuCatalog").children.length, 3);
+});
+
