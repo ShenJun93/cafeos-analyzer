@@ -177,6 +177,55 @@ test("order handler accepts only bounded intent fields and delegates trusted tot
   assert.equal(parsed(forbidden).error.code, "BODY_FIELD_FORBIDDEN");
 });
 
+test("POS rejects quantity coercion and excess scale before creating a trusted order", async () => {
+  const invalidQuantities = [
+    null, undefined, true, false, [], [1], {}, { value: 1 },
+    "", " ", "1e2", "0x2", "Infinity", "-1", "+1", "01",
+    0, -1, 0.0001, 1.0001, "2.0000", "0.0001", "1000.001", 1000.001,
+    1001, Infinity, NaN
+  ];
+  let rpcCalls = 0;
+  const deps = {
+    env,
+    fetchImpl: authFetch("cashier", async (url) => {
+      if (url.pathname === "/rest/v1/rpc/commerce_create_order") {
+        rpcCalls += 1;
+      }
+      return jsonResponse({}, 500);
+    })
+  };
+  for (const quantity of invalidQuantities) {
+    const response = res();
+    await orderHandle(req(authHeaders, "POST", "/api/app/commerce-order", {
+      storeId: STORE_A, clientOrderKey: "invalid-quantity", channel: "counter",
+      items: [{ menuItemId: ITEM_A, quantity }]
+    }), response, deps);
+    assert.equal(response.statusCode, 400, "must reject quantity " + String(quantity));
+    assert.equal(parsed(response).error.code, "COMMERCE_ITEMS_INVALID");
+  }
+  assert.equal(rpcCalls, 0, "invalid quantities must never reach trusted order RPC");
+
+  for (const [quantity, expected] of [
+    [1, 1], [0.001, 0.001], ["0.001", 0.001], [2.555, 2.555],
+    ["2.550", 2.55], [1000, 1000], ["1000.000", 1000]
+  ]) {
+    let captured;
+    const response = res();
+    await orderHandle(req(authHeaders, "POST", "/api/app/commerce-order", {
+      storeId: STORE_A, clientOrderKey: "valid-quantity", channel: "counter",
+      items: [{ menuItemId: ITEM_A, quantity }]
+    }), response, {
+      env, fetchImpl: authFetch("cashier", async (url, init) => {
+        assert.equal(url.pathname, "/rest/v1/rpc/commerce_create_order");
+        captured = JSON.parse(init.body).p_items[0].quantity;
+        return jsonResponse({ order: { id: ORDER_A, total: 50000 }, items: [] });
+      })
+    });
+    assert.equal(response.statusCode, 201, "must accept quantity " + String(quantity));
+    assert.equal(captured, expected);
+  }
+});
+
 test("payment, dashboard, and close handlers call only the fixed commerce RPCs", async () => {
   const seen = [];
   const fetchImpl = authFetch("manager", async (u, init) => {

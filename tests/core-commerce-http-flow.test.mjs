@@ -210,6 +210,19 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
     assert.equal(tamper.status, 400);
     assert.equal(tamper.body.error.code, "BODY_FIELD_FORBIDDEN");
 
+    // Actual HTTP/router boundary must refuse bad quantity data before DB RPC.
+    const rpcCallsBeforeInvalidQty = upstreamCalls.filter(x =>
+      x.path === "/rest/v1/rpc/commerce_create_order").length;
+    for (const quantity of [true, [1], "1e2", "0x2", "2.5555", 1.0001]) {
+      const invalid = await call("/api/app/commerce-order", "cashier-token", "POST", {
+        ...intent, items: [{ menuItemId: ITEM, quantity }]
+      });
+      assert.equal(invalid.status, 400, "must reject quantity " + String(quantity));
+      assert.equal(invalid.body.error.code, "COMMERCE_ITEMS_INVALID");
+    }
+    assert.equal(upstreamCalls.filter(x =>
+      x.path === "/rest/v1/rpc/commerce_create_order").length, rpcCallsBeforeInvalidQty);
+
     const firstOrder = await call("/api/app/commerce-order", "cashier-token", "POST", intent);
     assert.equal(firstOrder.status, 201);
     assert.equal(firstOrder.body.order.total, 70000);

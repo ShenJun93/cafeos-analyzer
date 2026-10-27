@@ -28,7 +28,19 @@ function normalizeItems(value) {
     }
     strictFields(item, new Set(["menuItemId", "quantity"]));
     const menuItemId = String(item.menuItemId ?? "").trim();
-    const quantity = Number(item.quantity);
+    // Match the trusted RPC's numeric(12,3) quantity contract before any
+    // Number() coercion (true, arrays, exponents and excess precision must
+    // never change what the cashier intended to submit).
+    const rawQuantity = item.quantity;
+    if ((typeof rawQuantity !== "number" && typeof rawQuantity !== "string")
+        || (typeof rawQuantity === "number" && !Number.isFinite(rawQuantity))) {
+      throw new AppHttpError(400, "COMMERCE_ITEMS_INVALID", "Order items are invalid");
+    }
+    const decimal = String(rawQuantity).trim();
+    if (!/^(?:0|[1-9][0-9]*)(?:[.][0-9]{1,3})?$/.test(decimal)) {
+      throw new AppHttpError(400, "COMMERCE_ITEMS_INVALID", "Order items are invalid");
+    }
+    const quantity = Number(decimal);
     if (!UUID_RE.test(menuItemId) || !Number.isFinite(quantity) || quantity <= 0 || quantity > 1000) {
       throw new AppHttpError(400, "COMMERCE_ITEMS_INVALID", "Order items are invalid");
     }
