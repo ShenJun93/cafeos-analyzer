@@ -459,10 +459,10 @@ test("payment, dashboard, and close handlers call only the fixed commerce RPCs",
       return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { method: "cash", status: "captured", amount: 100000 } });
     }
     if (u.pathname === "/rest/v1/rpc/commerce_daily_dashboard") {
-      return jsonResponse({ storeId: STORE_A, businessDate: "2026-10-25", source: "cafeos_pos" });
+      return jsonResponse({ tenantId: TENANT_A, storeId: STORE_A, businessDate: "2026-10-25", source: "cafeos_pos", orderCount: 1, openOrderCount: 0, salesTotal: "100000.00", paymentTotal: "100000.00", paymentMix: { cash: "100000.00" }, aov: "100000.00", closed: false });
     }
     if (u.pathname === "/rest/v1/rpc/commerce_close_day") {
-      return jsonResponse({ id: "close-1", storeId: STORE_A, businessDate: "2026-10-25" });
+      return jsonResponse({ id: "19000000-0000-4000-8000-000000000001", tenantId: TENANT_A, storeId: STORE_A, businessDate: "2026-10-25", orderCount: 1, salesTotal: "100000.00", paymentTotal: "100000.00", cashTotal: "100000.00", nonCashTotal: "0.00", idempotent: false });
     }
     return jsonResponse({}, 500);
   });
