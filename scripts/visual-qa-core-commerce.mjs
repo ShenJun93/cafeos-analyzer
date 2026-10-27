@@ -112,6 +112,35 @@ async function installMockTransport(page) {
       case "/api/app/commerce-open-orders":
         payload = { orders: [], nextOffset: null };
         break;
+      case "/api/app/commerce-paid-orders":
+        assert.equal(req.method(), "GET");
+        assert.equal(url.searchParams.get("storeId"), STORE);
+        payload = {
+          orders: state.paid ? [{
+            id: state.lastOrder.id, orderNumber: state.lastOrder.orderNumber,
+            storeId: STORE, status: "paid", total: state.lastOrder.total,
+            paidAt: DATE + "T08:30:00Z", businessDate: DATE
+          }] : [],
+          nextOffset: null
+        };
+        break;
+      case "/api/app/commerce-receipt":
+        assert.equal(req.method(), "GET");
+        assert.equal(url.searchParams.get("orderId"), state.lastOrder?.id);
+        assert.equal(url.searchParams.get("storeId"), STORE);
+        assert.equal(state.paid, true, "only paid orders expose printable receipt");
+        payload = { receipt: {
+          orderId: state.lastOrder.id, storeId: STORE,
+          storeName: "Synthetic Flagship",
+          orderNumber: state.lastOrder.orderNumber, channel: "counter",
+          businessDate: DATE, paidAt: DATE + "T08:30:00Z", status: "paid",
+          total: state.lastOrder.total,
+          items: [{ name: "Latte", quantity: "2.000",
+            unitPrice: "35000.00", lineTotal: "70000.00" }],
+          payment: { method: "cash", amount: state.lastOrder.total,
+            paidAt: DATE + "T08:30:00Z" }
+        } };
+        break;
       case "/api/app/commerce-daily-close": {
         assert.equal(req.method(), "POST");
         assert.equal(manager, true, "only manager may close a day");
@@ -190,6 +219,23 @@ async function runViewport(browser, width, height, base) {
     await page.locator("#capturePayment").click();
     await page.locator("#paymentPanel").waitFor({ state: "hidden" });
     assert.equal(state.paid, true);
+    await page.waitForFunction(() => {
+      const button = document.getElementById("printPaidReceipt");
+      return button && !button.disabled;
+    });
+    assert.equal(await page.locator("#printPaidReceipt").isEnabled(), true);
+    assert.match(await page.locator("#receiptTotal").innerText(), /70/);
+    await snapshot(page, width, "paid-receipt");
+    await page.locator("#browsePaidOrders").click();
+    await page.locator("#paidOrderList button").first().waitFor({ state: "visible" });
+    assert.match(await page.locator("#paidOrderList button").first().innerText(), /POS-SYNTHETIC/);
+    await page.locator("#paidOrderList button").first().click();
+    await page.waitForFunction(() => {
+      const button = document.getElementById("printPaidReceipt");
+      return button && !button.disabled;
+    });
+    assert.equal(await page.locator("#printPaidReceipt").isEnabled(), true);
+    await snapshot(page, width, "receipt-reprint");
     await page.locator('[data-view="menuWorkspace"]').click();
     await snapshot(page, width, "menu");
     await page.locator('[data-view="dashboardWorkspace"]').click();
