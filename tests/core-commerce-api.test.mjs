@@ -131,6 +131,63 @@ test("menu GET is tenant scoped and menu POST is manager bounded with strict bod
 });
 
 
+test("POS Menu read fails closed on malformed, financial-invalid and truncated catalog data", async () => {
+  const category = { id: "cat-1", name: "Coffee", sort_order: 0, active: true };
+  const item = { id: ITEM_A, category_id: "cat-1", name: "Latte",
+    price: "35000.00", active: true };
+  const failures = [
+    { categories: { categories: [category] }, items: [item],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    { categories: [category], items: null,
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    { categories: [{ ...category, active: false }], items: [item],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    { categories: [category], items: [{ ...item, price: "NaN" }],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    { categories: [category], items: [{ ...item, price: "0.001" }],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    { categories: [category], items: [{ ...item, price: true }],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    { categories: Array.from({ length: 200 }, () => category), items: [item],
+      status: 503, code: "COMMERCE_MENU_CATALOG_LIMIT" },
+    { categories: [category], items: Array.from({ length: 1000 }, () => item),
+      status: 503, code: "COMMERCE_MENU_CATALOG_LIMIT" }
+  ];
+  for (const { categories, items, status, code } of failures) {
+    const reads = [];
+    const response = res();
+    await menuHandle(req(authHeaders, "GET", "/api/app/commerce-menu"), response, {
+      env,
+      fetchImpl: authFetch("cashier", async url => {
+        reads.push(url.pathname);
+        assert.equal(url.searchParams.get("tenant_id"), "eq." + TENANT_A);
+        if (url.pathname === "/rest/v1/menu_categories") {
+          assert.equal(url.searchParams.get("limit"), "200");
+          return jsonResponse(categories);
+        }
+        if (url.pathname === "/rest/v1/menu_items") {
+          assert.equal(url.searchParams.get("limit"), "1000");
+          return jsonResponse(items);
+        }
+        return jsonResponse({}, 500);
+      })
+    });
+    assert.equal(response.statusCode, status, "invalid or capped Menu must be rejected");
+    assert.equal(parsed(response).error.code, code);
+    assert.deepEqual(reads.sort(), ["/rest/v1/menu_categories", "/rest/v1/menu_items"]);
+  }
+
+  const healthy = res();
+  await menuHandle(req(authHeaders, "GET", "/api/app/commerce-menu"), healthy, {
+    env, fetchImpl: authFetch("cashier", async url => jsonResponse(
+      url.pathname === "/rest/v1/menu_categories" ? [category] : [
+        { ...item, price: "0.29" }, { ...item, price: 0 }
+      ]))
+  });
+  assert.equal(healthy.statusCode, 200, "valid exact-decimal and zero-price Menu remains readable");
+  assert.equal(parsed(healthy).items.length, 2);
+});
+
 test("Menu manager writes reject implicit coercion of category, SKU, names and record kind", async () => {
   let insertCalls = 0;
   const deps = {
