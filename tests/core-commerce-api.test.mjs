@@ -393,7 +393,7 @@ test("POS order identifiers and settlement references reject implicit string coe
       env, fetchImpl: authFetch("cashier", async (url, init) => {
         assert.equal(url.pathname, "/rest/v1/rpc/commerce_capture_payment");
         observed = JSON.parse(init.body).p_reference;
-        return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { method: "cash", status: "captured", amount: 50000 } });
+        return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { method: "bank_transfer", status: "captured", amount: 50000 } });
       })
     });
     assert.equal(response.statusCode, 201);
