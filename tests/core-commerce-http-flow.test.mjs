@@ -155,6 +155,7 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
         salesTotal: paid ? order.total : 0, orderCount: paid,
         openOrderCount: Number(order?.status === "open"),
         aov: paid ? order.total : null,
+        paymentTotal: paid ? payment?.amount ?? 0 : 0,
         closed: Boolean(closed), paymentMix: payment ? { [payment.method]: payment.amount } : {}
       });
     }
@@ -162,8 +163,12 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
       assert.equal(body.p_tenant_id, TENANT);
       if (order?.status === "open") return json({ message: "COMMERCE_CLOSE_OPEN_ORDERS" }, 409);
       closed ??= {
-        id: "19000000-0000-4000-8000-000000000001", storeId: STORE,
-        businessDate: DATE, salesTotal: order?.total || 0, orderCount: Number(Boolean(order))
+        id: "19000000-0000-4000-8000-000000000001", tenantId: TENANT, storeId: STORE,
+        businessDate: DATE, salesTotal: order?.total || 0,
+        paymentTotal: payment?.amount || 0,
+        cashTotal: payment?.method === "cash" ? payment.amount : 0,
+        nonCashTotal: payment && payment.method !== "cash" ? payment.amount : 0,
+        orderCount: Number(order?.status === "paid"), idempotent: false
       };
       return json(closed);
     }
