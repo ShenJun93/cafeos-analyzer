@@ -18,6 +18,21 @@ import {
 const ALLOWED_FIELDS = new Set(["orderId", "method", "amount", "reference"]);
 const METHODS = new Set(["cash", "card", "bank_transfer", "wallet", "other"]);
 
+/**
+ * PostgreSQL numerics may be JSON decimal strings or numbers. Compare the
+ * captured payment against the requested cents without rounding binary floats.
+ * Fail closed on malformed, fractional-cent, or out-of-bounds RPC evidence.
+ */
+function capturedCents(value) {
+  if ((typeof value !== "string" && typeof value !== "number")
+      || (typeof value === "number" && !Number.isFinite(value))) return null;
+  const match = /^(0|[1-9][0-9]*)(?:[.]([0-9]{1,2}))?$/.exec(String(value));
+  if (!match) return null;
+  const cents = BigInt(match[1]) * 100n
+    + BigInt((match[2] ?? "").padEnd(2, "0"));
+  return cents > 0n && cents <= 100000000000000n ? cents : null;
+}
+
 export async function handle(req, res, deps = {}) {
   if (!onlyPost(req, res)) return;
   try {
@@ -59,8 +74,17 @@ export async function handle(req, res, deps = {}) {
       mapError: commerceUpstreamError,
       ...deps
     });
-    if (!payload?.orderId || payload.status !== "paid" || !payload.payment) {
-      throw new AppHttpError(502, "SUPABASE_UPSTREAM", "Commerce data service returned an error");
+    // A 2xx response alone is not settlement proof. The fixed RPC must
+    // acknowledge exactly the requested Order, method and captured cents.
+    // A malformed response may still follow a committed write; the browser
+    // must reconcile the order state via its read-only status path, not retry.
+    if (payload?.orderId !== orderId || payload.status !== "paid"
+        || !payload.payment || Array.isArray(payload.payment)
+        || payload.payment.status !== "captured"
+        || payload.payment.method !== method
+        || capturedCents(payload.payment.amount) !== capturedCents(amount)) {
+      throw new AppHttpError(502, "SUPABASE_UPSTREAM",
+        "Commerce payment service returned inconsistent settlement evidence");
     }
     return appJson(res, 201, { tenant: ctx.tenant, ...payload });
   } catch (error) {
