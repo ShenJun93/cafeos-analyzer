@@ -21,7 +21,7 @@ function receiptCents(value) {
 function receiptQuantityMilli(value) {
   if ((typeof value !== "string" && typeof value !== "number")
       || (typeof value === "number" && !Number.isFinite(value))) return null;
-  const match = /^(0|[1-9][0-9]{0,8})(?:\\.([0-9]{1,3}))?$/.exec(String(value));
+  const match = /^(0|[1-9][0-9]{0,8})(?:\.([0-9]{1,3}))?$/.exec(String(value));
   if (!match) return null;
   const milli = BigInt(match[1]) * 1000n
     + BigInt((match[2] ?? "").padEnd(3, "0"));
