@@ -658,7 +658,7 @@ test("paid POS outcome survives Dashboard outage without a second payment or sta
   assert.match(elem("status").textContent, /thanh toán từ lần trước.*Dashboard chưa cập nhật/);
 });
 
-test("cart buttons never exceed maximum POS quantity supported by trusted create-order RPC", async () => {
+test("cart enforces SQL per-item quantity and 100 distinct order-line limit before checkout", async () => {
   const { createContext, runInContext } = await import("node:vm");
   const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
   const inline = html.split("<script>")[1]?.split("</script>")[0];
@@ -691,6 +691,40 @@ test("cart buttons never exceed maximum POS quantity supported by trusted create
   assert.equal(runInContext('cartState.get("item-1").quantity', ctx), 999);
   await runInContext('addToCart("item-1")', ctx);
   assert.equal(runInContext('cartState.get("item-1").quantity', ctx), 1000);
+
+  // The SQL RPC accepts 100 lines, not 100 total units. A cashier must not
+  // build an impossible 101-line order; existing lines remain adjustable.
+  runInContext(`
+    cartState.clear();
+    menuState.items = Array.from({ length: 101 }, (_, i) => ({
+      id: "line-" + i, name: "Drink " + i, price: 1000
+    }));
+    for (const item of menuState.items.slice(0, 100)) {
+      cartState.set(item.id, { item, quantity: 1 });
+    }
+  `, ctx);
+  assert.equal(runInContext("cartState.size", ctx), 100);
+  runInContext('addToCart("line-100")', ctx);
+  assert.equal(runInContext("cartState.size", ctx), 100);
+  assert.equal(runInContext('cartState.has("line-100")', ctx), false);
+  assert.match(elem("status").textContent, /100 món khác nhau/);
+  runInContext('addToCart("line-0")', ctx);
+  assert.equal(runInContext('cartState.get("line-0").quantity', ctx), 2);
+  runInContext('changeQuantity("line-1", -1)', ctx);
+  assert.equal(runInContext("cartState.size", ctx), 99);
+  runInContext('addToCart("line-100")', ctx);
+  assert.equal(runInContext("cartState.size", ctx), 100);
+  assert.equal(runInContext('cartState.get("line-100").quantity', ctx), 1);
+  assert.equal(runInContext("pendingOrderSubmission", ctx), null);
+
+  // Even a programmatically restored malformed cart must not create a key or
+  // send an unsatisfiable order to the server.
+  runInContext(`
+    cartState.set("line-101", { item: { id: "line-101", name: "Extra", price: 1000 }, quantity: 1 });
+  `, ctx);
+  assert.equal(runInContext("cartState.size", ctx), 101);
+  await assert.rejects(runInContext("submitOrder()", ctx), /100 dòng món/);
+  assert.equal(runInContext("pendingOrderSubmission", ctx), null);
 });
 
 
