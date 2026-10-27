@@ -86,10 +86,28 @@ export async function handle(req, res, deps = {}) {
         supabaseJson("/rest/v1/menu_categories?" + categoryParams, { token: ctx.token, ...deps }),
         supabaseJson("/rest/v1/menu_items?" + itemParams, { token: ctx.token, ...deps })
       ]);
+      // A broken read-model is NOT an empty Menu. A truncated Menu is also
+      // unsafe for cashiers: it can silently hide sellable items/categories.
+      // Supabase Data API can impose a project-level max_rows cap, so reject
+      // the boundary itself rather than assuming a full page was returned.
+      if (!Array.isArray(categories) || !Array.isArray(items)) {
+        throw new AppHttpError(502, "COMMERCE_MENU_UPSTREAM_INVALID",
+          "Menu data service returned an invalid catalog");
+      }
+      if (categories.length >= 200 || items.length >= 1000) {
+        throw new AppHttpError(503, "COMMERCE_MENU_CATALOG_LIMIT",
+          "Menu exceeds the current supported catalog size");
+      }
+      if (categories.some(row => !row || typeof row.id !== "string"
+          || typeof row.name !== "string" || !row.name.trim() || row.active !== true)
+          || items.some(row => !row || typeof row.id !== "string"
+            || typeof row.name !== "string" || !row.name.trim()
+            || row.active !== true || row.price == null)) {
+        throw new AppHttpError(502, "COMMERCE_MENU_UPSTREAM_INVALID",
+          "Menu data service returned an invalid catalog");
+      }
       return appJson(res, 200, {
-        tenant: ctx.tenant,
-        categories: Array.isArray(categories) ? categories : [],
-        items: Array.isArray(items) ? items : []
+        tenant: ctx.tenant, categories, items
       });
     }
 
