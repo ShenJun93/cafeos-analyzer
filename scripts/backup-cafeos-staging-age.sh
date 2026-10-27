@@ -78,13 +78,20 @@ for binary in pg_dump pg_dumpall pg_restore; do
   }
 done
 
-# Default transaction settings are read-only; no data/ledger/DDL mutations.
-export PGOPTIONS="-c default_transaction_read_only=on"
+# Real session pooler testing confirmed PGOPTIONS=-c default_transaction_read_only=on
+# can be silently ignored. Never claim this startup parameter enforces read-only.
+# Every psql ledger query is explicitly enclosed in BEGIN TRANSACTION READ ONLY.
+# pg_dump / pg_dumpall remain export-only tools, not arbitrary SQL runners.
+unset PGOPTIONS || true
 script_root="$(cd -- "$(dirname -- "$0")" && pwd)"
 ledger_sql="$script_root/sql/cafeos-staging-receipt-fingerprint.sql"
 [[ -r "$ledger_sql" ]] || { echo "STOP: receipt fingerprint SQL unavailable" >&2; exit 13; }
 ledger_fingerprint() {
-  psql -XAtw -v ON_ERROR_STOP=1 -d postgres -f "$ledger_sql"
+  {
+    printf 'BEGIN TRANSACTION READ ONLY;\n'
+    cat -- "$ledger_sql"
+    printf '\nCOMMIT;\n'
+  } | psql -XqAtw -v ON_ERROR_STOP=1 -d postgres
 }
 ledger_hash_before="$(ledger_fingerprint)"
 [[ "$ledger_hash_before" =~ ^[0-9a-f]{64}$ ]] || {
@@ -95,8 +102,8 @@ ledger_hash_before="$(ledger_fingerprint)"
   exit 13
 }
 
-receipt_versions="$(psql -XAtw -v ON_ERROR_STOP=1 -d postgres -c \
-  "select string_agg(version, ',' order by version) from supabase_migrations.schema_migrations")"
+receipt_versions="$(psql -XqAtw -v ON_ERROR_STOP=1 -d postgres -c \
+  "BEGIN TRANSACTION READ ONLY; select string_agg(version, ',' order by version) from supabase_migrations.schema_migrations; COMMIT;")"
 expected="20260921100732,20260921103432,20260921105352,20260921133428,20260921141814,20260921151006,20261025103648"
 [[ "$receipt_versions" == "$expected" ]] || {
   echo "STOP: live staging receipt history differs from attested 7-version snapshot" >&2; exit 13;

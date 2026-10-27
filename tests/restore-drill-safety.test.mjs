@@ -139,7 +139,15 @@ test("portable staging backup candidate never writes plaintext or targets produc
   assert.match(source, /source-ledger-sha256\.txt/);
   assert.match(source, /cannot be inside a Git working tree/);
   assert.match(source, /age private identity must have file mode 0600 or 0400/);
-  assert.match(source, /default_transaction_read_only=on/);
+  // Session Pooler does not reliably apply PGOPTIONS default_transaction_read_only.
+  // Every ledger check must issue an explicit read-only transaction instead.
+  assert.ok(source.includes("printf 'BEGIN TRANSACTION READ ONLY;\\n'"),
+    "ledger fingerprint must BEGIN an explicit read-only transaction");
+  assert.ok(source.includes('"BEGIN TRANSACTION READ ONLY; select string_agg'),
+    "receipt version scan must BEGIN its own read-only transaction");
+  assert.match(source, /psql -XqAtw/);
+  assert.doesNotMatch(source, /export PGOPTIONS=.*default_transaction_read_only/);
+
   assert.match(source, /pg_dump -w -Fc --dbname=postgres \| age -R/);
   assert.match(source, /pg_dumpall -w --globals-only --no-role-passwords \| age -R/);
   assert.match(source, /age -d -i.*pg_restore --list/s);
@@ -215,7 +223,7 @@ test("portable staging backup rejects a pre-existing receipt SQL drift before du
     await chmod(file, 0o700);
   }
   const psql = join(bin, "psql");
-  await writeFile(psql, "#!/bin/sh\necho '" + "b".repeat(64) + "'\n");
+  await writeFile(psql, "#!/bin/sh\n# Consume piped read-only transaction SQL so the pipeline does not SIGPIPE.\ncat >/dev/null\necho '" + "b".repeat(64) + "'\n");
   await chmod(psql, 0o700);
   for (const name of ["pgpass", "ca.pem", "recipient", "identity"]) {
     const file = join(root, name);
