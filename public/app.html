@@ -745,6 +745,26 @@ async function loadPaidReceipt(orderId) {
       row.append(title, total);
       root.append(row);
     }
+    // Reconcile the printed item total with the settled amount when an
+    // eventual discount/tax adjustment exists. Never silently omit it.
+    if (Number(receipt.discountTotal) > 0 || Number(receipt.taxTotal) > 0) {
+      for (const [label, value] of [
+        ["Tạm tính", money(receipt.subtotal)],
+        ["Giảm giá", "−" + money(receipt.discountTotal)],
+        ["Thuế", "+" + money(receipt.taxTotal)]
+      ]) {
+        if (label !== "Tạm tính" && Number(label === "Giảm giá"
+          ? receipt.discountTotal : receipt.taxTotal) === 0) continue;
+        const adjustment = document.createElement("div");
+        adjustment.className = "receipt-line";
+        const name = document.createElement("span");
+        name.textContent = label;
+        const amount = document.createElement("strong");
+        amount.textContent = value;
+        adjustment.append(name, amount);
+        root.append(adjustment);
+      }
+    }
     el("receiptTotal").textContent = "Tổng thanh toán: " + money(receipt.total);
     el("receiptMethod").textContent = "Đã thanh toán · "
       + receipt.payment.method + " · " + receipt.paidAt;
