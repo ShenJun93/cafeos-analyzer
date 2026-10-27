@@ -381,3 +381,41 @@ test("independent-recipient age recovery escrow requires external public key and
   assert.equal(attempt.status, 12, "must refuse noninteractive agent execution");
   assert.match(attempt.stderr, /interactive nonroot owner WSL terminal/);
 });
+
+
+test("independent age recovery verifier rejects escrow-only trust and never materializes decrypted key", async () => {
+  const verify = await readFile(
+    new URL("../scripts/verify-cafeos-age-recovery-offhost.sh", import.meta.url), "utf8"
+  );
+  const drill = await readFile(
+    new URL("../scripts/run-local-age-offhost-recovery-drill.sh", import.meta.url), "utf8"
+  );
+  const producer = await readFile(
+    new URL("../scripts/prepare-cafeos-age-recovery-recipient.sh", import.meta.url), "utf8"
+  );
+  assert.match(verify, /set -euo pipefail/);
+  assert.match(verify, /run as nonroot owner/);
+  assert.match(verify, /TRUSTED_SOURCE_PUBLIC_FILE TRUSTED_MANIFEST_SHA256_FILE/);
+  assert.match(verify, /trust anchors\/private key cannot come from escrow/);
+  assert.match(verify, /cannot be in Git/);
+  assert.match(verify, /sha256sum identity-recovery\.age expected-recipient\.txt recovery-recipient\.txt RECOVER\.txt/);
+  assert.match(verify, /cmp -s - "\$escrow\/manifest\.sha256"/);
+  assert.match(verify, /age -d -i "\$recovery" "\$escrow\/identity-recovery\.age" \| age-keygen -y/);
+  assert.match(verify, /CAFEOS_AGE_RECOVERY_CRYPTOGRAPHIC_READBACK_PASS/);
+  assert.match(verify, /INDEPENDENT_DEVICE_CUSTODY_REQUIRES_OWNER_ATTESTATION/);
+  assert.match(verify, /ACTUAL_STAGING_BACKUP_AND_DATABASE_RESTORE_NOT_PROVEN/);
+  assert.doesNotMatch(verify, /\b(?:curl|wget|scp|ssh|nc|supabase|pg_dump|psql)\s/);
+  assert.doesNotMatch(verify, /age -p|service_role|sb_secret_|SUPABASE_ACCESS_TOKEN/i);
+  assert.match(producer, /CAFEOS_ESCROW_MANIFEST_SHA256=/);
+  assert.match(producer, /verify-cafeos-age-recovery-offhost\.sh/);
+  assert.match(drill, /age-keygen -o "\$root\/source-identity"/);
+  assert.match(drill, /age-keygen -o "\$root\/recovery-identity"/);
+  assert.match(drill, /wrong recipient private key/);
+  assert.match(drill, /wrong independent source recipient/);
+  assert.match(drill, /wrong independent manifest digest/);
+  assert.match(drill, /trust anchor symlink/);
+  assert.match(drill, /tampered encrypted identity/);
+  assert.match(drill, /forged self-consistent manifest without external approval/);
+  assert.match(drill, /CAFEOS_SYNTHETIC_OFFHOST_RECOVERY_DRILL_PASS/);
+  assert.doesNotMatch(drill, /wjatnyvdygvblirggdcm|PGHOST=|SUPABASE_ACCESS_TOKEN|service_role/i);
+});
