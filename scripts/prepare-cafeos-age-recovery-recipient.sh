@@ -101,6 +101,14 @@ On SECOND MACHINE, within escrow folder (Bash):
   test "$recovered" = "$(cat expected-recipient.txt)"
   test "$(age-keygen -y /secure/path/to/second-device-recovery-identity.txt)" = "$(cat recovery-recipient.txt)"
   unset recovered
+Use scripts/verify-cafeos-age-recovery-offhost.sh ON THE SECOND MACHINE
+with four inputs:
+  1. Copied private escrow directory containing these five files
+  2. The second machine's ORIGINAL locally generated recovery identity
+  3. Independently recorded original CafeOS source PUBLIC recipient (outside escrow)
+  4. Independently recorded SHA-256 of manifest.sha256 (outside escrow)
+The script validates both external trust anchors, decrypts in a pipe, and
+prints only a verification status; NEVER prints the private identity.
 ALSO compare the recovered source PUBLIC recipient with a trusted independent
 record made outside this copied bundle. Self-consistency alone is insufficient.
 The original CafeOS source private key stays untouched on MAIN-PC.
@@ -120,6 +128,9 @@ mv -T --no-clobber -- "$work" "$final"
 [[ -d "$final" && ! -d "$work" ]] || { echo 'STOP: publish failed' >&2; exit 14; }
 work=''
 (cd "$final" && sha256sum -c manifest.sha256 >/dev/null)
+manifest_sha="$(sha256sum "$final/manifest.sha256" | cut -d' ' -f1)"
+echo "CAFEOS_ESCROW_MANIFEST_SHA256=$manifest_sha"
+echo 'COPY_MANIFEST_SHA256_AND_SOURCE_PUBLIC_RECIPIENT_TO_INDEPENDENT_TRUSTED_CHECKPOINT'
 echo 'LOCAL_AGE_INDEPENDENT_RECIPIENT_ESCROW_CREATED'
 echo 'NO_LOCAL_PASSPHRASES_GENERATED_OR_PROMPTED'
 echo 'OFF_HOST_RECOVERY_NOT_PROVEN'
