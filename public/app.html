@@ -237,7 +237,7 @@ function setStatus(message, state = "") {
 
 function money(value) {
   if (value === null || value === undefined || value === "") return "—";
-  return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 }).format(Number(value));
+  return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 2 }).format(Number(value));
 }
 
 async function jsonFetch(url, options = {}) {
