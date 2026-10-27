@@ -16,6 +16,18 @@ function receiptCents(value) {
   return BigInt(match[1]) * 100n + BigInt((match[2] ?? "").padEnd(2, "0"));
 }
 
+// PostgreSQL numeric(12,3) quantities are exact to one-thousandth.
+// The generated numeric(18,2) line_total rounds positive half-cent ties up.
+function receiptQuantityMilli(value) {
+  if ((typeof value !== "string" && typeof value !== "number")
+      || (typeof value === "number" && !Number.isFinite(value))) return null;
+  const match = /^(0|[1-9][0-9]{0,8})(?:\\.([0-9]{1,3}))?$/.exec(String(value));
+  if (!match) return null;
+  const milli = BigInt(match[1]) * 1000n
+    + BigInt((match[2] ?? "").padEnd(3, "0"));
+  return milli > 0n ? milli : null;
+}
+
 // Read-only paid receipt from immutable server-owned order-item price snapshots.
 // Requires the caller's actual Tenant+Store and never accepts client totals.
 export async function handle(req, res, deps = {}) {
@@ -99,9 +111,14 @@ export async function handle(req, res, deps = {}) {
     let itemsSubtotal = 0n;
     for (const line of lines) {
       const lineAmount = receiptCents(line.line_total);
-      if (lineAmount === null || receiptCents(line.unit_price) === null
-          || !/^(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,3})?$/.test(String(line.quantity))
-          || Number(line.quantity) <= 0) {
+      const unitPrice = receiptCents(line.unit_price);
+      const quantityMilli = receiptQuantityMilli(line.quantity);
+      // PostgreSQL stores the generated unit_price * quantity as numeric(18,2).
+      // Keep positive half-cent rounding exact; never trust a partial receipt.
+      const calculatedLineCents = unitPrice === null || quantityMilli === null
+        ? null : (unitPrice * quantityMilli + 500n) / 1000n;
+      if (lineAmount === null || calculatedLineCents === null
+          || calculatedLineCents !== lineAmount) {
         throw new AppHttpError(502, "COMMERCE_RECEIPT_TOTAL_MISMATCH",
           "Receipt line has invalid financial data");
       }
