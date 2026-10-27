@@ -85,9 +85,12 @@ On a SECOND trusted machine with age and age-keygen installed, use Bash:
   recovered="$(age -d identity-recovery.age | age-keygen -y)"
   test "$recovered" = "$(cat expected-recipient.txt)"
   unset recovered
-Record that the checksum and the recovered PUBLIC recipient both matched
-on the second machine before using any actual staging backup. A local
-checksum or decryption test on MAIN-PC alone is NOT off-host recovery.
+The internal reference verifies bundle consistency, NOT that the
+bundle belongs to the original CafeOS key. ALSO compare the recovered
+PUBLIC recipient with a trusted recipient recorded outside this copied
+envelope before counting off-host recovery as proven.
+Record checksum, public-key matches and recovery on the second machine.
+A local test on MAIN-PC alone is NOT off-host recovery.
 Do not send decrypted key or passphrase through ChatGPT, Git, or CI.
 Keep the original WSL age identity unchanged.
 TEXT

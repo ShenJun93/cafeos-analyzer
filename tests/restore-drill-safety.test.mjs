@@ -351,6 +351,7 @@ test("owner-only encrypted age identity escrow refuses noninteractive execution"
   assert.match(source, /printf '%s\\n' "\$expected" > "\$work\/expected-recipient\.txt"/);
   assert.match(source, /sha256sum identity-recovery\.age expected-recipient\.txt RECOVER\.txt/);
   assert.ok(source.includes('test "$recovered" = "$(cat expected-recipient.txt)"'));
+  assert.match(source, /trusted recipient recorded outside this copied/);
   assert.match(source, /rm -f -- .*expected-recipient\.txt/);
   assert.doesNotMatch(source, /curl |wget |service_role|supabase db push/i);
   const executable = fileURLToPath(file);
