@@ -748,6 +748,8 @@ test("paid receipt refuses role misuse, cross-store, unpaid, missing and partial
     [[order], [], payments, 502, "COMMERCE_RECEIPT_INCOMPLETE"],
     [[order], lines, [], 502, "COMMERCE_RECEIPT_INCOMPLETE"],
     [[order], lines, [...payments, ...payments], 502, "COMMERCE_RECEIPT_INCOMPLETE"],
+    [[order], lines, [{ ...payments[0], paid_at: "2026-10-27T09:30:01Z" }],
+      502, "COMMERCE_RECEIPT_INCOMPLETE"],
     [[order], [{ ...lines[0], order_id: STORE_A }], payments, 502, "COMMERCE_RECEIPT_INCOMPLETE"]
   ]) {
     const response = res();
