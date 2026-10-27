@@ -49,6 +49,24 @@ export function commerceUpstreamError({ payload }) {
   return new AppHttpError(400, code, "Commerce request was rejected");
 }
 
+// Read-only financial proof of values returned by Commerce SQL RPCs. SQL
+// NUMERIC can arrive from PostgREST as a number or decimal string. Never
+// accept NaN, exponent notation, negative amounts, or hidden sub-cent values.
+export function commerceReturnedCents(value) {
+  if ((typeof value !== "number" && typeof value !== "string")
+      || (typeof value === "number" && !Number.isFinite(value))) return null;
+  const match = /^(0|[1-9][0-9]{0,15})(?:[.]([0-9]{1,2}))?$/.exec(String(value));
+  if (!match) return null;
+  const cents = BigInt(match[1]) * 100n
+    + BigInt((match[2] ?? "").padEnd(2, "0"));
+  return cents <= 100000000000000n ? cents : null;
+}
+
+export function commerceReturnedCount(value) {
+  return typeof value === "number" && Number.isSafeInteger(value)
+    && value >= 0 && value <= 2147483647;
+}
+
 // Decimal validation must not multiply binary floats by 100. Valid inputs such
 // as 0.29 / 2.55 are not always exactly representable in IEEE-754.
 export function parseCommerceMoney(value, { code, message, max, allowZero = false }) {
