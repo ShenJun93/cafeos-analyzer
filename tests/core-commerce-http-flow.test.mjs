@@ -223,6 +223,14 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
     assert.equal(upstreamCalls.filter(x =>
       x.path === "/rest/v1/rpc/commerce_create_order").length, rpcCallsBeforeInvalidQty);
 
+    for (const clientOrderKey of [["kiosk-key-1"], { value: "kiosk-key-1" }, true]) {
+      const badIntent = await call("/api/app/commerce-order", "cashier-token", "POST", {
+        ...intent, clientOrderKey
+      });
+      assert.equal(badIntent.status, 400);
+      assert.equal(badIntent.body.error.code, "COMMERCE_CLIENT_ORDER_KEY_INVALID");
+    }
+
     const firstOrder = await call("/api/app/commerce-order", "cashier-token", "POST", intent);
     assert.equal(firstOrder.status, 201);
     assert.equal(firstOrder.body.order.total, 70000);
@@ -245,6 +253,13 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
     assert.equal(closeTooSoon.status, 409);
     assert.equal(closeTooSoon.body.error.code, "COMMERCE_CLOSE_OPEN_ORDERS");
 
+    for (const reference of [true, ["wire-ref"], { ref: "wire-ref" }]) {
+      const malformed = await call("/api/app/commerce-payment", "cashier-token", "POST", {
+        orderId: ORDER, method: "cash", amount: 70000, reference
+      });
+      assert.equal(malformed.status, 400);
+      assert.equal(malformed.body.error.code, "COMMERCE_PAYMENT_REFERENCE_INVALID");
+    }
     const wrongPayment = await call("/api/app/commerce-payment", "cashier-token", "POST",
       { orderId: ORDER, method: "cash", amount: 1 });
     assert.equal(wrongPayment.status, 400);

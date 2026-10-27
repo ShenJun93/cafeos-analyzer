@@ -27,7 +27,7 @@ function normalizeItems(value) {
       throw new AppHttpError(400, "COMMERCE_ITEMS_INVALID", "Order items are invalid");
     }
     strictFields(item, new Set(["menuItemId", "quantity"]));
-    const menuItemId = String(item.menuItemId ?? "").trim();
+    const menuItemId = typeof item.menuItemId === "string" ? item.menuItemId.trim() : "";
     // Match the trusted RPC's numeric(12,3) quantity contract before any
     // Number() coercion (true, arrays, exponents and excess precision must
     // never change what the cashier intended to submit).
@@ -56,7 +56,8 @@ export async function handle(req, res, deps = {}) {
     strictFields(body, ALLOWED_FIELDS);
 
     const storeId = requiredUuid(body.storeId, "COMMERCE_STORE_INVALID", "Invalid Store");
-    const clientOrderKey = String(body.clientOrderKey ?? "").trim();
+    // An idempotency key is an opaque string; never coerce arrays/objects/numbers into identifiers.
+    const clientOrderKey = typeof body.clientOrderKey === "string" ? body.clientOrderKey.trim() : "";
     if (!clientOrderKey || clientOrderKey.length > 128) {
       throw new AppHttpError(400, "COMMERCE_CLIENT_ORDER_KEY_INVALID", "Client order key is invalid");
     }

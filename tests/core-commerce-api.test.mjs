@@ -226,6 +226,68 @@ test("POS rejects quantity coercion and excess scale before creating a trusted o
   }
 });
 
+test("POS order identifiers and settlement references reject implicit string coercion", async () => {
+  let businessRpcCalls = 0;
+  const deps = {
+    env,
+    fetchImpl: authFetch("cashier", async (url) => {
+      if (url.pathname.startsWith("/rest/v1/rpc/commerce_")) businessRpcCalls++;
+      return jsonResponse({}, 500);
+    })
+  };
+  for (const clientOrderKey of [null, true, 7, [], ["intent-7"], { key: "intent-7" }]) {
+    const response = res();
+    await orderHandle(req(authHeaders, "POST", "/api/app/commerce-order", {
+      storeId: STORE_A, clientOrderKey, channel: "counter",
+      items: [{ menuItemId: ITEM_A, quantity: 1 }]
+    }), response, deps);
+    assert.equal(response.statusCode, 400);
+    assert.equal(parsed(response).error.code, "COMMERCE_CLIENT_ORDER_KEY_INVALID");
+  }
+  for (const menuItemId of [[ITEM_A], { value: ITEM_A }, true, 1]) {
+    const response = res();
+    await orderHandle(req(authHeaders, "POST", "/api/app/commerce-order", {
+      storeId: STORE_A, clientOrderKey: "intent-7", channel: "counter",
+      items: [{ menuItemId, quantity: 1 }]
+    }), response, deps);
+    assert.equal(response.statusCode, 400);
+    assert.equal(parsed(response).error.code, "COMMERCE_ITEMS_INVALID");
+  }
+  for (const method of [["cash"], { value: "cash" }, true]) {
+    const response = res();
+    await paymentHandle(req(authHeaders, "POST", "/api/app/commerce-payment", {
+      orderId: ORDER_A, method, amount: 50000, reference: null
+    }), response, deps);
+    assert.equal(response.statusCode, 400);
+    assert.equal(parsed(response).error.code, "COMMERCE_PAYMENT_METHOD_INVALID");
+  }
+  for (const reference of [true, false, 123, [], ["BANK-01"], { text: "BANK-01" }]) {
+    const response = res();
+    await paymentHandle(req(authHeaders, "POST", "/api/app/commerce-payment", {
+      orderId: ORDER_A, method: "bank_transfer", amount: 50000, reference
+    }), response, deps);
+    assert.equal(response.statusCode, 400);
+    assert.equal(parsed(response).error.code, "COMMERCE_PAYMENT_REFERENCE_INVALID");
+  }
+  assert.equal(businessRpcCalls, 0, "malformed intent must not reach business writes");
+
+  for (const reference of ["  BANK-01  ", "", null]) {
+    let observed;
+    const response = res();
+    await paymentHandle(req(authHeaders, "POST", "/api/app/commerce-payment", {
+      orderId: ORDER_A, method: "bank_transfer", amount: 50000, reference
+    }), response, {
+      env, fetchImpl: authFetch("cashier", async (url, init) => {
+        assert.equal(url.pathname, "/rest/v1/rpc/commerce_capture_payment");
+        observed = JSON.parse(init.body).p_reference;
+        return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { amount: 50000 } });
+      })
+    });
+    assert.equal(response.statusCode, 201);
+    assert.equal(observed, reference?.trim() || null);
+  }
+});
+
 test("payment, dashboard, and close handlers call only the fixed commerce RPCs", async () => {
   const seen = [];
   const fetchImpl = authFetch("manager", async (u, init) => {

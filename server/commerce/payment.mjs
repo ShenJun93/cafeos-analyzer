@@ -26,7 +26,7 @@ export async function handle(req, res, deps = {}) {
     strictFields(body, ALLOWED_FIELDS);
 
     const orderId = requiredUuid(body.orderId, "COMMERCE_ORDER_INVALID", "Invalid Order");
-    const method = String(body.method ?? "").trim();
+    const method = typeof body.method === "string" ? body.method.trim() : "";
     if (!METHODS.has(method)) {
       throw new AppHttpError(400, "COMMERCE_PAYMENT_METHOD_INVALID", "Payment method is invalid");
     }
@@ -35,9 +35,13 @@ export async function handle(req, res, deps = {}) {
       message: "Payment amount is invalid",
       max: 1000000000000
     });
-    const reference = body.reference === undefined || body.reference === null || String(body.reference).trim() === ""
-      ? null
-      : String(body.reference).trim();
+    // Settlement references are optional strings; never manufacture a reference
+    // from a boolean, array or object by calling String(value).
+    if (body.reference !== undefined && body.reference !== null
+        && typeof body.reference !== "string") {
+      throw new AppHttpError(400, "COMMERCE_PAYMENT_REFERENCE_INVALID", "Payment reference is invalid");
+    }
+    const reference = typeof body.reference === "string" ? (body.reference.trim() || null) : null;
     if (reference !== null && reference.length > 500) {
       throw new AppHttpError(400, "COMMERCE_PAYMENT_REFERENCE_INVALID", "Payment reference is invalid");
     }
