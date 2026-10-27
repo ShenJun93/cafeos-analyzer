@@ -338,6 +338,7 @@ function signOut() {
   closeSubmitInFlight = false;
   cartState.clear();
   el("openOrderList").replaceChildren();
+  el("closeReceipt").textContent = "";
   el("appPanel").classList.add("hidden");
   el("authPanel").classList.remove("hidden");
   el("signOut").classList.add("hidden");
@@ -382,6 +383,7 @@ async function loadTenant() {
   el("commerceMetrics").replaceChildren();
   el("paymentMix").replaceChildren();
   el("closePreview").textContent = "Đang tải Store của Tenant…";
+  el("closeReceipt").textContent = "";
   renderRoleControls();
 
   const stores = await appFetch("/api/app/stores");
@@ -404,6 +406,7 @@ async function refreshStore() {
   el("commerceMetrics").replaceChildren();
   el("paymentMix").replaceChildren();
   el("closePreview").textContent = "Đang xác minh báo cáo Store mới…";
+  el("closeReceipt").textContent = "";
   el("closeDay").disabled = true;
   menuState = { categories: [], items: [] };
   el("menuCatalog").replaceChildren();
@@ -895,6 +898,16 @@ function renderClosePreview() {
   el("closeDay").disabled = !canManageCommerce() || closeSubmitInFlight || Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
 }
 
+function invalidateCloseDashboard() {
+  // Never allow previously fetched metrics to enable another close after a
+  // confirmed close or uncertain server-write outcome.
+  currentDashboard = null;
+  el("commerceMetrics").replaceChildren();
+  el("paymentMix").replaceChildren();
+  el("closePreview").textContent = "Dashboard cần xác minh lại trước khi đóng ngày.";
+  el("closeDay").disabled = true;
+}
+
 async function closeBusinessDay() {
   if (!canManageCommerce()) throw new Error("Manager role required for Daily Close");
   if (!currentStoreId || !currentDashboard || closeSubmitInFlight
@@ -910,21 +923,37 @@ async function closeBusinessDay() {
   el("closeDay").disabled = true;
   setStatus("Đang đóng business day…");
   try {
-    const payload = await appFetch("/api/app/commerce-daily-close", {
-      method: "POST",
-      body: {
-        storeId: selectedStore,
-        businessDate
-      }
-    });
+    let payload;
+    try {
+      payload = await appFetch("/api/app/commerce-daily-close", {
+        method: "POST",
+        body: { storeId: selectedStore, businessDate }
+      });
+    } catch (error) {
+      // A lost HTTP response cannot prove that the close did not commit.
+      // Suppress repeat submissions until a fresh server read resolves it.
+      invalidateCloseDashboard();
+      throw new Error("Chưa xác nhận được Daily Close. Làm mới Dashboard để kiểm tra trước khi thử đóng lại. " + error.message);
+    }
+    // This is a server-confirmed immutable close receipt, NOT a local total.
     const receipt = el("closeReceipt");
     receipt.textContent =
       "Close " + payload.close.businessDate +
       " · " + payload.close.orderCount + " orders · " +
       money(payload.close.salesTotal) + " sales · " +
       money(payload.close.paymentTotal) + " payments";
-    setStatus("Daily Close hoàn tất.", "ok");
-    await loadDashboard();
+    invalidateCloseDashboard();
+    try {
+      await loadDashboard();
+      if (!currentDashboard || (currentDashboard.businessDate === businessDate && !currentDashboard.closed)) {
+        throw new Error("Dashboard chưa xác nhận ngày đã đóng");
+      }
+      setStatus("Daily Close hoàn tất.", "ok");
+    } catch {
+      invalidateCloseDashboard();
+      // Committed close truth must survive an independent reporting outage.
+      setStatus("Daily Close đã được ghi nhận. Dashboard chưa cập nhật; không đóng lại, làm mới để kiểm tra.", "warning");
+    }
   } finally {
     closeSubmitInFlight = false;
     renderClosePreview();

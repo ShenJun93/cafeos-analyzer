@@ -868,3 +868,127 @@ test("stale Tenant Store-list response cannot replace a newer Tenant selection",
   assert.equal(el("store").children[0].value, "store-B");
   assert.equal(runInContext("refreshCount", ctx), 1);
 });
+
+
+test("Daily Close retains server-confirmed receipt when Dashboard refresh fails or stays stale", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const script = html.split("<script>")[1]?.split("</script>")[0];
+  assert.ok(script);
+  const dom = new Map();
+  function el(id) {
+    if (!dom.has(id)) dom.set(id, {
+      value: "", textContent: "", disabled: false, dataset: {},
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener() {}, replaceChildren() {}, append() {}, reset() {}
+    });
+    return dom.get(id);
+  }
+  const ctx = createContext({
+    document: { getElementById: el, querySelectorAll: () => [],
+      createElement: () => el("new-" + dom.size) },
+    window: { confirm: () => true },
+    fetch: async () => ({ ok: true, status: 200,
+      json: async () => ({ supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test" }) }),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "synthetic" }
+  });
+  runInContext(script, ctx);
+  runInContext(`
+    sessionToken = "synthetic";
+    currentTenantId = "tenant-A";
+    currentTenantRole = "manager";
+    currentStoreId = "store-A";
+    currentDashboard = { businessDate: "2026-10-27", orderCount: 2,
+      salesTotal: 70000, openOrderCount: 0, closed: false };
+    let closeWrites = 0;
+    let dashboardReads = 0;
+    appFetch = async (path, options) => {
+      if (path !== "/api/app/commerce-daily-close") throw new Error("unexpected API call");
+      closeWrites++;
+      if (options.body.storeId !== "store-A") throw new Error("wrong store");
+      return { close: { businessDate: "2026-10-27", orderCount: 2,
+        salesTotal: 70000, paymentTotal: 70000 } };
+    };
+    loadDashboard = async () => {
+      dashboardReads++;
+      throw new Error("Dashboard offline");
+    };
+  `, ctx);
+  await runInContext("closeBusinessDay()", ctx);
+  assert.equal(runInContext("closeWrites", ctx), 1);
+  assert.equal(runInContext("dashboardReads", ctx), 1);
+  assert.equal(runInContext("currentDashboard", ctx), null);
+  assert.equal(el("closeDay").disabled, true);
+  assert.match(el("closeReceipt").textContent, /Close 2026-10-27/);
+  assert.match(el("status").textContent, /Daily Close đã được ghi nhận/);
+  assert.equal(el("status").dataset.state, "warning");
+  await runInContext("closeBusinessDay()", ctx);
+  assert.equal(runInContext("closeWrites", ctx), 1, "committed close cannot be resubmitted while reports are unavailable");
+
+  // A lagging Dashboard may still say the SAME day is open. Fail closed.
+  runInContext(`
+    currentDashboard = { businessDate: "2026-10-27", orderCount: 2,
+      salesTotal: 70000, openOrderCount: 0, closed: false };
+    loadDashboard = async () => { dashboardReads++; };
+  `, ctx);
+  await runInContext("closeBusinessDay()", ctx);
+  assert.equal(runInContext("currentDashboard", ctx), null);
+  assert.equal(el("closeDay").disabled, true);
+  assert.equal(runInContext("closeWrites", ctx), 2, "test makes one deliberate new mock close");
+  assert.match(el("status").textContent, /Dashboard chưa cập nhật/);
+});
+
+test("ambiguous Daily Close response prevents duplicate write until fresh dashboard and receipt resets on Store change", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const script = html.split("<script>")[1]?.split("</script>")[0];
+  const dom = new Map();
+  function el(id) {
+    if (!dom.has(id)) dom.set(id, {
+      value: "", textContent: "", disabled: false, dataset: {},
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener() {}, replaceChildren() {}, append() {}, reset() {}
+    });
+    return dom.get(id);
+  }
+  const ctx = createContext({
+    document: { getElementById: el, querySelectorAll: () => [],
+      createElement: () => el("new-" + dom.size) },
+    window: { confirm: () => true },
+    fetch: async () => ({ ok: true, status: 200,
+      json: async () => ({ supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test" }) }),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "synthetic" }
+  });
+  runInContext(script, ctx);
+  runInContext(`
+    sessionToken = "synthetic";
+    currentTenantId = "tenant-A";
+    currentTenantRole = "manager";
+    currentStoreId = "store-A";
+    currentDashboard = { businessDate: "2026-10-27", orderCount: 1,
+      salesTotal: 30000, openOrderCount: 0, closed: false };
+    let closeWrites = 0;
+    appFetch = async path => {
+      if (path !== "/api/app/commerce-daily-close") throw new Error("unexpected API call");
+      closeWrites++;
+      throw new Error("network response lost");
+    };
+  `, ctx);
+  await assert.rejects(runInContext("closeBusinessDay()", ctx), /Chưa xác nhận được Daily Close/);
+  assert.equal(runInContext("currentDashboard", ctx), null);
+  assert.equal(el("closeDay").disabled, true);
+  await runInContext("closeBusinessDay()", ctx);
+  assert.equal(runInContext("closeWrites", ctx), 1, "no automatic duplicate close on unknown outcome");
+
+  runInContext(`
+    appFetch = async () => { throw new Error("not expected"); };
+    loadMenu = async () => {};
+    loadDashboard = async () => {};
+    loadOptionalControlTower = async () => true;
+  `, ctx);
+  el("closeReceipt").textContent = "Close store-A";
+  el("store").value = "store-B";
+  await runInContext("refreshStore()", ctx);
+  assert.equal(el("closeReceipt").textContent, "", "Store change must clear old close receipt");
+  assert.equal(el("closeDay").disabled, true, "new Store still awaits verified dashboard");
+});
