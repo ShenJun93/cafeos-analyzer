@@ -251,7 +251,7 @@
         <section id="importLineagePanel" class="import-lineage-panel hidden">
           <div class="section-label">Manager · định danh nguồn import</div>
           <h4>Source Namespace Evidence</h4>
-          <p class="muted">Chỉ đếm mã giao dịch theo từng namespace của Store/ngày. Không kết luận trùng với CafeOS POS.</p>
+          <p class="muted">Chỉ đếm mã giao dịch theo từng namespace của Store/ngày khi số dòng đầy đủ được xác minh. Namespace chưa chứng minh danh tính tài khoản POS ngoài; không kết luận trùng với CafeOS POS.</p>
           <button id="importLineageRefresh" type="button" class="secondary" disabled>Kiểm tra namespace</button>
           <p id="importLineageStatus" class="muted" aria-live="polite">Chọn ngày để kiểm tra.</p>
           <div id="importLineageRows" class="import-lineage-rows"></div>
@@ -1916,8 +1916,11 @@ async function loadImportLineage() {
       || p.sourceBoundary?.deduplication !== "not_performed"
       || p.sourceBoundary?.combinedSales !== null
       || p.sourceBoundary?.transactionIdsExposed !== false
+      || p.sourceBoundary?.sourceAccountProvenance !== "not_verified"
       || p.completeness?.status !== "bounded_read_only"
       || p.completeness?.maxLineItems !== 500
+      || p.completeness?.exactResponseVerified !== true
+      || p.completeness?.exactMatchedLineItemCount !== p.observedLineItemCount
       || !Array.isArray(p.namespaces) || !valid(p.observedLineItemCount)
       || !valid(p.observedNamespaceCount)
       || p.namespaces.length !== p.observedNamespaceCount
@@ -1950,7 +1953,7 @@ async function loadImportLineage() {
       "Chưa quan sát thấy dữ liệu import; KHÔNG kết luận doanh thu bằng 0.";
     el("importLineageStatus").textContent = p.store.name + " · " + date
       + " · " + p.observedNamespaceCount + " namespace · "
-      + p.observedLineItemCount + "/500 dòng. KHÔNG đối soát trùng với POS.";
+      + p.observedLineItemCount + "/500 dòng đã xác minh. Tài khoản nguồn chưa xác minh; KHÔNG đối soát trùng với POS.";
   } catch (e) {
     if (current()) {
       root.replaceChildren();
