@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  handle, storeDayUtcBounds, summarizeNamespaceRows
+  handle, storeDayUtcBounds, summarizeNamespaceRows, exactLineagePage
 } from "../server/commerce/import-lineage.mjs";
 import { WORKFLOW_ROUTES } from "../api/app/workflow.mjs";
 
@@ -30,8 +30,8 @@ const req = (q="storeId="+S+"&businessDate="+DAY,method="GET")=>({
 });
 const res=()=>({statusCode:0,body:"",setHeader(){},end(s){this.body=String(s)}});
 const parsed=r=>JSON.parse(r.body);
-const response=(x,status=200)=>new Response(JSON.stringify(x),{status});
-function fixture({role="manager",rows=data,stores=[{
+const response=(x,status=200,headers={})=>new Response(JSON.stringify(x),{status,headers});
+function fixture({role="manager",rows=data,contentRange,stores=[{
   id:S,tenant_id:T,name:"Synthetic Cafe",timezone:"Asia/Ho_Chi_Minh",active:true
 }]}={}){
   const calls=[];
@@ -49,6 +49,7 @@ function fixture({role="manager",rows=data,stores=[{
     if(u.pathname==="/rest/v1/transaction_line_items"){
       calls.push("lines");
       assert.equal(opts.method??"GET","GET");
+      assert.equal(opts.headers.prefer,"count=exact");
       assert.equal(opts.headers.authorization,"Bearer synthetic");
       assert.equal(u.searchParams.get("tenant_id"),"eq."+T);
       assert.equal(u.searchParams.get("store_id"),"eq."+S);
@@ -57,7 +58,10 @@ function fixture({role="manager",rows=data,stores=[{
       const and=u.searchParams.get("and");
       assert.match(and,/occurred_at\.gte\.2026-10-27T17:00:00\.000Z/);
       assert.match(and,/occurred_at\.lt\.2026-10-28T17:00:00\.000Z/);
-      return response(rows);
+      const range = contentRange === undefined
+        ? (rows.length ? "0-"+(rows.length-1)+"/"+rows.length : "*/0")
+        : contentRange;
+      return response(rows,200,range===null?{}:{"content-range":range});
     }
     throw Error("Unexpected read "+u.pathname);
   };
@@ -87,6 +91,8 @@ test("manager-only namespace diagnostic counts within source; no cross-source de
  assert.equal(p.sourceBoundary.combinedSales,null);
  assert.equal(p.sourceBoundary.transactionIdsExposed,false);
  assert.equal(p.observedLineItemCount,3);
+ assert.equal(p.completeness.exactResponseVerified,true);
+ assert.equal(p.completeness.exactMatchedLineItemCount,3);
  assert.equal(p.observedNamespaceCount,2);
  assert.deepEqual(p.namespaces,[
    {sourceNamespace:"kiotviet",lineItemCount:2,sourceScopedTransactionCount:1},
@@ -164,4 +170,43 @@ test("empty day means no observed rows, not zero sales or proven no activity",as
  const p=parsed(out);assert.equal(p.observedLineItemCount,0);
  assert.deepEqual(p.namespaces,[]);assert.equal(p.sourceBoundary.combinedSales,null);
  assert.equal(p.completeness.status,"bounded_read_only");
+});
+
+test("exact count metadata proves entire filtered page, including empty and 500 lines",()=>{
+ const rows=Array.from({length:500},(_,i)=>row(i+1,"namespace","order-"+i));
+ assert.equal(exactLineagePage([],"*/0"),0);
+ assert.equal(exactLineagePage(data,"0-2/3"),3);
+ assert.equal(exactLineagePage(rows,"0-499/500"),500);
+});
+test("upstream 501st hidden row or larger exact total is rejected rather than undercounted",async()=>{
+ for(const count of [501,800,100000]){
+  const d=fixture({rows:data,contentRange:"0-2/"+count}),out=res();
+  await handle(req(),out,d);
+  assert.equal(out.statusCode,422,count);
+  assert.equal(parsed(out).error.code,"IMPORT_LINEAGE_LIMIT");
+  assert.equal(Object.hasOwn(parsed(out),"namespaces"),false);
+ }
+});
+test("PostgREST lower max-rows cap, missing count or malformed range fails closed",async()=>{
+ const invalid=[
+  "0-1/3","0-2/*","0-2/2","1-3/3","0-1/2",
+  "0-3/3","*/0","*/3","0-2/NaN","0-2/9007199254740992",
+  null
+ ];
+ for(const contentRange of invalid){
+  const d=fixture({rows:data,contentRange}),out=res();
+  await handle(req(),out,d);
+  assert.equal(out.statusCode,502,String(contentRange));
+  assert.equal(parsed(out).error.code,"SUPABASE_UPSTREAM");
+  assert.equal(Object.hasOwn(parsed(out),"namespaces"),false);
+ }
+});
+test("exact counted rows below server cap still publish bounded read-only observation",async()=>{
+ const rows=Array.from({length:100},(_,i)=>row(i+1,"synthetic","X"+i));
+ const d=fixture({rows,contentRange:"0-99/100"}),out=res();
+ await handle(req(),out,d);
+ assert.equal(out.statusCode,200);
+ assert.equal(parsed(out).completeness.exactResponseVerified,true);
+ assert.equal(parsed(out).completeness.exactMatchedLineItemCount,100);
+ assert.equal(parsed(out).observedLineItemCount,100);
 });
