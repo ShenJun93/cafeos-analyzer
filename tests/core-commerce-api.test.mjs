@@ -24,6 +24,8 @@ const ITEM_A = "15000000-0000-4000-8000-000000000001";
 const ITEM_B = "15000000-0000-4000-8000-000000000002";
 const CATEGORY_A = "17000000-0000-4000-8000-000000000001";
 const ORDER_A = "16000000-0000-4000-8000-000000000001";
+const ORDER_LINE_A = "18000000-0000-4000-8000-000000000001";
+const ORDER_LINE_B = "18000000-0000-4000-8000-000000000002";
 const env = {
   SUPABASE_URL: "https://example.supabase.co",
   SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test"
@@ -357,7 +359,12 @@ test("order handler accepts only bounded intent fields and delegates trusted tot
       fetchImpl: authFetch("cashier", async (u, init) => {
         calls.push({ u, init });
         if (u.pathname === "/rest/v1/rpc/commerce_create_order") {
-          return jsonResponse({ order: { id: ORDER_A, tenantId: TENANT_A, storeId: STORE_A, clientOrderKey: "terminal-1-0001", channel: "counter", orderNumber: "C-001", status: "open", total: 100000 }, items: [{ menuItemId: ITEM_A, quantity: 2 }] });
+          return jsonResponse({ order: { id: ORDER_A, tenantId: TENANT_A, storeId: STORE_A,
+            clientOrderKey: "terminal-1-0001", channel: "counter",
+            orderNumber: "C-001", status: "open", subtotal: 100000,
+            discountTotal: 0, taxTotal: 0, total: 100000 },
+            items: [{ id: ORDER_LINE_A, menuItemId: ITEM_A, name: "Latte",
+              quantity: 2, unitPrice: 50000, lineTotal: 100000 }] });
         }
         return jsonResponse({}, 500);
       })
@@ -399,9 +406,12 @@ test("POS order confirmation requires original Tenant, Store, idempotency intent
     order: {
       id: ORDER_A, tenantId: TENANT_A, storeId: STORE_A,
       clientOrderKey: intent.clientOrderKey, channel: "counter",
-      orderNumber: "C-123", status: "open", total: "35000.29"
+      orderNumber: "C-123", status: "open",
+      subtotal: "35000.29", discountTotal: "0.00",
+      taxTotal: 0, total: "35000.29"
     },
-    items: [{ menuItemId: ITEM_A, quantity: 1 }]
+    items: [{ id: ORDER_LINE_A, menuItemId: ITEM_A, name: "Latte",
+      quantity: 1, unitPrice: "35000.29", lineTotal: "35000.29" }]
   };
   const invalid = [
     { ...valid, order: { ...valid.order, id: "bad-order-uuid" } },
@@ -416,6 +426,15 @@ test("POS order confirmation requires original Tenant, Store, idempotency intent
     { ...valid, order: { ...valid.order, total: -1 } },
     { ...valid, order: { ...valid.order, total: 0 } },
     { ...valid, order: { ...valid.order, total: "NaN" } },
+    { ...valid, order: { ...valid.order, subtotal: "35000.28" } },
+    { ...valid, order: { ...valid.order, discountTotal: undefined } },
+    { ...valid, order: { ...valid.order, taxTotal: "0.001" } },
+    { ...valid, order: { ...valid.order, discountTotal: 1 } },
+    { ...valid, items: [{ ...valid.items[0], unitPrice: "35000.28" }] },
+    { ...valid, items: [{ ...valid.items[0], lineTotal: "35000.28" }] },
+    { ...valid, items: [{ ...valid.items[0], id: "wrong-line-id" }] },
+    { ...valid, items: [{ ...valid.items[0], id: undefined }] },
+    { ...valid, items: [{ ...valid.items[0], name: "" }] },
     { ...valid, items: [] },
     { ...valid, items: null },
     { ...valid, items: [{ menuItemId: STORE_A, quantity: 1 }] },
@@ -456,10 +475,13 @@ test("POS order confirmation requires original Tenant, Store, idempotency intent
     ]
   };
   const reordered = {
-    order: { ...valid.order, clientOrderKey: twoLines.clientOrderKey },
+    order: { ...valid.order, clientOrderKey: twoLines.clientOrderKey,
+      subtotal: 26250, total: 26250 },
     items: [
-      { menuItemId: ITEM_A, quantity: "2.500" },
-      { menuItemId: ITEM_A, quantity: "0.125" }
+      { id: ORDER_LINE_B, menuItemId: ITEM_A, name: "Latte",
+        unitPrice: "10000.00", quantity: "2.500", lineTotal: 25000 },
+      { id: ORDER_LINE_A, menuItemId: ITEM_A, name: "Latte",
+        unitPrice: 10000, quantity: "0.125", lineTotal: "1250.00" }
     ]
   };
   const validReordered = res();
@@ -470,12 +492,16 @@ test("POS order confirmation requires original Tenant, Store, idempotency intent
   assert.equal(validReordered.statusCode, 201);
   for (const malformed of [
     { ...reordered, items: [
-      { menuItemId: ITEM_A, quantity: 2.5 },
-      { menuItemId: ITEM_A, quantity: 2.5 }
+      { ...reordered.items[0] },
+      { ...reordered.items[1], quantity: 2.5 }
     ] },
     { ...reordered, items: [
-      { menuItemId: ITEM_A, quantity: 2.5 },
-      { menuItemId: STORE_A, quantity: 0.125 }
+      { ...reordered.items[0] },
+      { ...reordered.items[1], menuItemId: STORE_A }
+    ] },
+    { ...reordered, items: [
+      { ...reordered.items[0] },
+      { ...reordered.items[1], id: ORDER_LINE_B }
     ] }
   ]) {
     const response = res();
@@ -509,8 +535,10 @@ test("PostgreSQL lowercase UUID readbacks reconcile uppercase POS and payment in
       return jsonResponse({
         order: { id: order, tenantId: TENANT_A, storeId: store,
           clientOrderKey: intent.clientOrderKey, channel: "counter",
-          orderNumber: "POS-CASE-01", status: "open", total: "35000.00" },
-        items: [{ menuItemId: item, quantity: "1.000" }]
+          orderNumber: "POS-CASE-01", status: "open",
+          subtotal: "35000.00", discountTotal: 0, taxTotal: 0, total: "35000.00" },
+        items: [{ id: ORDER_LINE_A, menuItemId: item, name: "Latte",
+          unitPrice: 35000, quantity: "1.000", lineTotal: "35000.00" }]
       });
     }) });
   assert.equal(created.statusCode, 201, "a successful order must not be reported as unknown");
@@ -612,7 +640,13 @@ test("POS rejects quantity coercion and excess scale before creating a trusted o
       env, fetchImpl: authFetch("cashier", async (url, init) => {
         assert.equal(url.pathname, "/rest/v1/rpc/commerce_create_order");
         captured = JSON.parse(init.body).p_items[0].quantity;
-        return jsonResponse({ order: { id: ORDER_A, tenantId: TENANT_A, storeId: STORE_A, clientOrderKey: "valid-quantity", channel: "counter", orderNumber: "C-001", status: "open", total: 50000 }, items: [{ menuItemId: ITEM_A, quantity: expected }] });
+        const lineTotal = Number((50000 * expected).toFixed(2));
+        return jsonResponse({ order: { id: ORDER_A, tenantId: TENANT_A,
+          storeId: STORE_A, clientOrderKey: "valid-quantity", channel: "counter",
+          orderNumber: "C-001", status: "open", subtotal: lineTotal,
+          discountTotal: 0, taxTotal: 0, total: lineTotal },
+          items: [{ id: ORDER_LINE_A, menuItemId: ITEM_A, name: "Latte",
+            quantity: expected, unitPrice: 50000, lineTotal }] });
       })
     });
     assert.equal(response.statusCode, 201, "must accept quantity " + String(quantity));
