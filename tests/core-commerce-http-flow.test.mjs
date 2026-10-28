@@ -134,7 +134,8 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
       assert.equal(url.searchParams.get("order_id"), "eq." + ORDER);
       return json(payment ? [{
         order_id: ORDER, amount: payment.amount, method: payment.method,
-        status: "captured", paid_at: DATE + "T08:30:00Z"
+        status: "captured", paid_at: DATE + "T08:30:00Z",
+        reference: payment.reference ?? null
       }] : []);
     }
     if (path === "/rest/v1/rpc/commerce_capture_payment") {
