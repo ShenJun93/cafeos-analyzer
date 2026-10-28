@@ -2081,7 +2081,7 @@ test("Control Tower source bridge displays source-scoped POS/import metrics, nev
   assert.match(html, /id="sourceBridgeRefresh"/);
   assert.match(html, /id="sourceBridgeCards"/);
   assert.match(html, /sourceBridgeDate"\)\.value = currentDashboard\.businessDate/);
-  assert.match(html, /sourceBridgeSerial === serial/);
+  assert.match(html, /serial === sourceBridgeSerial/);
   assert.match(html, /payload\?\.sourceBoundary\?\.status !== "separate_not_deduplicated"/);
   assert.match(html, /native\?\.source !== "cafeos_pos"/);
   assert.match(html, /ext\?\.source !== "imported_line_items"/);
