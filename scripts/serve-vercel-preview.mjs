@@ -51,6 +51,7 @@ const workflowRoutes = new Map([
   ['/api/app/commerce-hq', 'commerce-hq'],
   ['/api/app/commerce-source-bridge', 'commerce-source-bridge'],
   ['/api/app/commerce-hq-sources', 'commerce-hq-sources'],
+  ['/api/app/commerce-import-lineage', 'commerce-import-lineage'],
   ['/api/app/commerce-daily-close', 'commerce-daily-close']
 ]);
 

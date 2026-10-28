@@ -17,6 +17,7 @@ import { handle as dashboardHandle } from '../../server/commerce/dashboard.mjs';
 import { handle as hqHandle } from '../../server/commerce/hq.mjs';
 import { handle as sourceBridgeHandle } from '../../server/commerce/source-bridge.mjs';
 import { handle as hqSourcesHandle } from '../../server/commerce/hq-source-coverage.mjs';
+import { handle as importLineageHandle } from '../../server/commerce/import-lineage.mjs';
 import { handle as dailyCloseHandle } from '../../server/commerce/daily-close.mjs';
 
 export const WORKFLOW_ROUTES = Object.freeze({
@@ -38,6 +39,7 @@ export const WORKFLOW_ROUTES = Object.freeze({
   'commerce-hq': hqHandle,
   'commerce-source-bridge': sourceBridgeHandle,
   'commerce-hq-sources': hqSourcesHandle,
+  'commerce-import-lineage': importLineageHandle,
   'commerce-daily-close': dailyCloseHandle
 });
 

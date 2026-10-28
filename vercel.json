@@ -60,6 +60,10 @@
       "destination": "/api/app/workflow?route=commerce-hq-sources"
     },
     {
+      "source": "/api/app/commerce-import-lineage",
+      "destination": "/api/app/workflow?route=commerce-import-lineage"
+    },
+    {
       "source": "/api/app/commerce-daily-close",
       "destination": "/api/app/workflow?route=commerce-daily-close"
     },

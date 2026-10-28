@@ -2117,3 +2117,24 @@ test("HQ multi-store source coverage is manager-only, exact-date, fail-closed an
   assert.match(preview, /'\/api\/app\/commerce-hq-sources', 'commerce-hq-sources'/);
   assert.doesNotMatch(html, /localStorage|sessionStorage|indexedDB/);
 });
+
+
+test("manager-only import lineage UI uses bounded Store/day diagnostics without raw IDs or cross-POS identity claims", async () => {
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const vercel = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
+  const preview = await readFile(new URL("../scripts/serve-vercel-preview.mjs", import.meta.url), "utf8");
+  assert.match(html,/id="importLineagePanel" class="import-lineage-panel hidden"/);
+  assert.match(html,/id="importLineageRefresh"/);
+  assert.match(html,/id="importLineageRows"/);
+  assert.match(html,/importLineagePanel"\)\.classList\.toggle\("hidden", !manager\)/);
+  assert.match(html,/async function loadImportLineage\(\)/);
+  assert.match(html,/\/api\/app\/commerce-import-lineage\?storeId=/);
+  assert.match(html,/p\.sourceBoundary\?\.deduplication !== "not_performed"/);
+  assert.match(html,/p\.sourceBoundary\?\.transactionIdsExposed !== false/);
+  assert.match(html,/serial === importLineageSerial/);
+  assert.match(html,/invalidateImportLineage\(\)/);
+  assert.ok(vercel.rewrites.some(x=>x.source==="/api/app/commerce-import-lineage"
+    && x.destination==="/api/app/workflow?route=commerce-import-lineage"));
+  assert.match(preview,/'\/api\/app\/commerce-import-lineage', 'commerce-import-lineage'/);
+  assert.doesNotMatch(html,/localStorage|sessionStorage|indexedDB/);
+});

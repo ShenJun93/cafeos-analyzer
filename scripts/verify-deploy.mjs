@@ -33,6 +33,7 @@ const required = [
   'server/commerce/hq.mjs',
   'server/commerce/source-bridge.mjs',
   'server/commerce/hq-source-coverage.mjs',
+  'server/commerce/import-lineage.mjs',
   'server/commerce/daily-close.mjs',
   'public/cafeos-ui.css',
   'public/app.html',
