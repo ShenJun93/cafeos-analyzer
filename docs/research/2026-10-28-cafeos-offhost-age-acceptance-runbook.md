@@ -8,6 +8,8 @@ The MAIN-PC WSL provisional age identity cannot be considered safely recoverable
 
 Do NOT send private identities, ciphertext, staging credentials or decrypted bytes to ChatGPT, GitHub, CI or screenshots. Do not copy the second device's private identity onto MAIN-PC. The escrow must stay outside all Git worktrees.
 
+Before running these steps, use the optional **non-secret local readiness check** in `docs/research/2026-10-28-cafeos-age-local-custody-readiness.md`. On MAIN-PC WSL run `bash scripts/check-cafeos-age-custody-readiness.sh --source`; after generating the second-device key run `bash scripts/check-cafeos-age-custody-readiness.sh --recovery "$HOME/.local/share/cafeos-offhost-recovery/recovery-identity.txt"` **on that second device**. Both checks only inspect local file safety/keypair and explicitly say that independent custody is NOT attested. Do not substitute their success for Step C's full escrow readback and owner attestation.
+
 ## A. Generate a recovery identity on the second device only
 
 In a trusted Linux/WSL installation, using trusted age and age-keygen binaries, run as a nonroot owner:
