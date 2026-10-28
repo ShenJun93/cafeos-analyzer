@@ -134,6 +134,35 @@ if ! grep -qE '(42501|23503):' "$tmp/foreign.log"; then
 fi
 echo PROVENANCE_PG_RACE_FOREIGN_TENANT_DENIED_PASS
 
+# Negative permission tests run with the same worker role. Catalog GRANT
+# checks alone are insufficient: denied statements must fail with SQLSTATE
+# 42501 and leave data unchanged.
+for operation in \
+  "UPDATE cafeos_preflight_private.bindings SET source_namespace='forged' WHERE source_namespace='synthetic:a';" \
+  "UPDATE cafeos_preflight_private.binding_events SET lifecycle='rejected' WHERE revision=2;" \
+  "DELETE FROM cafeos_preflight_private.binding_events WHERE revision=2;" \
+  "TRUNCATE cafeos_preflight_private.binding_events;" \
+  "INSERT INTO cafeos_preflight_private.bindings
+     (id,tenant_id,store_id,source_namespace,provider_family,account_digest)
+   VALUES ('53000000-0000-4000-8000-000000000003',
+     '10000000-0000-4000-8000-000000000001',
+     '11000000-0000-4000-8000-000000000001',
+     'synthetic:forged','synthetic',repeat('c',64));"
+do
+  if psql -X -v ON_ERROR_STOP=1 -v VERBOSITY=verbose \
+    -c "SET ROLE cafeos_concurrency_worker; $operation" \
+    >"$tmp/forbidden.log" 2>&1; then
+    echo "FAIL: worker performed forbidden DML" >&2
+    exit 1
+  fi
+  grep -q '42501:' "$tmp/forbidden.log" || {
+    echo "FAIL: expected SQLSTATE 42501 for forbidden DML" >&2
+    cat "$tmp/forbidden.log" >&2
+    exit 1
+  }
+done
+echo PROVENANCE_PG_RACE_FORBIDDEN_DML_DENIED_PASS
+
 # A valid revocation is appendable, but an unreviewed subsequent proposal is
 # terminally refused by the trigger. Worker has INSERT but no UPDATE/DELETE.
 psql -X -v ON_ERROR_STOP=1 >"$tmp/revoke.log" 2>&1 <<'SQL'
