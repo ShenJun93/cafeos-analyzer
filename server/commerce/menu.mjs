@@ -78,14 +78,14 @@ export async function handle(req, res, deps = {}) {
     if (req.method === "GET") {
       const ctx = await appContext(req, deps);
       const categoryParams = new URLSearchParams({
-        select: "id,name,sort_order,active,created_at,updated_at",
+        select: "id,tenant_id,name,sort_order,active,created_at,updated_at",
         tenant_id: "eq." + ctx.tenant.id,
         active: "eq.true",
         order: "sort_order.asc,name.asc",
         limit: "200"
       });
       const itemParams = new URLSearchParams({
-        select: "id,category_id,sku,name,price,active,created_at,updated_at",
+        select: "id,tenant_id,category_id,sku,name,price,active,created_at,updated_at",
         tenant_id: "eq." + ctx.tenant.id,
         active: "eq.true",
         order: "name.asc",
@@ -107,11 +107,18 @@ export async function handle(req, res, deps = {}) {
         throw new AppHttpError(503, "COMMERCE_MENU_CATALOG_LIMIT",
           "Menu exceeds the current supported catalog size");
       }
-      if (categories.some(row => !row || typeof row.id !== "string"
-          || typeof row.name !== "string" || !row.name.trim() || row.active !== true)
-          || items.some(row => !row || typeof row.id !== "string"
-            || typeof row.name !== "string" || !row.name.trim()
-            || row.active !== true || !validReadPrice(row.price))) {
+      if (categories.some(row => !row || row.tenant_id !== ctx.tenant.id
+          || typeof row.id !== "string" || !UUID_RE.test(row.id)
+          || typeof row.name !== "string" || !row.name.trim() || row.name.length > 200
+          || row.active !== true)
+          || items.some(row => !row || row.tenant_id !== ctx.tenant.id
+            || typeof row.id !== "string" || !UUID_RE.test(row.id)
+            || (row.category_id !== null
+              && (typeof row.category_id !== "string" || !UUID_RE.test(row.category_id)))
+            || typeof row.name !== "string" || !row.name.trim() || row.name.length > 300
+            || row.active !== true || !validReadPrice(row.price))
+          || new Set(categories.map(row => row.id)).size !== categories.length
+          || new Set(items.map(row => row.id)).size !== items.length) {
         throw new AppHttpError(502, "COMMERCE_MENU_UPSTREAM_INVALID",
           "Menu data service returned an invalid catalog");
       }
