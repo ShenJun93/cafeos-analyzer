@@ -7,7 +7,7 @@ import {
   requireCommerceManagerRole,
   supabaseJson
 } from "../../api/_app-auth.mjs";
-import { UUID_RE, strictFields, parseCommerceMoney } from "./_shared.mjs";
+import { UUID_RE, strictFields, parseCommerceMoney, commerceReturnedCents } from "./_shared.mjs";
 
 const CATEGORY_FIELDS = new Set(["kind", "name", "sortOrder"]);
 const ITEM_FIELDS = new Set(["kind", "categoryId", "sku", "name", "price"]);
@@ -43,6 +43,35 @@ function categoryBody(body, tenantId) {
     throw new AppHttpError(400, "MENU_CATEGORY_SORT_INVALID", "Category sort order is invalid");
   }
   return { tenant_id: tenantId, name, sort_order: sortOrder, active: true };
+}
+
+// A successful HTTP POST is not proof that the returned row is the one
+// requested. Return 502 on a mismatched acknowledgment: the insert might
+// already have committed, so clients must inspect Menu rather than retry.
+function confirmedMenuCategory(rows, requested) {
+  if (!Array.isArray(rows) || rows.length !== 1) return null;
+  const row = rows[0];
+  if (!row || typeof row !== "object" || Array.isArray(row)
+      || typeof row.id !== "string" || !UUID_RE.test(row.id)
+      || row.tenant_id !== requested.tenant_id
+      || row.name !== requested.name
+      || row.sort_order !== requested.sort_order
+      || row.active !== true) return null;
+  return row;
+}
+
+function confirmedMenuItem(rows, requested) {
+  if (!Array.isArray(rows) || rows.length !== 1) return null;
+  const row = rows[0];
+  if (!row || typeof row !== "object" || Array.isArray(row)
+      || typeof row.id !== "string" || !UUID_RE.test(row.id)
+      || row.tenant_id !== requested.tenant_id
+      || row.name !== requested.name || row.sku !== requested.sku
+      || row.category_id !== requested.category_id?.toLowerCase() && !(row.category_id === null && requested.category_id === null)
+      || row.active !== true
+      || commerceReturnedCents(row.price) === null
+      || commerceReturnedCents(row.price) !== commerceReturnedCents(requested.price)) return null;
+  return row;
 }
 
 function itemBody(body, tenantId) {
@@ -134,7 +163,7 @@ export async function handle(req, res, deps = {}) {
       if (kind === "category") {
         const insert = categoryBody(body, ctx.tenant.id);
         const params = new URLSearchParams({
-          select: "id,name,sort_order,active,created_at,updated_at"
+          select: "id,tenant_id,name,sort_order,active,created_at,updated_at"
         });
         const rows = await supabaseJson("/rest/v1/menu_categories?" + params, {
           token: ctx.token,
@@ -143,14 +172,15 @@ export async function handle(req, res, deps = {}) {
           headers: { Prefer: "return=representation" },
           ...deps
         });
-        const category = Array.isArray(rows) ? rows[0] : null;
-        if (!category?.id) throw new AppHttpError(502, "SUPABASE_UPSTREAM", "Menu service returned an error");
+        const category = confirmedMenuCategory(rows, insert);
+        if (!category) throw new AppHttpError(502, "COMMERCE_MENU_WRITE_UNCONFIRMED",
+          "Menu category write has inconsistent commit evidence; inspect Menu before retry");
         return appJson(res, 201, { tenant: ctx.tenant, category });
       }
       if (kind === "item") {
         const insert = itemBody(body, ctx.tenant.id);
         const params = new URLSearchParams({
-          select: "id,category_id,sku,name,price,active,created_at,updated_at"
+          select: "id,tenant_id,category_id,sku,name,price,active,created_at,updated_at"
         });
         const rows = await supabaseJson("/rest/v1/menu_items?" + params, {
           token: ctx.token,
@@ -159,8 +189,9 @@ export async function handle(req, res, deps = {}) {
           headers: { Prefer: "return=representation" },
           ...deps
         });
-        const item = Array.isArray(rows) ? rows[0] : null;
-        if (!item?.id) throw new AppHttpError(502, "SUPABASE_UPSTREAM", "Menu service returned an error");
+        const item = confirmedMenuItem(rows, insert);
+        if (!item) throw new AppHttpError(502, "COMMERCE_MENU_WRITE_UNCONFIRMED",
+          "Menu item write has inconsistent commit evidence; inspect Menu before retry");
         return appJson(res, 201, { tenant: ctx.tenant, item });
       }
       throw new AppHttpError(400, "MENU_KIND_INVALID", "Menu write kind must be category or item");
