@@ -337,7 +337,8 @@ test("lost payment response reconciles paid order and preserves an open order", 
   await runInContext("capturePayment()", context);
   assert.equal(runInContext("currentOrder", context), null);
   assert.equal(runInContext("statusChecks", context), 1);
-  assert.equal(runInContext("receiptReads", context), 1);
+  assert.equal(runInContext("receiptReads", context), 2,
+    "one receipt read verifies settlement; the next loads the printable copy");
   assert.equal(runInContext("dashboardRefreshes", context), 1);
   assert.match(elem("status").textContent, /phương thức và số tiền captured khớp/i);
 
@@ -345,8 +346,8 @@ test("lost payment response reconciles paid order and preserves an open order", 
   await assert.rejects(runInContext("capturePayment()", context), /Chưa xác minh được payment/);
   assert.equal(runInContext("currentOrder.status", context), "open");
   assert.equal(runInContext("statusChecks", context), 2);
-  assert.equal(runInContext("receiptReads", context), 1,
-    "open order state must not trigger a paid receipt read");
+  assert.equal(runInContext("receiptReads", context), 2,
+    "open order state must not trigger another paid receipt read");
   assert.equal(runInContext("dashboardRefreshes", context), 1);
 });
 
@@ -437,8 +438,8 @@ test("ambiguous POS payment recovery requires exact settled cents before clearin
     assert.equal(runInContext("paymentWrites", ctx), before + 1);
   }
   assert.equal(runInContext("statusReads", ctx), 12);
-  assert.equal(runInContext("receiptReads", ctx), 2,
-    "only valid paid status and matching cents may advance to receipt verification");
+  assert.equal(runInContext("receiptReads", ctx), 4,
+    "each confirmed recovery verifies captured evidence, then loads its printable receipt");
   assert.equal(runInContext("dashboardRefreshes", ctx), 2);
 
   // A same-total PAID order may have been captured with a different method
