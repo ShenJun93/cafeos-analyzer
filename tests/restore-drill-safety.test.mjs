@@ -13,6 +13,38 @@ const posixShellOnly = process.platform === "win32"
   ? { skip: "POSIX Bash/filesystem integration runs on Linux CI; Windows paths are incompatible" }
   : {};
 
+test("Commerce concurrency drill is pinned to disposable localhost and exercises four true SQL sessions", async () => {
+  const source = await readFile(new URL("../scripts/run-local-commerce-concurrency-drill.sh", import.meta.url), "utf8");
+  const workflow = await readFile(new URL("../.github/workflows/supabase-db.yml", import.meta.url), "utf8");
+  assert.match(source, /readonly DB_URL="postgresql:\/\/postgres:postgres@127\.0\.0\.1:54322\/postgres"/);
+  assert.match(source, /pg_isready -h 127\.0\.0\.1 -p 54322/);
+  assert.match(source, /current_database\(\)\|\|':'\|\|current_user/);
+  assert.match(source, /set local role authenticated/);
+  assert.match(source, /set local request\.jwt\.claim\.sub/);
+  assert.match(source, /CAFEOS_LOCK_HELD/);
+  for (const marker of [
+    "CAFEOS_RACE_SAME_KEY_SINGLE_ORDER_PASS",
+    "CAFEOS_RACE_DOUBLE_CAPTURE_DENIED_PASS",
+    "CAFEOS_RACE_OPEN_ORDER_BLOCKS_CLOSE_PASS",
+    "CAFEOS_RACE_CLOSE_BLOCKS_NEW_ORDER_PASS",
+    "CAFEOS_LOCAL_COMMERCE_CONCURRENCY_PASS"
+  ]) assert.ok(source.includes(marker), marker);
+  assert.match(workflow, /run: bash scripts\/run-local-commerce-concurrency-drill\.sh/);
+  assert.match(source, /trap cleanup EXIT/);
+  assert.doesNotMatch(source, /wjatnyvdygvblirggdcm|supabase\.co|--linked|supabase link|migration repair|db push|SUPABASE_ACCESS_TOKEN|service_role|sb_secret_/i);
+});
+
+test("Commerce concurrent SQL sessions are syntactically valid and refuse execution without localhost", posixShellOnly, () => {
+  const path = fileURLToPath(new URL("../scripts/run-local-commerce-concurrency-drill.sh", import.meta.url));
+  const syntax = spawnSync("bash", ["-n", path], { encoding: "utf8", timeout: 6000 });
+  assert.equal(syntax.status, 0, syntax.stderr);
+  const attempt = spawnSync("bash", [path], {
+    env: { PATH: process.env.PATH },
+    encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(attempt.status, 0, "must fail without an isolated local Supabase target");
+});
+
 test("restore drill is pinned to the ephemeral local Supabase database", async () => {
   const script = await readFile(
     new URL("../scripts/run-supabase-restore-drill.sh", import.meta.url),

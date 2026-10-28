@@ -6,6 +6,7 @@ on:
       - "supabase/migrations/**"
       - "supabase/tests/database/**"
       - "supabase/restore-fixtures/**"
+      - "scripts/run-local-commerce-concurrency-drill.sh"
       - "scripts/run-supabase-restore-drill.sh"
       - "scripts/run-local-ledger-reconciliation-drill.sh"
       - "scripts/run-local-greenpath-ledger-drill.sh"
@@ -25,6 +26,7 @@ on:
       - "supabase/migrations/**"
       - "supabase/tests/database/**"
       - "supabase/restore-fixtures/**"
+      - "scripts/run-local-commerce-concurrency-drill.sh"
       - "scripts/run-supabase-restore-drill.sh"
       - "scripts/run-local-ledger-reconciliation-drill.sh"
       - "scripts/run-local-greenpath-ledger-drill.sh"
@@ -77,6 +79,9 @@ jobs:
 
       - name: Run database tests
         run: supabase test db
+
+      - name: Verify concurrent Commerce writes on disposable localhost
+        run: bash scripts/run-local-commerce-concurrency-drill.sh
 
       - name: Run isolated synthetic restore drill
         run: bash scripts/run-supabase-restore-drill.sh
