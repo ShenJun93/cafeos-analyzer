@@ -846,7 +846,7 @@ test("order status endpoint is authenticated, GET-only, tenant-scoped and read-o
   await orderStatusHandle(req(authHeaders, "GET", "/api/app/commerce-order-status?orderId=" + ORDER_A),
     response, { env, fetchImpl: authFetch("cashier", async (url) => {
       calls.push(url);
-      return jsonResponse([{ id: ORDER_A, store_id: STORE_A, status: "paid", total: 100000 }]);
+      return jsonResponse([{ id: ORDER_A, tenant_id: TENANT_A, store_id: STORE_A, status: "paid", total: 100000 }]);
     }) });
   assert.equal(response.statusCode, 200);
   assert.deepEqual(parsed(response).order, {
@@ -856,7 +856,7 @@ test("order status endpoint is authenticated, GET-only, tenant-scoped and read-o
   assert.equal(calls[0].pathname, "/rest/v1/pos_orders");
   assert.equal(calls[0].searchParams.get("tenant_id"), "eq." + TENANT_A);
   assert.equal(calls[0].searchParams.get("id"), "eq." + ORDER_A);
-  assert.equal(calls[0].searchParams.get("select"), "id,store_id,status,total");
+  assert.equal(calls[0].searchParams.get("select"), "id,tenant_id,store_id,status,total");
 
   const absent = res();
   await orderStatusHandle(req(authHeaders, "GET", "/api/app/commerce-order-status?orderId=" + ORDER_A),
@@ -876,10 +876,12 @@ test("order status endpoint is authenticated, GET-only, tenant-scoped and read-o
 
 test("ambiguous checkout recovery rejects malformed order status and settlement totals", async () => {
   const route = "/api/app/commerce-order-status?orderId=" + ORDER_A;
-  const good = { id: ORDER_A, store_id: STORE_A, status: "open", total: "35000.00" };
+  const good = { id: ORDER_A, tenant_id: TENANT_A, store_id: STORE_A, status: "open", total: "35000.00" };
   for (const rows of [
     { rows: [good] },
     [{ ...good }, { ...good }],
+    [{ ...good, tenant_id: STORE_A }],
+    [{ ...good, tenant_id: undefined }],
     [{ ...good, id: STORE_A }],
     [{ ...good, store_id: "bad-store-id" }],
     [{ ...good, status: "pending" }],
@@ -1110,14 +1112,14 @@ test("paid receipt reads Store/Tenant-scoped immutable items and payment without
     if (url.pathname === "/rest/v1/pos_orders") {
       assert.equal(url.searchParams.get("id"), "eq." + ORDER_A);
       assert.equal(url.searchParams.get("store_id"), "eq." + STORE_A);
-      return jsonResponse([{ id: ORDER_A, store_id: STORE_A, order_number: "C-0042",
+      return jsonResponse([{ id: ORDER_A, tenant_id: TENANT_A, store_id: STORE_A, order_number: "C-0042",
         channel: "counter", business_date: "2026-10-27", status: "paid",
         subtotal: "70000.00", discount_total: "0.00", tax_total: "0.00",
         total: "70000.00", paid_at: paidAt }]);
     }
     if (url.pathname === "/rest/v1/pos_order_items") {
       assert.equal(url.searchParams.get("order_id"), "eq." + ORDER_A);
-      return jsonResponse([{ id: "line-1", order_id: ORDER_A,
+      return jsonResponse([{ id: "line-1", tenant_id: TENANT_A, order_id: ORDER_A,
         item_name: "Cà phê sữa & <script>unsafe</script>", unit_price: "35000.00",
         quantity: "2.000", line_total: "70000.00" }]);
     }
@@ -1125,14 +1127,14 @@ test("paid receipt reads Store/Tenant-scoped immutable items and payment without
       assert.equal(url.searchParams.get("order_id"), "eq." + ORDER_A);
       assert.equal(url.searchParams.get("status"), "eq.captured");
       assert.equal(url.searchParams.get("select"),
-        "order_id,method,amount,status,paid_at,reference");
-      return jsonResponse([{ order_id: ORDER_A, method: "cash",
+        "tenant_id,order_id,method,amount,status,paid_at,reference");
+      return jsonResponse([{ tenant_id: TENANT_A, order_id: ORDER_A, method: "cash",
         amount: "70000.00", status: "captured", paid_at: paidAt,
         reference: "bank-txn-123" }]);
     }
     if (url.pathname === "/rest/v1/stores") {
       assert.equal(url.searchParams.get("id"), "eq." + STORE_A);
-      return jsonResponse([{ id: STORE_A, name: "CafeOS Test Store" }]);
+      return jsonResponse([{ id: STORE_A, tenant_id: TENANT_A, name: "CafeOS Test Store" }]);
     }
     throw new Error("Unexpected receipt read " + url.pathname);
   };
@@ -1161,21 +1163,21 @@ test("paid receipt refuses role misuse, cross-store, unpaid, missing and partial
   const route = "/api/app/commerce-receipt?orderId=" + ORDER_A + "&storeId=" + STORE_A;
   let calls = 0;
   const order = {
-    id: ORDER_A, store_id: STORE_A, order_number: "C-0042",
+    id: ORDER_A, tenant_id: TENANT_A, store_id: STORE_A, order_number: "C-0042",
     channel: "counter", business_date: "2026-10-27", status: "paid",
     subtotal: "70000.00", discount_total: "0.00", tax_total: "0.00",
     total: "70000.00", paid_at: "2026-10-27T09:30:00Z"
   };
-  const payments = [{ order_id: ORDER_A, method: "cash", amount: "70000.00",
+  const payments = [{ tenant_id: TENANT_A, order_id: ORDER_A, method: "cash", amount: "70000.00",
     status: "captured", paid_at: order.paid_at, reference: null }];
-  const lines = [{ id: "line-1", order_id: ORDER_A, item_name: "Latte",
+  const lines = [{ id: "line-1", tenant_id: TENANT_A, order_id: ORDER_A, item_name: "Latte",
     unit_price: "35000.00", quantity: 2, line_total: "70000.00" }];
   const fake = (orderRows, itemRows = lines, payRows = payments) => authFetch("cashier", async url => {
     calls++;
     if (url.pathname === "/rest/v1/pos_orders") return jsonResponse(orderRows);
     if (url.pathname === "/rest/v1/pos_order_items") return jsonResponse(itemRows);
     if (url.pathname === "/rest/v1/pos_payments") return jsonResponse(payRows);
-    if (url.pathname === "/rest/v1/stores") return jsonResponse([{ id: STORE_A, name: "Store A" }]);
+    if (url.pathname === "/rest/v1/stores") return jsonResponse([{ id: STORE_A, tenant_id: TENANT_A, name: "Store A" }]);
     return jsonResponse({}, 500);
   });
   for (const [url, code] of [
@@ -1206,6 +1208,10 @@ test("paid receipt refuses role misuse, cross-store, unpaid, missing and partial
   for (const [orderRows, itemRows, payRows, status, code] of [
     [[], lines, payments, 404, "COMMERCE_ORDER_NOT_FOUND"],
     [[{ ...order, status: "open" }], lines, payments, 409, "COMMERCE_RECEIPT_NOT_PAID"],
+    [[{ ...order, tenant_id: STORE_A }], lines, payments, 502, "SUPABASE_UPSTREAM"],
+    [[order, order], lines, payments, 502, "SUPABASE_UPSTREAM"],
+    [[order], [{ ...lines[0], tenant_id: STORE_A }], payments, 502, "COMMERCE_RECEIPT_INCOMPLETE"],
+    [[order], lines, [{ ...payments[0], tenant_id: STORE_A }], 502, "COMMERCE_RECEIPT_INCOMPLETE"],
     [[order], [], payments, 502, "COMMERCE_RECEIPT_INCOMPLETE"],
     [[order], lines, [], 502, "COMMERCE_RECEIPT_INCOMPLETE"],
     [[order], lines, [...payments, ...payments], 502, "COMMERCE_RECEIPT_INCOMPLETE"],
@@ -1230,13 +1236,13 @@ test("paid receipt refuses role misuse, cross-store, unpaid, missing and partial
 test("paid receipt reconciles items, discounts, tax, and captured payment in exact cents", async () => {
   const route = "/api/app/commerce-receipt?orderId=" + ORDER_A + "&storeId=" + STORE_A;
   const base = {
-    id: ORDER_A, store_id: STORE_A, order_number: "C-0042",
+    id: ORDER_A, tenant_id: TENANT_A, store_id: STORE_A, order_number: "C-0042",
     channel: "counter", business_date: "2026-10-27", status: "paid",
     subtotal: "70000.00", discount_total: "0.00", tax_total: "0.00",
     total: "70000.00", paid_at: "2026-10-27T09:30:00Z"
   };
   const item = {
-    id: "line-1", order_id: ORDER_A, item_name: "Latte",
+    id: "line-1", tenant_id: TENANT_A, order_id: ORDER_A, item_name: "Latte",
     unit_price: "35000.00", quantity: "2.000", line_total: "70000.00"
   };
   async function probe(order, items = [item], paidAmount = "70000.00") {
@@ -1246,10 +1252,10 @@ test("paid receipt reconciles items, discounts, tax, and captured payment in exa
         if (url.pathname === "/rest/v1/pos_orders") return jsonResponse([order]);
         if (url.pathname === "/rest/v1/pos_order_items") return jsonResponse(items);
         if (url.pathname === "/rest/v1/pos_payments") return jsonResponse([{
-          order_id: ORDER_A, method: "cash", amount: paidAmount,
+          tenant_id: TENANT_A, order_id: ORDER_A, method: "cash", amount: paidAmount,
           status: "captured", paid_at: order.paid_at, reference: null
         }]);
-        if (url.pathname === "/rest/v1/stores") return jsonResponse([{ id: STORE_A, name: "Store A" }]);
+        if (url.pathname === "/rest/v1/stores") return jsonResponse([{ id: STORE_A, tenant_id: TENANT_A, name: "Store A" }]);
         return jsonResponse({}, 500);
       })
     });
