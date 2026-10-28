@@ -102,6 +102,8 @@ test("rejected source claim does not become linkable with a same-account proposa
     recordedAt: "2026-10-28T10:00:00.000Z",
     effectiveFrom: "2026-10-28T10:00:00.000Z" };
   assert.equal(inspect([claims.base, rejected]).status, "rejected");
+  // A lone revision 2 has no recorded origin and is NOT a complete history.
+  assert.equal(inspect([rejected]).status, "history_gap");
   assertBoundary(inspect([rejected]));
 });
 
@@ -197,4 +199,99 @@ test("input events are never mutated and output contains classification only", (
     "reviewedCount", "scope", "status", "transactionIdsExposed"
   ].sort());
   assert.equal(Object.isFrozen(out), true);
+});
+
+
+test("missing initial revision cannot be treated as complete reviewable provenance", () => {
+  const second = { ...claims.base, revision: 2,
+    recordedAt: "2026-10-28T09:00:00.000Z" };
+  const out = inspect([second]);
+  assert.equal(out.status, "history_gap");
+  assert.equal(out.reviewedCount, 1);
+  assertBoundary(out);
+});
+
+test("skipped middle revision is a history gap even when later claim says connector", () => {
+  const third = { ...claims.base, revision: 3,
+    evidenceKind: "connector_claim", evidenceRef: "synthetic-third",
+    recordedAt: "2026-10-28T10:00:00.000Z" };
+  const out = inspect([third, claims.base]);
+  assert.equal(out.status, "history_gap");
+  assertBoundary(out);
+});
+
+test("each binding series needs its own origin revision, never borrow another binding", () => {
+  const other = { ...claims.base,
+    bindingId: "51000000-0000-4000-8000-000000000003", revision: 2,
+    evidenceRef: "synthetic-other-binding",
+    recordedAt: "2026-10-28T10:00:00.000Z" };
+  const out = inspect([claims.base, other]);
+  assert.equal(out.status, "history_gap");
+  assertBoundary(out);
+});
+
+test("revision event clock cannot go backwards, regardless of input array order", () => {
+  const earlierSecond = { ...claims.base,
+    revision: 2, evidenceRef: "synthetic-early-second",
+    recordedAt: "2026-10-27T08:00:00.000Z" };
+  for (const records of [
+    [claims.base, earlierSecond],
+    [earlierSecond, claims.base]
+  ]) {
+    const out = inspect(records);
+    assert.equal(out.status, "chronology_conflict");
+    assertBoundary(out);
+  }
+});
+
+test("equal recordedAt for distinct revisions is ambiguous and fails closed", () => {
+  const sameTime = { ...claims.base,
+    revision: 2, evidenceRef: "synthetic-tie",
+    recordedAt: claims.base.recordedAt };
+  const out = inspect([sameTime, claims.base]);
+  assert.equal(out.status, "chronology_conflict");
+  assertBoundary(out);
+});
+
+test("complete monotonically recorded sequence is input-order invariant but still unverified", () => {
+  const r2 = { ...claims.base, revision: 2, evidenceRef: "synthetic-r2",
+    recordedAt: "2026-10-28T09:00:00.000Z" };
+  const r3 = { ...claims.base, revision: 3, evidenceRef: "synthetic-r3",
+    recordedAt: "2026-10-28T10:00:00.000Z" };
+  const expected = inspect([claims.base, r2, r3]);
+  assert.equal(expected.status, "review_required");
+  assert.equal(expected.reviewedCount, 3);
+  for (const records of [[r3, claims.base, r2], [r2, r3, claims.base]]) {
+    assert.deepEqual(inspect(records), expected);
+  }
+  assertBoundary(expected);
+});
+
+test("asOf knowledge cutoff excludes future revisions without retroactive history gaps", () => {
+  const future = { ...claims.base, revision: 3,
+    evidenceRef: "synthetic-future-r3",
+    recordedAt: "2026-11-01T10:00:00.000Z" };
+  const r2 = { ...claims.base, revision: 2,
+    evidenceRef: "synthetic-r2",
+    recordedAt: "2026-10-28T10:00:00.000Z" };
+  const earlier = inspect([claims.base, future, r2], {
+    asOf: "2026-10-28T09:00:00.000Z"
+  });
+  assert.equal(earlier.status, "review_required");
+  assert.equal(earlier.reviewedCount, 1);
+  assertBoundary(earlier);
+  const now = inspect([claims.base, future, r2]);
+  assert.equal(now.status, "review_required");
+  assert.equal(now.reviewedCount, 2);
+  assertBoundary(now);
+});
+
+test("later revocation is still sticky after contiguous monotonic revisions", () => {
+  const proposal = { ...claims.base, revision: 3,
+    evidenceRef: "synthetic-next-proposal",
+    recordedAt: "2026-10-28T11:00:00.000Z",
+    effectiveFrom: "2026-10-28T11:00:00.000Z" };
+  const out = inspect([proposal, claims.base, claims.revoked]);
+  assert.equal(out.status, "revoked");
+  assertBoundary(out);
 });

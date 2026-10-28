@@ -50,11 +50,15 @@ A single proposed/revoked/rejected event has:
 | One namespace mapped to multiple upstream account/branch/family tuples | `namespace_conflict` |
 | Any foreign Tenant, Store or namespace record | `scope_conflict` |
 | Replayed binding ID/revision | `revision_conflict` |
+| Observed binding history does not start at revision 1 or skips a revision | `history_gap` |
+| Subsequent revision is recorded at the same or an earlier instant | `chronology_conflict` |
 | Malformed evidence, wrong time syntax, invalid effective interval | `invalid_evidence` |
 | Malformed requested Tenant/Store/date/namespace | `invalid_scope` |
 | Missing/oversized claim batch (maximum 100) | `evidence_limit` |
 
 Conflict detection considers every recorded claim within the knowledge cutoff, including expired identity assignments: a reused namespace is not cleared merely because an earlier claimed binding expired. Revocations/rejections remain sticky; a later proposal cannot silently reactivate a revoked binding.
+
+**History fail-closed rule (incremental review hardening):** within each binding ID, only revisions recorded at or before the requested knowledge cutoff are evaluated. The observed sequence must begin at revision 1, be gap-free and have strictly increasing UTC `recordedAt`. Missing/out-of-order events return `history_gap` or `chronology_conflict`, never `review_required`. Evidence completeness **is not established** merely by consecutive version numbers: without trusted independent event ledger/count coverage, the classification stays unverified. An isolated revision 2 is therefore a gap, not a standalone rejection.
 
 Every response is `evidenceAuthority=unverified_claims_only` and has `crossSourceLinkAllowed=false`, `combinedSalesAllowed=false`, `transactionIdsExposed=false`.
 

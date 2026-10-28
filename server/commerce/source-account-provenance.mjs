@@ -93,6 +93,32 @@ export function inspectNamespaceAccountClaims({
   const at = timestamp(asOf);
   const observed = records.filter(record => timestamp(record.recordedAt) <= at);
   if (!observed.length) return response("not_recorded");
+
+  // A claim batch is not an authoritative ledger, but a known partial or
+  // reordered history must never look like a well-formed reviewable lineage.
+  // Apply the knowledge cutoff before these temporal checks so later events
+  // do not rewrite a historical asOf observation.
+  const histories = new Map();
+  for (const record of observed) {
+    const history = histories.get(record.bindingId) ?? [];
+    history.push(record);
+    histories.set(record.bindingId, history);
+  }
+  for (const history of histories.values()) {
+    history.sort((a, b) => a.revision - b.revision);
+    let previous = null;
+    for (const record of history) {
+      if (record.revision !== (previous === null ? 1 : previous.revision + 1)) {
+        return response("history_gap", observed.length);
+      }
+      if (previous !== null
+        && timestamp(record.recordedAt) <= timestamp(previous.recordedAt)) {
+        return response("chronology_conflict", observed.length);
+      }
+      previous = record;
+    }
+  }
+
   const identities = new Set(observed.map(record => JSON.stringify([
     record.providerFamily, record.sourceAccountRef, record.sourceBranchRef
   ])));
