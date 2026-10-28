@@ -144,7 +144,8 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
       if (body.p_amount !== order.total) return json({ message: "COMMERCE_PAYMENT_AMOUNT_MISMATCH" }, 400);
       payment = {
         id: "18000000-0000-4000-8000-000000000001",
-        amount: body.p_amount, method: body.p_method, status: "captured"
+        amount: body.p_amount, method: body.p_method, status: "captured",
+        reference: body.p_reference ?? null
       };
       order.status = "paid";
       return json({ orderId: ORDER, status: "paid", payment });
