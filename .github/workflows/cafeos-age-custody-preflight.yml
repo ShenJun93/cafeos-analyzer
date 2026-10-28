@@ -1,0 +1,40 @@
+name: CafeOS Local age Custody Preflight (synthetic)
+
+on:
+  push:
+    paths:
+      - ".github/workflows/cafeos-age-custody-preflight.yml"
+      - "scripts/check-cafeos-age-custody-readiness.sh"
+      - "scripts/test-cafeos-age-custody-readiness.sh"
+  pull_request:
+    paths:
+      - ".github/workflows/cafeos-age-custody-preflight.yml"
+      - "scripts/check-cafeos-age-custody-readiness.sh"
+      - "scripts/test-cafeos-age-custody-readiness.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install age crypto tools in disposable runner
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+          age-keygen --version
+      - name: Run nonroot source/recovery readiness positive and negative controls
+        run: |
+          set -euo pipefail
+          bash -n scripts/check-cafeos-age-custody-readiness.sh
+          bash -n scripts/test-cafeos-age-custody-readiness.sh
+          bash scripts/test-cafeos-age-custody-readiness.sh
+      - name: Preserve release hold
+        run: |
+          echo "ACTUAL_INDEPENDENT_DEVICE_CUSTODY_NOT_TESTED"
+          echo "ACTUAL_STAGING_BACKUP_AND_RESTORE_NOT_TESTED"
+          echo "CAFEOS_RELEASE_NO_GO"
