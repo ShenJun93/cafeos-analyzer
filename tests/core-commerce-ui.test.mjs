@@ -1663,6 +1663,20 @@ test("Daily Close cannot start while local POS or Menu operations are unsettled"
     renderClosePreview();
   `, ctx);
   assert.equal(node("closeDay").disabled, false, "ready dashboard can re-enable close");
+
+  runInContext("currentDashboard.openOrderCount = 2; renderClosePreview()", ctx);
+  assert.equal(node("closeDay").disabled, true, "two open orders must block closing day");
+  assert.match(node("closePreview").textContent, /ĐÓNG NGÀY BỊ CHẶN/);
+  assert.match(node("closePreview").textContent, /Khôi phục đơn chưa thanh toán/);
+  assert.match(node("closePreview").textContent, /chưa hỗ trợ hủy đơn/);
+  assert.match(node("closePreview").textContent, /không ghi thanh toán giả/);
+  await runInContext("closeBusinessDay()", ctx);
+  assert.equal(runInContext("closeWrites", ctx), 0, "blocked close cannot write");
+  assert.equal(confirms, 0, "blocked close cannot request misleading confirmation");
+
+  runInContext("currentDashboard.openOrderCount = 0; renderClosePreview()", ctx);
+  assert.equal(node("closeDay").disabled, false, "resolved open orders permit confirmation");
+  assert.doesNotMatch(node("closePreview").textContent, /ĐÓNG NGÀY BỊ CHẶN/);
 });
 
 test("confirmed POS payment invalidates pre-sale Dashboard while refreshed totals are pending", async () => {
