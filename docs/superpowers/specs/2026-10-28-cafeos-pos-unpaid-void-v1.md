@@ -26,3 +26,14 @@ Acceptance must include blank local DB tests, paid-order refusal, audit immutabi
 ## Explicit exclusions
 
 No void of paid orders, refunds, card acquiring, partial/split payments, silent deletion, retroactive Daily Close edits, or background retry mutation. `age` off-host recovery stays postponed for development only; real data deployment remains blocked.
+
+
+## Operational completion: read-only reconciliation and manager audit history
+
+- `GET /api/app/commerce-void-history?storeId=...&orderId=...` reads and validates both the original `pos_orders` state and the immutable `pos_order_voids` receipt. The result distinguishes `open`, `paid`, and `voided`, and fails closed if status, Store, Tenant, date, or timestamp disagree.
+- A lost void POST acknowledgement is not proof of rollback. Manager uses **Kiểm tra trạng thái hủy** (GET only), retaining the exact original order and reason until independent evidence is available. A verified VOID — including one performed by another manager — ends the pending void safely and identifies its actor/reason. OPEN retains the pending retry intent; PAID requires the existing server-confirmed paid receipt before releasing that pending state. No background writes or payment creation.
+- `GET /api/app/commerce-void-history?storeId=...&offset=...` returns paginated validated audit records (maximum 20/page + 21st-row lookahead), with client-side stale Store/Tenant/session invalidation. The POS manager panel renders order UUID, business date, exact reason, actor user UUID, and UTC timestamp as text only; no invented employee display names.
+- Raw `public.pos_order_voids` SELECT RLS is **manager-only** by `private.has_tenant_role(tenant_id, ['owner','admin','manager'])`; browser-facing GET also requires the same role. Cashiers can use standard order status/settlement reads but cannot inspect manager void reasons. RLS tests prove cashier cannot read the audit table while owner can. Raw INSERT/UPDATE/DELETE stay unavailable to authenticated users.
+- Tests for new API, source-boundary behavior, and Chromium manager lost-ack recovery + audit history at 390px and 1200px supplement the original SQL and POS tests.
+
+This is a draft-local implementation amendment, not approval to use live staging/prod, complete a merchant release, or claim offline transaction processing.

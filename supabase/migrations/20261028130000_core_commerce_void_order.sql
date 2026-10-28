@@ -24,9 +24,13 @@ alter table public.pos_order_voids enable row level security;
 revoke all on table public.pos_order_voids from public, anon, authenticated;
 grant select on table public.pos_order_voids to authenticated;
 grant select, insert, update, delete on table public.pos_order_voids to service_role;
-create policy pos_order_voids_member_select on public.pos_order_voids
+-- Audit reasons and actor identifiers are privileged manager evidence.
+-- Cashier/viewer may read general POS order status but not audit details.
+create policy pos_order_voids_manager_select on public.pos_order_voids
   for select to authenticated
-  using ((select private.has_tenant_access(tenant_id)));
+  using ((select private.has_tenant_role(
+    tenant_id, array['owner','admin','manager']::text[]
+  )));
 
 create or replace function public.commerce_void_order(
   p_tenant_id uuid,

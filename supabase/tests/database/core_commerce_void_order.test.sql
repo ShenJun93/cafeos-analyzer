@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(20);
+select plan(22);
 
 insert into public.tenants(id,name) values
  ('83000000-0000-4000-8000-000000000011','Void fixture tenant A'),
@@ -131,5 +131,18 @@ select ok(
  not has_function_privilege('anon','public.commerce_void_order(uuid,uuid,text)','EXECUTE')
  and has_function_privilege('authenticated','public.commerce_void_order(uuid,uuid,text)','EXECUTE'),
  'RPC explicitly excludes anon and authenticates manager inside definer function');
+-- Audit reason/actor must not leak via RLS to other commerce roles.
+set local request.jwt.claim.sub = '83000000-0000-4000-8000-000000000102';
+select results_eq(
+ $select count(*) from public.pos_order_voids where tenant_id =
+   '83000000-0000-4000-8000-000000000011'$,
+ array[0::bigint],
+ 'Cashier cannot read manager-only void reason or actor');
+set local request.jwt.claim.sub = '83000000-0000-4000-8000-000000000101';
+select results_eq(
+ $select count(*) from public.pos_order_voids where tenant_id =
+   '83000000-0000-4000-8000-000000000011'$,
+ array[1::bigint],
+ 'Same-Tenant owner may inspect authentic immutable void audit');
 select * from finish();
 rollback;

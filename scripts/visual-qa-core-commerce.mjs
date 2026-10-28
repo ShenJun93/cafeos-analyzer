@@ -26,7 +26,7 @@ const menu = {
     { id: "15000000-0000-4000-8000-000000000003", name: "Cold Brew", sku: "COLD", price: 45000, active: true }
   ]
 };
-const state = { lastOrder: null, paid: false, closed: false, requests: [], closeWrites: 0, voidWrites: 0 };
+const state = { lastOrder: null, paid: false, closed: false, requests: [], closeWrites: 0, voidWrites: 0, loseVoidAck: false };
 
 function jsonResponse(payload) {
   return JSON.stringify(payload);
@@ -146,6 +146,32 @@ async function installMockTransport(page) {
           voidedByUserId: "synthetic-manager", voidedAt: DATE + "T11:30:00Z",
           idempotent: false
         } };
+        if (state.loseVoidAck) {
+          status = 503;
+          payload = { error: { message: "Synthetic committed void but response lost" } };
+        }
+        break;
+      }
+      case "/api/app/commerce-void-history": {
+        assert.equal(manager, true);
+        assert.equal(req.method(), "GET");
+        assert.equal(url.searchParams.get("storeId"), STORE);
+        const audit = {
+          orderId: state.lastOrder.id, storeId: STORE, businessDate: DATE,
+          reason: "Khách đổi ý", voidedByUserId: "synthetic-manager",
+          voidedAt: DATE + "T11:30:00Z"
+        };
+        if (url.searchParams.has("orderId")) {
+          assert.equal(url.searchParams.get("orderId"), state.lastOrder.id);
+          payload = {
+            order: { orderId: state.lastOrder.id, orderNumber: "POS-SYNTHETIC",
+              storeId: STORE, businessDate: DATE, status: state.lastOrder.status },
+            receipt: state.lastOrder.status === "voided" ? audit : null
+          };
+        } else {
+          assert.equal(url.searchParams.get("offset"), "0");
+          payload = { receipts: state.voidWrites ? [audit] : [], nextOffset: null };
+        }
         break;
       }
       case "/api/app/commerce-open-orders":
@@ -287,12 +313,22 @@ async function runViewport(browser, width, height, base) {
     await page.locator("#submitOrder").click();
     await page.locator("#paymentPanel").waitFor({ state: "visible" });
     await page.locator("#voidReason").fill("Khách đổi ý");
+    state.loseVoidAck = true;
     page.once("dialog", dialog => dialog.accept());
     await page.locator("#voidOrder").click();
-    await page.locator("#paymentPanel").waitFor({ state: "hidden" });
+    await page.locator("#checkVoidResult").waitFor({ state: "visible" });
     assert.equal(state.lastOrder.status, "voided");
     assert.equal(state.voidWrites, 1);
-    await snapshot(page, width, "void-unpaid-order");
+    assert.equal(await page.locator("#capturePayment").isDisabled(), true);
+    await snapshot(page, width, "void-response-uncertain");
+    await page.locator("#checkVoidResult").click();
+    await page.locator("#paymentPanel").waitFor({ state: "hidden" });
+    assert.equal(state.voidWrites, 1, "read-only reconciliation must not repeat void write");
+    await page.locator("#voidHistory").click();
+    await page.locator("#voidHistoryList .void-audit-item").first().waitFor({ state: "visible" });
+    assert.match(await page.locator("#voidHistoryList").innerText(), /Khách đổi ý/);
+    assert.match(await page.locator("#voidHistoryList").innerText(), /synthetic-manager/);
+    await snapshot(page, width, "void-audit-history");
     await page.locator('[data-view="menuWorkspace"]').click();
     await snapshot(page, width, "menu");
     await page.locator('[data-view="dashboardWorkspace"]').click();
@@ -327,6 +363,7 @@ async function runViewport(browser, width, height, base) {
     assert.equal(await cashier.locator("#menuWriteControls").evaluate(el => el.classList.contains("hidden")), true);
     assert.equal(await cashier.locator("#closeDay").isDisabled(), true);
     assert.equal(await cashier.locator("#voidControls").isVisible(), false);
+    assert.equal(await cashier.locator("#voidHistorySection").isVisible(), false);
     assert.equal(await cashier.locator("#hqNav").isVisible(), false);
     assert.equal(await cashier.locator("#menuCatalog .menu-item-button").first().isEnabled(), true);
     await snapshot(cashier, width, "cashier");
@@ -351,7 +388,7 @@ let browser;
 try {
   browser = await chromium.launch({ headless: true });
   await runViewport(browser, 390, 844, base);
-  state.paid = false; state.closed = false; state.closeWrites = 0; state.voidWrites = 0;
+  state.paid = false; state.closed = false; state.closeWrites = 0; state.voidWrites = 0; state.loseVoidAck = false;
   await runViewport(browser, 1200, 800, base);
   console.log("CAFEOS_VISUAL_QA_PASS: 390px and 1200px; synthetic transport only");
 } finally {
