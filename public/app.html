@@ -1,0 +1,1564 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<link rel="stylesheet" href="/cafeos-ui.css">
+<title>CafeOS · Core Commerce</title>
+</head>
+<body class="commerce-body">
+<main class="page-shell page-shell--wide cafeos-app-shell">
+  <header class="app-masthead">
+    <div>
+      <div class="brand-mark">CafeOS</div>
+      <div class="kicker">Core Commerce v1</div>
+    </div>
+    <div class="cluster">
+      <span id="identity" class="muted">Chưa đăng nhập</span>
+      <button id="signOut" class="secondary hidden" type="button">Đăng xuất</button>
+    </div>
+  </header>
+
+  <section id="authPanel" class="app-auth glass-surface">
+    <div>
+      <div class="section-label">One operating system</div>
+      <h1 class="display-title">Bán hàng, đóng ngày và xem vận hành trong cùng CafeOS.</h1>
+      <p class="lede">Đăng nhập bằng tài khoản synthetic/staging. Session token chỉ giữ trong memory của tab.</p>
+    </div>
+    <div class="stack">
+      <label class="field-group">Email<input id="email" type="email" autocomplete="username"></label>
+      <label class="field-group">Password<input id="password" type="password" autocomplete="current-password"></label>
+      <button id="signIn" type="button">Đăng nhập</button>
+    </div>
+  </section>
+
+  <div id="status" class="status-strip muted" aria-live="polite">Đang tải cấu hình CafeOS…</div>
+
+  <section id="appPanel" class="hidden">
+    <section class="app-contextbar">
+      <label class="field-group"><span>Tenant</span><select id="tenant"></select></label>
+      <label class="field-group"><span>Store</span><select id="store"></select></label>
+      <button id="refreshApp" class="secondary" type="button">Làm mới</button>
+    </section>
+
+    <nav class="app-nav" aria-label="CafeOS modules">
+      <button class="app-nav-item active" type="button" data-view="posWorkspace">POS</button>
+      <button class="app-nav-item" type="button" data-view="menuWorkspace">Menu</button>
+      <button class="app-nav-item" type="button" data-view="dashboardWorkspace">Dashboard</button>
+      <button id="hqNav" class="app-nav-item hidden" type="button" data-view="hqWorkspace">HQ Overview</button>
+      <button class="app-nav-item" type="button" data-view="closeWorkspace">Daily Close</button>
+      <button class="app-nav-item" type="button" data-view="controlWorkspace">Control Tower</button>
+      <a class="app-nav-link" href="/analyzer">Analyzer</a>
+    </nav>
+
+    <section id="posWorkspace" class="app-workspace">
+      <header class="workspace-heading">
+        <div>
+          <div class="section-label">CafeOS POS</div>
+          <h2>Order capture</h2>
+          <p class="muted">CafeOS POS first-party commerce. Unit price is server-owned; the database snapshots the current menu price when the order is created.</p>
+        </div>
+        <label class="field-group channel-field">Channel
+          <select id="channel">
+            <option value="counter">Tại quầy</option>
+            <option value="takeaway">Mang đi</option>
+            <option value="pickup">Pickup</option>
+            <option value="delivery">Delivery</option>
+          </select>
+        </label>
+      </header>
+
+      <div class="pos-layout">
+        <section>
+          <div class="section-label">Menu catalog</div>
+          <div class="pos-menu-filters">
+            <label class="field-group">Tìm món theo tên / SKU
+              <input id="posMenuSearch" type="search" autocomplete="off" placeholder="Ví dụ: cà phê, LAT-01">
+            </label>
+            <label class="field-group">Nhóm món
+              <select id="posMenuCategory"><option value="">Tất cả nhóm</option></select>
+            </label>
+          </div>
+          <div id="menuCatalog" class="menu-catalog" aria-live="polite"></div>
+        </section>
+
+        <aside class="cart-panel">
+          <div class="section-label">Current order</div>
+          <h3>Cart</h3>
+          <div id="cart" class="cart-lines"></div>
+          <p class="muted">Cart chỉ là intent. Server total được xác nhận sau khi Create Order.</p>
+          <button id="submitOrder" type="button" disabled>Create Order</button>
+          <button id="recoverOpenOrders" type="button" class="secondary">Khôi phục đơn chưa thanh toán</button>
+          <div id="openOrderList" class="open-order-list" aria-live="polite"></div>
+          <section class="paid-order-history">
+            <div class="section-label">Hóa đơn đã thanh toán</div>
+            <button id="browsePaidOrders" class="secondary" type="button">Tra cứu / in lại hóa đơn</button>
+            <div id="paidOrderList" class="open-order-list" aria-live="polite"></div>
+          </section>
+
+          <section id="paymentPanel" class="payment-panel hidden">
+            <div class="section-label">Settlement record</div>
+            <div id="serverOrderTotal" class="server-total"></div>
+            <label class="field-group">Payment method
+              <select id="paymentMethod">
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="bank_transfer">Bank transfer</option>
+                <option value="wallet">Wallet</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label class="field-group">Reference (optional)
+              <input id="paymentReference" maxlength="500">
+            </label>
+            <button id="capturePayment" type="button">Record Payment</button>
+            <p class="muted">Payment record only — not payment acquiring or card processing.</p>
+          </section>
+          <section id="paidReceipt" class="paid-receipt hidden" aria-live="polite">
+            <div class="section-label">CafeOS · Hóa đơn đã thanh toán</div>
+            <h4 id="receiptStore"></h4>
+            <div id="receiptMeta" class="muted"></div>
+            <div id="receiptLines" class="receipt-lines"></div>
+            <div id="receiptTotal" class="receipt-total"></div>
+            <div id="receiptMethod" class="receipt-method"></div>
+            <p id="receiptMessage" class="muted"></p>
+            <button id="printPaidReceipt" class="secondary receipt-print-button" type="button" disabled>In hóa đơn</button>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <section id="menuWorkspace" class="app-workspace hidden">
+      <header class="workspace-heading">
+        <div>
+          <div class="section-label">Menu system of record</div>
+          <h2>Menu</h2>
+          <p class="muted">Manager-created categories and item prices become trusted menu configuration for future orders.</p>
+        </div>
+      </header>
+
+      <p id="menuReadOnlyNotice" class="muted hidden">Chỉ Owner/Admin/Manager được sửa Menu. Bạn vẫn có thể xem danh sách món.</p>
+      <div id="menuWriteControls" class="menu-admin-grid">
+        <form id="categoryForm" class="commerce-form">
+          <div class="section-label">New category</div>
+          <label class="field-group">Name<input id="categoryName" maxlength="200" required></label>
+          <label class="field-group">Sort order<input id="categorySort" type="number" value="0" step="1"></label>
+          <button id="createCategoryButton" type="submit">Create category</button>
+        </form>
+
+        <form id="itemForm" class="commerce-form">
+          <div class="section-label">New item</div>
+          <label class="field-group">Category<select id="itemCategory"><option value="">No category</option></select></label>
+          <label class="field-group">Name<input id="itemName" maxlength="300" required></label>
+          <label class="field-group">SKU<input id="itemSku" maxlength="100"></label>
+          <label class="field-group">Price<input id="itemAmount" type="number" min="0" step="1000" required></label>
+          <button id="createItemButton" type="submit">Create item</button>
+        </form>
+      </div>
+
+      <div id="menuAdminList" class="menu-admin-list"></div>
+    </section>
+
+    <section id="dashboardWorkspace" class="app-workspace hidden">
+      <header class="workspace-heading">
+        <div>
+          <div class="section-label">First-party daily truth</div>
+          <h2>Commerce Dashboard</h2>
+          <p class="muted">Source: CafeOS POS first-party paid orders and captured payment records.</p>
+        </div>
+      </header>
+      <div id="commerceMetrics" class="commerce-metrics"></div>
+      <div id="paymentMix" class="payment-mix"></div>
+    </section>
+
+    <section id="hqWorkspace" class="app-workspace hidden">
+      <header class="workspace-heading">
+        <div>
+          <div class="section-label">Multi-store · first-party Commerce only</div>
+          <h2>HQ Overview</h2>
+          <p class="muted">Doanh thu CafeOS POS theo cùng business date, không gộp dữ liệu import/Control Tower. Dữ liệu chỉ đọc, không tự động Daily Close.</p>
+        </div>
+        <div class="hq-filters">
+          <label class="field-group">Business date<input id="hqBusinessDate" type="date"></label>
+          <button id="hqRefresh" type="button" disabled>Xem toàn hệ thống</button>
+        </div>
+      </header>
+      <p id="hqStatus" class="muted" aria-live="polite">Chọn ngày để tổng hợp các Store.</p>
+      <div id="hqMetrics" class="commerce-metrics"></div>
+      <div id="hqStores" class="hq-store-list"></div>
+    </section>
+
+    <section id="closeWorkspace" class="app-workspace hidden">
+      <header class="workspace-heading">
+        <div>
+          <div class="section-label">Daily reconciliation</div>
+          <h2>Daily Close</h2>
+          <p class="muted">CafeOS computes the close snapshot. Client code cannot supply order, sales or payment totals.</p>
+        </div>
+      </header>
+      <div class="daily-close-panel">
+        <div id="closePreview" class="close-preview">Tải dashboard để xem trạng thái đóng ngày.</div>
+        <button id="closeDay" type="button">Close business day</button>
+        <p id="closeManagerNotice" class="muted hidden">Daily Close chỉ dành cho Owner/Admin/Manager.</p>
+      </div>
+      <div id="closeReceipt" class="close-receipt"></div>
+    </section>
+
+    <section id="controlWorkspace" class="app-workspace hidden">
+      <header class="workspace-heading">
+        <div>
+          <div class="section-label">Decision layer</div>
+          <h2>Control Tower</h2>
+          <p class="muted"><strong>Source boundary:</strong> Control Tower currently reads imported/integrated transaction facts until the unified read-model explicitly adds CafeOS POS facts with preserved lineage.</p>
+        </div>
+      </header>
+      <div id="controlBrief" class="control-brief"></div>
+    </section>
+  </section>
+</main>
+
+<script>
+let clientConfig = null;
+let sessionToken = null;
+let authGeneration = 0;
+let signInInFlight = false;
+let currentTenantId = null;
+let currentStoreId = null;
+let tenantMemberships = [];
+let currentTenantRole = null;
+let currentOrder = null;
+let currentDashboard = null;
+let pendingOrderSubmission = null;
+let orderSubmitInFlight = false;
+let paymentSubmitInFlight = false;
+let closeSubmitInFlight = false;
+let menuWriteInFlight = false;
+// Increment whenever the authenticated Tenant/Store view is reset. Results
+// from an older view must never overwrite another Store's menu/close numbers.
+let viewEpoch = 0;
+let dashboardReadSerial = 0;
+let menuReadSerial = 0;
+let controlReadSerial = 0;
+let hqReadSerial = 0;
+let hqLoadInFlight = false;
+let menuState = { categories: [], items: [] };
+let paidReceiptState = null;
+let receiptReadSerial = 0;
+const cartState = new Map();
+// Fixed SQL commerce_create_order contract: at most 100 distinct cart lines.
+const MAX_POS_ORDER_LINES = 100;
+
+const el = id => document.getElementById(id);
+
+function setStatus(message, state = "") {
+  el("status").textContent = message;
+  if (state) el("status").dataset.state = state;
+  else delete el("status").dataset.state;
+}
+
+function money(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 2 }).format(Number(value));
+}
+
+async function jsonFetch(url, options = {}) {
+  const response = await fetch(url, options);
+  let payload = null;
+  try { payload = await response.json(); } catch {}
+  if (!response.ok) {
+    const error = new Error(payload?.error?.message || "Request failed");
+    error.code = payload?.error?.code || "REQUEST_FAILED";
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+
+async function appFetch(path, { method = "GET", body, tenant = true } = {}) {
+  if (!sessionToken) throw new Error("Sign in is required");
+  const headers = {
+    authorization: "Bearer " + sessionToken,
+    accept: "application/json"
+  };
+  if (tenant) {
+    if (!currentTenantId) throw new Error("Select a tenant");
+    headers["x-cafeos-tenant-id"] = currentTenantId;
+  }
+  if (body !== undefined) headers["content-type"] = "application/json";
+  return jsonFetch(path, {
+    method,
+    headers,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  });
+}
+
+async function loadClientConfig() {
+  clientConfig = await jsonFetch("/api/app/client-config");
+  setStatus("Sẵn sàng đăng nhập.");
+}
+
+async function signIn() {
+  if (signInInFlight || sessionToken) return;
+  const email = el("email").value.trim();
+  const password = el("password").value;
+  if (!email || !password) return setStatus("Nhập email và password.", "error");
+  if (!clientConfig?.supabaseUrl || !clientConfig?.publishableKey) {
+    throw new Error("CafeOS chưa tải cấu hình đăng nhập");
+  }
+  const attempt = ++authGeneration;
+  signInInFlight = true;
+  el("signIn").disabled = true;
+  setStatus("Đang đăng nhập…");
+  try {
+    const payload = await jsonFetch(
+      clientConfig.supabaseUrl + "/auth/v1/token?grant_type=password",
+      {
+        method: "POST",
+        headers: {
+          apikey: clientConfig.publishableKey,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({ email, password })
+      }
+    );
+    if (attempt !== authGeneration) return;
+    sessionToken = payload.access_token || null;
+    if (!sessionToken) throw new Error("Auth response did not include an access token");
+    // Only publish the shell after session membership and Store load succeed.
+    await loadSession();
+    if (attempt !== authGeneration) return;
+    el("identity").textContent = email;
+    el("authPanel").classList.add("hidden");
+    el("appPanel").classList.remove("hidden");
+    el("signOut").classList.remove("hidden");
+    // Keep Store loader's OK/warning status: auth success does not prove
+    // optional Control Tower reporting is ready.
+  } catch (error) {
+    if (attempt !== authGeneration) return;
+    // Authentication may succeed while membership/Store lookup fails. Never
+    // leave a usable JWT or half-loaded commerce context behind in that case.
+    clearSessionState();
+    throw error;
+  } finally {
+    if (attempt === authGeneration) {
+      signInInFlight = false;
+      el("signIn").disabled = false;
+    }
+  }
+}
+
+function canWriteCommerce() {
+  return ["owner", "admin", "manager", "cashier"].includes(currentTenantRole);
+}
+function canManageCommerce() {
+  return ["owner", "admin", "manager"].includes(currentTenantRole);
+}
+function renderRoleControls() {
+  const manager = canManageCommerce();
+  el("menuWriteControls").classList.toggle("hidden", !manager);
+  el("menuReadOnlyNotice").classList.toggle("hidden", manager);
+  el("closeManagerNotice").classList.toggle("hidden", manager);
+  el("hqNav").classList.toggle("hidden", !manager);
+  el("hqRefresh").disabled = !manager || hqLoadInFlight;
+  el("closeDay").disabled = !manager || !currentDashboard || menuWriteInFlight
+    || closeSubmitInFlight || hasUnfinishedCheckout()
+    || Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
+}
+
+function hasUnfinishedCheckout() {
+  return Boolean(pendingOrderSubmission || currentOrder || orderSubmitInFlight || paymentSubmitInFlight);
+}
+
+// Never let old authenticated Tenant/Store HQ data survive a context reset.
+function invalidateHQ() {
+  ++hqReadSerial;
+  hqLoadInFlight = false;
+  el("hqBusinessDate").value = "";
+  el("hqStatus").textContent = "Chọn ngày để tổng hợp các Store.";
+  el("hqMetrics").replaceChildren();
+  el("hqStores").replaceChildren();
+  el("hqRefresh").disabled = !canManageCommerce();
+}
+
+function preventUnsafeContextReset() {
+  if (menuWriteInFlight) {
+    el("tenant").value = currentTenantId || "";
+    el("store").value = currentStoreId || "";
+    setStatus("Đang lưu Menu. Không đổi Tenant/Store hoặc Refresh trước khi xác nhận.", "error");
+    return true;
+  }
+  if (closeSubmitInFlight) {
+    el("tenant").value = currentTenantId || "";
+    el("store").value = currentStoreId || "";
+    setStatus("Daily Close đang xử lý. Không đổi Tenant/Store cho tới khi có kết quả.", "error");
+    return true;
+  }
+  if (!hasUnfinishedCheckout()) return false;
+  el("tenant").value = currentTenantId || "";
+  el("store").value = currentStoreId || "";
+  setStatus(
+    "Có đơn chưa hoàn tất. Retry Create Order bằng cùng request hoặc ghi Payment trước khi Refresh/đổi Tenant/Store.",
+    "error"
+  );
+  return true;
+}
+
+function clearSessionState() {
+  ++authGeneration;
+  ++viewEpoch;
+  signInInFlight = false;
+  el("signIn").disabled = false;
+  sessionToken = null;
+  currentTenantId = null;
+  currentStoreId = null;
+  tenantMemberships = [];
+  currentTenantRole = null;
+  currentOrder = null;
+  currentDashboard = null;
+  pendingOrderSubmission = null;
+  orderSubmitInFlight = false;
+  paymentSubmitInFlight = false;
+  closeSubmitInFlight = false;
+  menuWriteInFlight = false;
+  el("createCategoryButton").disabled = false;
+  el("createItemButton").disabled = false;
+  cartState.clear();
+  menuState = { categories: [], items: [] };
+  invalidateOpenOrderReads();
+  invalidatePaidOrderReads();
+  invalidateHQ();
+  clearPaidReceipt();
+  for (const id of ["menuCatalog", "menuAdminList", "commerceMetrics", "paymentMix", "controlBrief"]) {
+    el(id).replaceChildren();
+  }
+  el("closePreview").textContent = "Đăng nhập để tải báo cáo Daily Close.";
+  el("closeReceipt").textContent = "";
+  el("closeDay").disabled = true;
+  el("appPanel").classList.add("hidden");
+  el("authPanel").classList.remove("hidden");
+  el("signOut").classList.add("hidden");
+  el("identity").textContent = "Chưa đăng nhập";
+}
+
+function signOut() {
+  if (orderSubmitInFlight || paymentSubmitInFlight || closeSubmitInFlight || menuWriteInFlight) {
+    return setStatus("Yêu cầu POS/Menu/Daily Close đang xử lý; không đăng xuất khi chưa có kết quả.", "error");
+  }
+  if (hasUnfinishedCheckout() && !window.confirm(
+    "Đơn chưa hoàn tất. Đăng xuất sẽ xóa bộ nhớ retry/payment trong trình duyệt. Tiếp tục?"
+  )) return;
+  clearSessionState();
+  setStatus("Đã đăng xuất.");
+}
+
+function fillSelect(select, rows, { valueKey = "id", labelKey = "name", prefix = "" } = {}) {
+  select.replaceChildren();
+  for (const row of rows) {
+    const option = document.createElement("option");
+    option.value = row[valueKey];
+    option.textContent = prefix + (row[labelKey] ?? row[valueKey]);
+    select.append(option);
+  }
+}
+
+async function loadSession() {
+  const requestedToken = sessionToken;
+  const requestedAuth = authGeneration;
+  const session = await appFetch("/api/app/session", { tenant: false });
+  if (requestedAuth !== authGeneration || requestedToken !== sessionToken) return;
+  if (!session.memberships?.length) throw new Error("User has no CafeOS tenant membership");
+  tenantMemberships = session.memberships;
+  fillSelect(el("tenant"), tenantMemberships, { valueKey: "tenantId", labelKey: "name" });
+  currentTenantId = el("tenant").value;
+  await loadTenant();
+}
+
+async function loadTenant() {
+  if (preventUnsafeContextReset()) return;
+  const requestedEpoch = ++viewEpoch;
+  currentTenantId = el("tenant").value;
+  currentTenantRole = tenantMemberships.find(row => row.tenantId === currentTenantId)?.role ?? null;
+  currentStoreId = null;
+  currentOrder = null;
+  currentDashboard = null;
+  pendingOrderSubmission = null;
+  orderSubmitInFlight = false;
+  paymentSubmitInFlight = false;
+  cartState.clear();
+  invalidateOpenOrderReads();
+  invalidatePaidOrderReads();
+  invalidateHQ();
+  menuState = { categories: [], items: [] };
+  el("menuCatalog").replaceChildren();
+  el("menuAdminList").replaceChildren();
+  el("commerceMetrics").replaceChildren();
+  el("paymentMix").replaceChildren();
+  el("closePreview").textContent = "Đang tải Store của Tenant…";
+  el("closeReceipt").textContent = "";
+  clearPaidReceipt();
+  renderRoleControls();
+
+  const stores = await appFetch("/api/app/stores");
+  // A newer Tenant selection or sign-out supersedes this stores response.
+  if (requestedEpoch !== viewEpoch) return;
+  const active = (stores.stores || []).filter(store => store.active !== false);
+  if (!active.length) throw new Error("Tenant has no active Store");
+  fillSelect(el("store"), active);
+  currentStoreId = el("store").value;
+  await refreshStore();
+}
+
+async function refreshStore() {
+  if (preventUnsafeContextReset()) return;
+  const requestedEpoch = ++viewEpoch;
+  currentStoreId = el("store").value;
+  // Never leave a previously loaded Store's close totals usable while the
+  // newly selected Store is still loading or has failed to load.
+  currentDashboard = null;
+  el("commerceMetrics").replaceChildren();
+  el("paymentMix").replaceChildren();
+  el("closePreview").textContent = "Đang xác minh báo cáo Store mới…";
+  el("closeReceipt").textContent = "";
+  el("closeDay").disabled = true;
+  clearPaidReceipt();
+  menuState = { categories: [], items: [] };
+  el("menuCatalog").replaceChildren();
+  el("menuAdminList").replaceChildren();
+  currentOrder = null;
+  pendingOrderSubmission = null;
+  cartState.clear();
+  el("posMenuSearch").value = "";
+  el("posMenuCategory").value = "";
+  invalidateOpenOrderReads();
+  invalidatePaidOrderReads();
+  invalidateHQ();
+  // Control Tower reports on imported facts and must not block first-party sales.
+  // Menu and daily dashboard remain required; their failures still fail closed.
+  let controlTowerReady;
+  try {
+    [, , controlTowerReady] = await Promise.all([
+      loadMenu(),
+      loadDashboard(),
+      loadOptionalControlTower()
+    ]);
+  } catch (error) {
+    if (requestedEpoch !== viewEpoch) return;
+    throw error;
+  }
+  if (requestedEpoch !== viewEpoch) return;
+  renderCart();
+  setStatus(
+    controlTowerReady
+      ? "CafeOS đã tải Store hiện tại."
+      : "POS và Commerce Dashboard sẵn sàng; Control Tower hiện không tải được.",
+    controlTowerReady ? "ok" : "warning"
+  );
+}
+
+async function loadMenu() {
+  const requestedSerial = ++menuReadSerial;
+  const requestedEpoch = viewEpoch;
+  const requestedTenant = currentTenantId;
+  const requestedToken = sessionToken;
+  const payload = await appFetch("/api/app/commerce-menu");
+  if (requestedSerial !== menuReadSerial || requestedEpoch !== viewEpoch
+      || requestedTenant !== currentTenantId || requestedToken !== sessionToken) return;
+  menuState = {
+    categories: payload.categories || [],
+    items: payload.items || []
+  };
+  renderMenu();
+}
+
+function renderMenu() {
+  const catalog = el("menuCatalog");
+  catalog.replaceChildren();
+
+  // Local-only cashier discovery: filtering never changes menu prices or
+  // mutates the trusted order source of record.
+  const categoryFilter = el("posMenuCategory");
+  const selectedCategory = categoryFilter.value;
+  categoryFilter.replaceChildren();
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = "Tất cả nhóm";
+  categoryFilter.append(all);
+  for (const category of menuState.categories) {
+    const option = document.createElement("option");
+    option.value = category.id;
+    option.textContent = category.name;
+    categoryFilter.append(option);
+  }
+  categoryFilter.value = menuState.categories.some(row => row.id === selectedCategory)
+    ? selectedCategory : "";
+  const query = el("posMenuSearch").value.trim().toLocaleLowerCase("vi-VN");
+  const visibleItems = menuState.items.filter(item => {
+    if (categoryFilter.value && item.category_id !== categoryFilter.value) return false;
+    return !query || String(item.name ?? "").toLocaleLowerCase("vi-VN").includes(query)
+      || String(item.sku ?? "").toLocaleLowerCase("vi-VN").includes(query);
+  });
+  if (!visibleItems.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "Không tìm thấy món phù hợp.";
+    catalog.append(empty);
+  }
+
+  for (const item of visibleItems) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "menu-item-button";
+    button.disabled = !canWriteCommerce();
+    const name = document.createElement("strong");
+    name.textContent = item.name;
+    const value = document.createElement("span");
+    value.textContent = money(item.price);
+    button.append(name, value);
+    button.addEventListener("click", () => addToCart(item.id));
+    catalog.append(button);
+  }
+
+  const categorySelect = el("itemCategory");
+  categorySelect.replaceChildren();
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "No category";
+  categorySelect.append(none);
+  for (const category of menuState.categories) {
+    const option = document.createElement("option");
+    option.value = category.id;
+    option.textContent = category.name;
+    categorySelect.append(option);
+  }
+
+  const admin = el("menuAdminList");
+  admin.replaceChildren();
+  for (const item of menuState.items) {
+    const row = document.createElement("div");
+    row.className = "evidence-row";
+    const left = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = item.name;
+    const meta = document.createElement("div");
+    meta.className = "muted";
+    meta.textContent = item.sku ? "SKU " + item.sku : "No SKU";
+    left.append(title, meta);
+    const value = document.createElement("strong");
+    value.textContent = money(item.price);
+    row.append(left, value);
+    admin.append(row);
+  }
+}
+
+function addToCart(menuItemId) {
+  const item = menuState.items.find(row => row.id === menuItemId);
+  if (!item || !canWriteCommerce() || currentOrder || pendingOrderSubmission || orderSubmitInFlight) return;
+  if (!cartState.has(menuItemId) && cartState.size >= MAX_POS_ORDER_LINES) {
+    setStatus("Một đơn chỉ hỗ trợ tối đa 100 món khác nhau. Bớt món hoặc tạo đơn riêng.", "error");
+    return;
+  }
+  const current = cartState.get(menuItemId) || { item, quantity: 0 };
+  if (current.quantity >= 1000) return;
+  current.quantity += 1;
+  clearPaidReceipt();
+  cartState.set(menuItemId, current);
+  renderCart();
+}
+
+function changeQuantity(menuItemId, delta) {
+  const current = cartState.get(menuItemId);
+  if (!current || !canWriteCommerce() || currentOrder || pendingOrderSubmission || orderSubmitInFlight) return;
+  const next = current.quantity + delta;
+  if (next > 1000) return;
+  current.quantity = next;
+  clearPaidReceipt();
+  if (current.quantity <= 0) cartState.delete(menuItemId);
+  renderCart();
+}
+
+function renderCart() {
+  const cart = el("cart");
+  cart.replaceChildren();
+
+  if (!cartState.size) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "Chưa có món.";
+    cart.append(empty);
+  }
+
+  for (const [id, row] of cartState) {
+    const line = document.createElement("div");
+    line.className = "cart-line";
+    const detail = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = row.item.name;
+    const price = document.createElement("div");
+    price.className = "muted";
+    price.textContent = money(row.item.price) + " / item";
+    detail.append(title, price);
+
+    const controls = document.createElement("div");
+    controls.className = "quantity-controls";
+    const minus = document.createElement("button");
+    minus.type = "button";
+    minus.className = "secondary";
+    minus.textContent = "−";
+    minus.disabled = Boolean(currentOrder || pendingOrderSubmission || orderSubmitInFlight);
+    minus.addEventListener("click", () => changeQuantity(id, -1));
+    const qty = document.createElement("span");
+    qty.textContent = String(row.quantity);
+    const plus = document.createElement("button");
+    plus.type = "button";
+    plus.className = "secondary";
+    plus.textContent = "+";
+    plus.disabled = row.quantity >= 1000 || Boolean(currentOrder || pendingOrderSubmission || orderSubmitInFlight);
+    plus.addEventListener("click", () => changeQuantity(id, 1));
+    controls.append(minus, qty, plus);
+    line.append(detail, controls);
+    cart.append(line);
+  }
+
+  el("submitOrder").disabled = !canWriteCommerce() || !currentStoreId || !cartState.size
+    || cartState.size > MAX_POS_ORDER_LINES || Boolean(currentOrder || orderSubmitInFlight);
+  el("capturePayment").disabled = !canWriteCommerce() || paymentSubmitInFlight
+    || !currentOrder || currentOrder.status !== "open";
+  el("recoverOpenOrders").disabled = !canWriteCommerce() || hasUnfinishedCheckout();
+  el("paymentPanel").classList.toggle("hidden", !currentOrder || currentOrder.status !== "open");
+  if (currentOrder) {
+    el("serverOrderTotal").textContent = "Server total · " + money(currentOrder.total);
+  }
+}
+
+// Receipts are on-demand, read-only views of paid Store/Tenant facts.
+// All variable content uses textContent, never HTML or client cart prices.
+function clearPaidReceipt() {
+  ++receiptReadSerial;
+  paidReceiptState = null;
+  el("paidReceipt").classList.add("hidden");
+  el("receiptStore").textContent = "";
+  el("receiptMeta").textContent = "";
+  el("receiptLines").replaceChildren();
+  el("receiptTotal").textContent = "";
+  el("receiptMethod").textContent = "";
+  el("receiptMessage").textContent = "";
+  el("printPaidReceipt").disabled = true;
+}
+
+async function loadPaidReceipt(orderId) {
+  clearPaidReceipt();
+  if (!sessionToken || !currentStoreId || !canWriteCommerce()) return;
+  const serial = receiptReadSerial;
+  const epoch = viewEpoch;
+  const tenant = currentTenantId;
+  const store = currentStoreId;
+  const token = sessionToken;
+  const sameContext = () => receiptReadSerial === serial && viewEpoch === epoch
+    && currentTenantId === tenant && currentStoreId === store
+    && sessionToken === token;
+  el("paidReceipt").classList.remove("hidden");
+  el("receiptMessage").textContent = "Đang xác minh hóa đơn đã thanh toán…";
+  try {
+    const result = await appFetch(
+      "/api/app/commerce-receipt?orderId=" + encodeURIComponent(orderId)
+      + "&storeId=" + encodeURIComponent(store)
+    );
+    if (!sameContext()) return;
+    const receipt = result?.receipt;
+    if (!receipt || receipt.orderId !== orderId || receipt.storeId !== store
+        || receipt.status !== "paid" || !Array.isArray(receipt.items)
+        || !receipt.items.length || !receipt.payment) {
+      throw new Error("Dữ liệu hóa đơn chưa được server xác nhận");
+    }
+    paidReceiptState = receipt;
+    el("receiptStore").textContent = receipt.storeName;
+    el("receiptMeta").textContent = "Đơn " + receipt.orderNumber + " · "
+      + receipt.businessDate + " · " + receipt.channel;
+    const root = el("receiptLines");
+    root.replaceChildren();
+    for (const line of receipt.items) {
+      const row = document.createElement("div");
+      row.className = "receipt-line";
+      const title = document.createElement("span");
+      title.textContent = line.name + " × " + line.quantity
+        + " · " + money(line.unitPrice);
+      const total = document.createElement("strong");
+      total.textContent = money(line.lineTotal);
+      row.append(title, total);
+      root.append(row);
+    }
+    // Reconcile the printed item total with the settled amount when an
+    // eventual discount/tax adjustment exists. Never silently omit it.
+    if (Number(receipt.discountTotal) > 0 || Number(receipt.taxTotal) > 0) {
+      for (const [label, value] of [
+        ["Tạm tính", money(receipt.subtotal)],
+        ["Giảm giá", "−" + money(receipt.discountTotal)],
+        ["Thuế", "+" + money(receipt.taxTotal)]
+      ]) {
+        if (label !== "Tạm tính" && Number(label === "Giảm giá"
+          ? receipt.discountTotal : receipt.taxTotal) === 0) continue;
+        const adjustment = document.createElement("div");
+        adjustment.className = "receipt-line";
+        const name = document.createElement("span");
+        name.textContent = label;
+        const amount = document.createElement("strong");
+        amount.textContent = value;
+        adjustment.append(name, amount);
+        root.append(adjustment);
+      }
+    }
+    el("receiptTotal").textContent = "Tổng thanh toán: " + money(receipt.total);
+    el("receiptMethod").textContent = "Đã thanh toán · "
+      + receipt.payment.method + " · " + receipt.paidAt;
+    el("receiptMessage").textContent = "Hóa đơn từ dữ liệu đã ghi nhận tại server.";
+    el("printPaidReceipt").disabled = false;
+  } catch (error) {
+    if (!sameContext()) return;
+    // Receipt read failures are not payment-write failures. No repeat capture.
+    paidReceiptState = null;
+    el("receiptMessage").textContent =
+      "Thanh toán đã xác nhận. Chưa tải được hóa đơn; kiểm tra kết nối, không ghi Payment lần nữa.";
+    el("printPaidReceipt").disabled = true;
+  }
+}
+
+function printPaidReceipt() {
+  if (!paidReceiptState || !sessionToken || !canWriteCommerce()
+      || paidReceiptState.storeId !== currentStoreId
+      || paidReceiptState.status !== "paid") return;
+  window.print();
+}
+
+// Settlement truth is independent of reporting availability. Once the server
+// confirms PAID, a failed Dashboard refresh must never imply payment failed,
+// invite a duplicate capture, or display stale closeable metrics.
+async function refreshDashboardAfterSale(confirmation) {
+  // The prior read may be pre-payment. Invalidate it *before* issuing a new
+  // Dashboard request, so an in-flight refresh can never leave Daily Close
+  // enabled with the pre-settlement totals.
+  invalidateCloseDashboard();
+  try {
+    await loadDashboard();
+    if (!currentDashboard) throw new Error("Dashboard has no confirmed refresh");
+    setStatus(confirmation, "ok");
+  } catch {
+    invalidateCloseDashboard();
+    setStatus(confirmation + " Dashboard chưa cập nhật; làm mới sau, không ghi Payment lần nữa.", "warning");
+  }
+}
+
+async function submitOrder() {
+  if (!canWriteCommerce() || !currentStoreId || !cartState.size || currentOrder || orderSubmitInFlight) return;
+  if (cartState.size > MAX_POS_ORDER_LINES) {
+    throw new Error("Giỏ hàng vượt 100 dòng món. Điều chỉnh trước khi tạo đơn.");
+  }
+
+  // Ambiguous network retries must preserve the exact same intent and key.
+  if (!pendingOrderSubmission) {
+    pendingOrderSubmission = {
+      clientOrderKey: crypto.randomUUID(),
+      storeId: currentStoreId,
+      channel: el("channel").value,
+      items: [...cartState.values()].map(row => ({
+        menuItemId: row.item.id,
+        quantity: row.quantity
+      }))
+    };
+  }
+
+  const orderBody = {
+    storeId: pendingOrderSubmission.storeId,
+    clientOrderKey: pendingOrderSubmission.clientOrderKey,
+    channel: pendingOrderSubmission.channel,
+    items: pendingOrderSubmission.items
+  };
+  orderSubmitInFlight = true;
+  el("closeDay").disabled = true;
+  renderCart();
+  setStatus("Đang tạo order…");
+  try {
+    const payload = await appFetch("/api/app/commerce-order", {
+      method: "POST",
+      body: orderBody
+    });
+    currentOrder = payload.order;
+    pendingOrderSubmission = null;
+    if (currentOrder.status === "paid") {
+      invalidatePaidOrderReads();
+      const paidNumber = currentOrder.orderNumber;
+      const paidId = currentOrder.id;
+      cartState.clear();
+      currentOrder = null;
+      renderCart();
+      // Receipt reading is optional and must not delay confirmed settlement
+      // or its Dashboard reconciliation. It has its own stale-context guards.
+      void loadPaidReceipt(paidId);
+      await refreshDashboardAfterSale("Order " + paidNumber + " đã được thanh toán từ lần trước.");
+      return;
+    }
+    setStatus("Order " + currentOrder.orderNumber + " đã được tạo. Server total " + money(currentOrder.total) + ".", "ok");
+  } catch (error) {
+    // A request may have reached the server even when the response was lost.
+    // Freeze the cart until the exact same request can be retried.
+    throw new Error("Không thể xác nhận đơn. Nhấn Create Order để retry cùng request, không tạo đơn mới. " + error.message);
+  } finally {
+    orderSubmitInFlight = false;
+    renderCart();
+    renderClosePreview();
+  }
+}
+
+// PostgREST NUMERIC may be serialized as a decimal string or JSON number.
+// An ambiguous payment may only be reconciled when the server's paid order
+// total matches the original amount attempted, exactly to the cent.
+// Do not use Number() equality or rounded currency formatting for evidence.
+function paymentCents(value) {
+  if ((typeof value !== "number" && typeof value !== "string")
+      || (typeof value === "number" && !Number.isFinite(value))) return null;
+  const match = /^(0|[1-9][0-9]*)(?:[.]([0-9]{1,2}))?$/.exec(String(value));
+  if (!match) return null;
+  const cents = BigInt(match[1]) * 100n
+    + BigInt((match[2] ?? "").padEnd(2, "0"));
+  return cents > 0n && cents <= 100000000000000n ? cents : null;
+}
+
+async function capturePayment() {
+  if (!canWriteCommerce() || !currentOrder || currentOrder.status !== "open" || paymentSubmitInFlight) return;
+  paymentSubmitInFlight = true;
+  el("capturePayment").disabled = true;
+  el("closeDay").disabled = true;
+  setStatus("Đang ghi payment record…");
+  try {
+    const attemptedOrderId = currentOrder.id;
+    const attemptedTotal = currentOrder.total;
+    const attemptedMethod = el("paymentMethod").value;
+    const attemptedReference = el("paymentReference").value.trim() || null;
+    const attemptedCents = paymentCents(attemptedTotal);
+    if (attemptedCents === null) {
+      throw new Error("Server total không hợp lệ; không gửi Payment.");
+    }
+    let recovered = false;
+    try {
+      await appFetch("/api/app/commerce-payment", {
+        method: "POST",
+        body: {
+          orderId: attemptedOrderId,
+          method: attemptedMethod,
+          amount: Number(attemptedTotal),
+          reference: attemptedReference
+        }
+      });
+    } catch (paymentError) {
+      // A lost response is not proof of a failed write. Reconcile tenant-scoped server state.
+      try {
+        const status = await appFetch(
+          "/api/app/commerce-order-status?orderId=" + encodeURIComponent(attemptedOrderId)
+        );
+        const paidStateMatches = status.order?.id === attemptedOrderId
+          && status.order?.storeId === currentStoreId
+          && status.order?.status === "paid"
+          && paymentCents(status.order.total) === attemptedCents;
+        if (paidStateMatches) {
+          // Another cashier could have captured the same order with a
+          // different method. A paid order header does NOT prove that this
+          // attempted payment was recorded. Require the independent,
+          // server-reconciled captured-payment receipt before clearing POS.
+          const result = await appFetch(
+            "/api/app/commerce-receipt?orderId=" + encodeURIComponent(attemptedOrderId)
+            + "&storeId=" + encodeURIComponent(currentStoreId)
+          );
+          const receipt = result?.receipt;
+          recovered = receipt?.orderId === attemptedOrderId
+            && receipt?.storeId === currentStoreId
+            && receipt?.status === "paid"
+            && receipt?.payment?.method === attemptedMethod
+            // Matching method+amount is not sufficient when another cashier
+            // captures the same order. Compare the actual recorded reference
+            // as well; a null reference is not a unique transaction ID.
+            && receipt?.payment?.reference === attemptedReference
+            && paymentCents(receipt?.payment?.amount) === attemptedCents
+            && paymentCents(receipt?.total) === attemptedCents;
+        }
+      } catch {
+        // Unknown outcome: preserve this order for further reconciliation.
+      }
+      if (!recovered) throw new Error(
+        "Chưa xác minh được payment. Đơn được giữ để kiểm tra/retry; " + paymentError.message
+      );
+    }
+    currentOrder.status = "paid";
+    invalidatePaidOrderReads();
+    el("paymentPanel").classList.add("hidden");
+    cartState.clear();
+    currentOrder = null;
+    renderCart();
+    // A slow printer/receipt read is independent of PAID settlement truth.
+    void loadPaidReceipt(attemptedOrderId);
+    await refreshDashboardAfterSale(
+      recovered
+        ? "Server xác nhận đơn đã thanh toán với phương thức, số tiền và mã tham chiếu khớp. Không thể xác định chính POST bị mất phản hồi đã ghi nhận nếu thiếu mã giao dịch duy nhất."
+        : "Payment record đã captured. Order đã paid."
+    );
+  } finally {
+    paymentSubmitInFlight = false;
+    renderCart();
+    renderClosePreview();
+  }
+}
+
+let paidOrdersLoadInFlight = false;
+let paidOrdersReadSerial = 0;
+
+function invalidatePaidOrderReads() {
+  ++paidOrdersReadSerial;
+  paidOrdersLoadInFlight = false;
+  el("paidOrderList").replaceChildren();
+}
+
+async function browsePaidOrders(offset = 0) {
+  if (!canWriteCommerce() || !currentStoreId || paidOrdersLoadInFlight) return;
+  if (hasUnfinishedCheckout()) {
+    return setStatus("Hoàn tất hoặc xác minh đơn đang xử lý trước khi tra cứu hóa đơn khác.", "error");
+  }
+  const serial = ++paidOrdersReadSerial;
+  const epoch = viewEpoch;
+  const tenant = currentTenantId;
+  const store = currentStoreId;
+  const token = sessionToken;
+  const stillCurrent = () => serial === paidOrdersReadSerial && epoch === viewEpoch
+    && tenant === currentTenantId && store === currentStoreId && token === sessionToken;
+  const root = el("paidOrderList");
+  paidOrdersLoadInFlight = true;
+  el("browsePaidOrders").disabled = true;
+  try {
+    const payload = await appFetch(
+      "/api/app/commerce-paid-orders?storeId=" + encodeURIComponent(store)
+      + "&offset=" + offset
+    );
+    if (!stillCurrent()) return;
+    if (!Array.isArray(payload?.orders) || payload.orders.length > 20
+        || payload.orders.some(order => !order?.id || order.storeId !== store
+          || order.status !== "paid" || !order.orderNumber
+          || order.total == null || !order.paidAt || !order.businessDate)
+        || (payload.nextOffset !== null && payload.nextOffset !== undefined
+          && (!Number.isInteger(payload.nextOffset)
+            || payload.nextOffset !== offset + 20 || payload.nextOffset > 10020))) {
+      throw new Error("Dữ liệu lịch sử hóa đơn không hợp lệ");
+    }
+    if (offset === 0) root.replaceChildren();
+    else {
+      const more = root.querySelector(".paid-order-more");
+      if (more) more.remove();
+    }
+    if (!payload.orders.length && offset === 0) {
+      root.textContent = "Chưa có hóa đơn đã thanh toán ở Store này.";
+      return;
+    }
+    for (const order of payload.orders) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary";
+      button.textContent = (order.orderNumber || order.id) + " · "
+        + money(order.total) + " · " + order.businessDate;
+      button.addEventListener("click", () => guarded(() => loadPaidReceipt(order.id)));
+      root.append(button);
+    }
+    if (payload.nextOffset !== null && payload.nextOffset !== undefined) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "secondary paid-order-more";
+      more.textContent = "Xem thêm hóa đơn cũ";
+      more.addEventListener("click", () => guarded(() => browsePaidOrders(payload.nextOffset)));
+      root.append(more);
+    }
+    setStatus("Chọn hóa đơn đã thanh toán để xem và in lại.", "ok");
+  } catch (error) {
+    if (stillCurrent()) throw error;
+  } finally {
+    if (serial === paidOrdersReadSerial) {
+      paidOrdersLoadInFlight = false;
+      el("browsePaidOrders").disabled = false;
+    }
+  }
+}
+
+let openOrdersLoadInFlight = false;
+let openOrdersRequestSerial = 0;
+let openOrderResumeSerial = 0;
+
+// Cancel only *presentation*, never a server-side commerce operation. Old
+// recovery reads must not contaminate a new Tenant, Store or login session.
+function invalidateOpenOrderReads() {
+  ++openOrdersRequestSerial;
+  ++openOrderResumeSerial;
+  openOrdersLoadInFlight = false;
+  el("openOrderList").replaceChildren();
+}
+
+async function loadOpenOrdersForRecovery(offset = 0) {
+  if (!canWriteCommerce() || !currentStoreId || openOrdersLoadInFlight) return;
+  if (hasUnfinishedCheckout()) {
+    return setStatus("Hoàn tất hoặc xác minh đơn hiện tại trước khi khôi phục đơn khác.", "error");
+  }
+  const requestSerial = ++openOrdersRequestSerial;
+  const requestEpoch = viewEpoch;
+  const selectedTenant = currentTenantId;
+  const selectedStore = currentStoreId;
+  const selectedToken = sessionToken;
+  const stillCurrent = () => requestSerial === openOrdersRequestSerial
+    && requestEpoch === viewEpoch && selectedTenant === currentTenantId
+    && selectedStore === currentStoreId && selectedToken === sessionToken;
+  openOrdersLoadInFlight = true;
+  const root = el("openOrderList");
+  try {
+    const payload = await appFetch(
+      "/api/app/commerce-open-orders?storeId=" + encodeURIComponent(selectedStore) +
+      "&offset=" + offset
+    );
+    if (!stillCurrent()) return;
+    if (offset === 0) root.replaceChildren();
+    else {
+      const more = root.querySelector(".open-order-more");
+      if (more) more.remove();
+    }
+    if (!payload.orders?.length && offset === 0) {
+      root.textContent = "Không có đơn mở cần khôi phục.";
+      return;
+    }
+    for (const order of payload.orders || []) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary";
+      button.textContent = (order.orderNumber || order.id) + " · " + money(order.total);
+      button.addEventListener("click", () => guarded(() => resumeOpenOrder(order.id)));
+      root.append(button);
+    }
+    if (payload.nextOffset !== null && payload.nextOffset !== undefined) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "secondary open-order-more";
+      more.textContent = "Xem thêm đơn cũ";
+      more.addEventListener("click", () => guarded(() => loadOpenOrdersForRecovery(payload.nextOffset)));
+      root.append(more);
+    }
+    setStatus("Chọn đơn mở để tiếp tục ghi Payment.", "ok");
+  } catch (error) {
+    if (stillCurrent()) throw error;
+    // An old Tenant/Store read is no longer relevant to the cashier.
+  } finally {
+    if (requestSerial === openOrdersRequestSerial) openOrdersLoadInFlight = false;
+  }
+}
+
+async function resumeOpenOrder(orderId) {
+  if (!canWriteCommerce() || hasUnfinishedCheckout()) return;
+  if (cartState.size && !window.confirm(
+    "Giỏ hàng chưa gửi sẽ bị xóa khi khôi phục đơn mở. Tiếp tục?"
+  )) return;
+  const requestSerial = ++openOrderResumeSerial;
+  const requestEpoch = viewEpoch;
+  const selectedTenant = currentTenantId;
+  const selectedStore = currentStoreId;
+  const selectedToken = sessionToken;
+  // Do not erase a newer unsent cart if a status read was slow.
+  const startingCart = [...cartState].map(([id, row]) => [id, row.quantity]);
+  const stillCurrent = () => requestSerial === openOrderResumeSerial
+    && requestEpoch === viewEpoch && selectedTenant === currentTenantId
+    && selectedStore === currentStoreId && selectedToken === sessionToken;
+  let payload;
+  try {
+    payload = await appFetch(
+      "/api/app/commerce-order-status?orderId=" + encodeURIComponent(orderId)
+    );
+  } catch (error) {
+    if (stillCurrent()) throw error;
+    return;
+  }
+  if (!stillCurrent()) return;
+  if (currentOrder || pendingOrderSubmission || orderSubmitInFlight || paymentSubmitInFlight
+      || cartState.size !== startingCart.length
+      || startingCart.some(([id, quantity]) => cartState.get(id)?.quantity !== quantity)) {
+    throw new Error("Giỏ hàng đã thay đổi; chọn lại đơn cần khôi phục.");
+  }
+  const order = payload.order;
+  if (order?.id !== orderId || order.storeId !== selectedStore || order.status !== "open") {
+    throw new Error("Đơn không còn mở hoặc không thuộc Store hiện tại.");
+  }
+  cartState.clear();
+  clearPaidReceipt();
+  currentOrder = {
+    id: order.id, status: "open", total: order.total,
+    orderNumber: order.orderNumber || order.id
+  };
+  el("openOrderList").replaceChildren();
+  renderCart();
+  setStatus("Đã khôi phục đơn mở; kiểm tra server total rồi ghi Payment.", "ok");
+}
+
+function setMenuWriteInFlight(busy) {
+  menuWriteInFlight = busy;
+  el("createCategoryButton").disabled = busy;
+  el("createItemButton").disabled = busy;
+  // Do not close while a Menu write is still awaiting server confirmation.
+  renderClosePreview();
+}
+
+// Menu INSERT has no idempotency key in v1. Never auto-retry an uncertain POST,
+// and never describe a confirmed INSERT as failed only because GET went offline.
+async function writeMenuRecord(body, formId, successMessage) {
+  if (menuWriteInFlight) return;
+  menuWriteInFlight = true;
+  setMenuWriteInFlight(true);
+  setStatus("Đang lưu Menu…");
+  try {
+    try {
+      await appFetch("/api/app/commerce-menu", { method: "POST", body });
+    } catch (error) {
+      throw new Error("Chưa xác nhận Menu đã được lưu. Kiểm tra danh sách Menu trước khi gửi lại để tránh trùng. " + error.message);
+    }
+    el(formId).reset();
+    if (formId === "categoryForm") el("categorySort").value = "0";
+    try {
+      await loadMenu();
+      setStatus(successMessage, "ok");
+    } catch {
+      // A successful POST is still successful. Force reloading the Menu
+      // before trusting its previously cached list/prices in the cashier UI.
+      menuState = { categories: [], items: [] };
+      renderMenu();
+      setStatus(successMessage + " Danh sách Menu chưa tải lại được; Refresh để kiểm tra, không tạo lại.", "warning");
+    }
+  } finally {
+    setMenuWriteInFlight(false);
+  }
+}
+
+async function createCategory(event) {
+  event.preventDefault();
+  if (!canManageCommerce()) throw new Error("Manager role required to edit Menu");
+  if (menuWriteInFlight) return;
+  return writeMenuRecord({
+    kind: "category",
+    name: el("categoryName").value.trim(),
+    sortOrder: Number(el("categorySort").value || 0)
+  }, "categoryForm", "Đã tạo category.");
+}
+
+async function createItem(event) {
+  event.preventDefault();
+  if (!canManageCommerce()) throw new Error("Manager role required to edit Menu");
+  if (menuWriteInFlight) return;
+  return writeMenuRecord({
+    kind: "item",
+    categoryId: el("itemCategory").value || null,
+    sku: el("itemSku").value.trim() || null,
+    name: el("itemName").value.trim(),
+    price: Number(el("itemAmount").value)
+  }, "itemForm", "Đã tạo menu item.");
+}
+
+function metric(label, value) {
+  const box = document.createElement("div");
+  box.className = "metric-display";
+  const l = document.createElement("span");
+  l.className = "metric-label";
+  l.textContent = label;
+  const v = document.createElement("strong");
+  v.className = "metric-value";
+  v.textContent = value;
+  box.append(l, v);
+  return box;
+}
+
+async function loadDashboard() {
+  if (!currentStoreId) return;
+  const requestedSerial = ++dashboardReadSerial;
+  const requestedEpoch = viewEpoch;
+  const requestedTenant = currentTenantId;
+  const requestedStore = currentStoreId;
+  const requestedToken = sessionToken;
+  const payload = await appFetch("/api/app/commerce-dashboard?storeId=" + encodeURIComponent(requestedStore));
+  if (requestedSerial !== dashboardReadSerial || requestedEpoch !== viewEpoch
+      || requestedTenant !== currentTenantId || requestedStore !== currentStoreId
+      || requestedToken !== sessionToken) return;
+  currentDashboard = payload.dashboard;
+  if (!el("hqBusinessDate").value) el("hqBusinessDate").value = currentDashboard.businessDate;
+
+  const metrics = el("commerceMetrics");
+  metrics.replaceChildren(
+    metric("Sales", money(currentDashboard.salesTotal)),
+    metric("Paid orders", String(currentDashboard.orderCount)),
+    metric("AOV", money(currentDashboard.aov)),
+    metric("Open orders", String(currentDashboard.openOrderCount))
+  );
+
+  const mix = el("paymentMix");
+  mix.replaceChildren();
+  const heading = document.createElement("div");
+  heading.className = "section-label";
+  heading.textContent = "Payment mix · " + currentDashboard.businessDate;
+  mix.append(heading);
+  for (const [method, amount] of Object.entries(currentDashboard.paymentMix || {})) {
+    const row = document.createElement("div");
+    row.className = "evidence-row";
+    const name = document.createElement("span");
+    name.textContent = method;
+    const value = document.createElement("strong");
+    value.textContent = money(amount);
+    row.append(name, value);
+    mix.append(row);
+  }
+  renderClosePreview();
+}
+
+// Server totals are exact decimal strings. Display them without converting the
+// cross-store sum to IEEE-754 Number (which can lose large integer cents).
+function hqMoney(value) {
+  if (value === null) return "—";
+  const match = /^(0|[1-9][0-9]*)[.]([0-9]{2})$/.exec(value);
+  return match ? BigInt(match[1]).toLocaleString("vi-VN") + "," + match[2] + " ₫" : "—";
+}
+
+async function loadHQOverview() {
+  if (!canManageCommerce()) throw new Error("Chỉ Owner/Admin/Manager được xem HQ.");
+  if (hqLoadInFlight || !sessionToken || !currentTenantId) return;
+  const date = el("hqBusinessDate").value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error("Chọn business date hợp lệ để xem HQ.");
+  }
+  const serial = ++hqReadSerial, epoch = viewEpoch;
+  const tenant = currentTenantId, token = sessionToken;
+  const stillCurrent = () => serial === hqReadSerial && epoch === viewEpoch
+    && tenant === currentTenantId && token === sessionToken
+    && date === el("hqBusinessDate").value;
+  hqLoadInFlight = true;
+  el("hqRefresh").disabled = true;
+  el("hqStatus").textContent = "Đang xác minh doanh thu từng Store…";
+  el("hqMetrics").replaceChildren();
+  el("hqStores").replaceChildren();
+  try {
+    const { overview } = await appFetch(
+      "/api/app/commerce-hq?businessDate=" + encodeURIComponent(date)
+    );
+    if (!stillCurrent()) return;
+    if (!overview || overview.source !== "cafeos_pos" || overview.businessDate !== date
+        || !Array.isArray(overview.stores)
+        || overview.stores.length !== overview.storeCount) {
+      throw new Error("HQ trả về dữ liệu nguồn hoặc business date không khớp.");
+    }
+    el("hqMetrics").replaceChildren(
+      metric("First-party sales", hqMoney(overview.salesTotal)),
+      metric("Paid orders", String(overview.orderCount)),
+      metric("Weighted AOV", hqMoney(overview.aov)),
+      metric("Open orders", String(overview.openOrderCount))
+    );
+    const list = el("hqStores");
+    for (const store of overview.stores) {
+      const row = document.createElement("div");
+      row.className = "evidence-row hq-store-row";
+      const name = document.createElement("span");
+      name.textContent = store.name + " · " + store.orderCount + " đã thanh toán"
+        + " · " + store.openOrderCount + " chưa thanh toán"
+        + (store.status === "closed" ? " · CLOSED" : " · OPEN");
+      const amount = document.createElement("strong");
+      amount.textContent = hqMoney(store.salesTotal);
+      row.append(name, amount);
+      list.append(row);
+    }
+    el("hqStatus").textContent = "CafeOS POS · " + date + " · "
+      + overview.storeCount + " Store · " + overview.closedStoreCount
+      + " đã đóng ngày. Nguồn import không nằm trong tổng này.";
+    if (!overview.storeCount) list.textContent = "Tenant chưa có Store hoạt động.";
+  } catch (error) {
+    if (stillCurrent()) {
+      el("hqMetrics").replaceChildren();
+      el("hqStores").replaceChildren();
+      el("hqStatus").textContent = "HQ không đủ bằng chứng tất cả Store; không công bố tổng một phần.";
+      throw error;
+    }
+  } finally {
+    if (serial === hqReadSerial) {
+      hqLoadInFlight = false;
+      el("hqRefresh").disabled = !canManageCommerce();
+    }
+  }
+}
+
+function renderClosePreview() {
+  if (!currentDashboard) return;
+  el("closePreview").textContent =
+    currentDashboard.businessDate +
+    " · " + currentDashboard.orderCount + " paid orders · " +
+    money(currentDashboard.salesTotal) + " sales · " +
+    currentDashboard.openOrderCount + " open orders" +
+    (currentDashboard.closed ? " · CLOSED" : " · OPEN") +
+    (Number(currentDashboard.openOrderCount) > 0
+      ? " · ĐÓNG NGÀY BỊ CHẶN: sang POS → Khôi phục đơn chưa thanh toán để xác minh. "
+        + "CafeOS v1 chưa hỗ trợ hủy đơn; không ghi thanh toán giả để đóng ngày."
+      : "");
+  el("closeDay").disabled = !canManageCommerce() || closeSubmitInFlight
+    || menuWriteInFlight || hasUnfinishedCheckout()
+    || Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
+}
+
+function invalidateCloseDashboard() {
+  // Never allow previously fetched metrics to enable another close after a
+  // confirmed close or uncertain server-write outcome.
+  currentDashboard = null;
+  el("commerceMetrics").replaceChildren();
+  el("paymentMix").replaceChildren();
+  el("closePreview").textContent = "Dashboard cần xác minh lại trước khi đóng ngày.";
+  el("closeDay").disabled = true;
+}
+
+async function closeBusinessDay() {
+  if (!canManageCommerce()) throw new Error("Manager role required for Daily Close");
+  if (!currentStoreId || !currentDashboard || closeSubmitInFlight
+      || menuWriteInFlight || hasUnfinishedCheckout()
+      || currentDashboard.closed || Number(currentDashboard.openOrderCount) > 0) return;
+  const selectedStore = currentStoreId;
+  const businessDate = currentDashboard.businessDate;
+  const question = "Xác nhận đóng ngày " + businessDate +
+    " với " + currentDashboard.orderCount + " đơn đã thanh toán và " +
+    money(currentDashboard.salesTotal) +
+    " doanh thu? Sau khi đóng, Store này không thể tạo đơn mới cho ngày đó.";
+  if (!window.confirm(question)) return;
+  closeSubmitInFlight = true;
+  el("closeDay").disabled = true;
+  setStatus("Đang đóng business day…");
+  try {
+    let payload;
+    try {
+      payload = await appFetch("/api/app/commerce-daily-close", {
+        method: "POST",
+        body: { storeId: selectedStore, businessDate }
+      });
+    } catch (error) {
+      // A lost HTTP response cannot prove that the close did not commit.
+      // Suppress repeat submissions until a fresh server read resolves it.
+      invalidateCloseDashboard();
+      throw new Error("Chưa xác nhận được Daily Close. Làm mới Dashboard để kiểm tra trước khi thử đóng lại. " + error.message);
+    }
+    // This is a server-confirmed immutable close receipt, NOT a local total.
+    const receipt = el("closeReceipt");
+    receipt.textContent =
+      "Close " + payload.close.businessDate +
+      " · " + payload.close.orderCount + " orders · " +
+      money(payload.close.salesTotal) + " sales · " +
+      money(payload.close.paymentTotal) + " payments";
+    invalidateCloseDashboard();
+    try {
+      await loadDashboard();
+      if (!currentDashboard || (currentDashboard.businessDate === businessDate && !currentDashboard.closed)) {
+        throw new Error("Dashboard chưa xác nhận ngày đã đóng");
+      }
+      setStatus("Daily Close hoàn tất.", "ok");
+    } catch {
+      invalidateCloseDashboard();
+      // Committed close truth must survive an independent reporting outage.
+      setStatus("Daily Close đã được ghi nhận. Dashboard chưa cập nhật; không đóng lại, làm mới để kiểm tra.", "warning");
+    }
+  } finally {
+    closeSubmitInFlight = false;
+    renderClosePreview();
+  }
+}
+
+async function loadOptionalControlTower() {
+  const requestedEpoch = viewEpoch;
+  try {
+    await loadControlTower();
+    return requestedEpoch === viewEpoch;
+  } catch (error) {
+    if (requestedEpoch !== viewEpoch) return false;
+    const root = el("controlBrief");
+    root.replaceChildren();
+    root.textContent = "Control Tower chưa khả dụng: " + error.message;
+    return false;
+  }
+}
+
+async function loadControlTower() {
+  const requestedSerial = ++controlReadSerial;
+  const requestedEpoch = viewEpoch;
+  const requestedTenant = currentTenantId;
+  const requestedToken = sessionToken;
+  const payload = await appFetch("/api/app/brief");
+  if (requestedSerial !== controlReadSerial || requestedEpoch !== viewEpoch
+      || requestedTenant !== currentTenantId || requestedToken !== sessionToken) return;
+  const root = el("controlBrief");
+  root.replaceChildren();
+  const metrics = document.createElement("div");
+  metrics.className = "commerce-metrics";
+  metrics.append(
+    metric("Imported net sales", money(payload.metrics?.netSales?.current)),
+    metric("Imported orders", String(payload.metrics?.orders?.current ?? "—")),
+    metric("Imported AOV", money(payload.metrics?.aov?.current))
+  );
+  root.append(metrics);
+
+  const attentionLabel = document.createElement("div");
+  attentionLabel.className = "section-label";
+  attentionLabel.textContent = "Attention / unresolved actions";
+  root.append(attentionLabel);
+
+  const note = document.createElement("p");
+  note.className = "muted";
+  note.textContent =
+    (payload.attention?.length || 0) + " attention items · " +
+    (payload.unresolvedActions?.length || 0) + " unresolved actions";
+  root.append(note);
+}
+
+function showWorkspace(id) {
+  if (id === "hqWorkspace" && canManageCommerce() && el("hqBusinessDate").value) {
+    void guarded(loadHQOverview);
+  }
+  for (const workspace of document.querySelectorAll(".app-workspace")) {
+    workspace.classList.toggle("hidden", workspace.id !== id);
+  }
+  for (const button of document.querySelectorAll(".app-nav-item")) {
+    button.classList.toggle("active", button.dataset.view === id);
+  }
+}
+
+async function guarded(action) {
+  try { await action(); }
+  catch (error) {
+    setStatus((error.code ? error.code + " · " : "") + error.message, "error");
+  }
+}
+
+el("signIn").addEventListener("click", () => guarded(signIn));
+el("signOut").addEventListener("click", signOut);
+el("tenant").addEventListener("change", () => guarded(loadTenant));
+el("store").addEventListener("change", () => guarded(refreshStore));
+el("refreshApp").addEventListener("click", () => guarded(refreshStore));
+el("posMenuSearch").addEventListener("input", renderMenu);
+el("posMenuCategory").addEventListener("change", renderMenu);
+el("submitOrder").addEventListener("click", () => guarded(submitOrder));
+el("capturePayment").addEventListener("click", () => guarded(capturePayment));
+el("printPaidReceipt").addEventListener("click", printPaidReceipt);
+el("recoverOpenOrders").addEventListener("click", () => guarded(() => loadOpenOrdersForRecovery()));
+el("browsePaidOrders").addEventListener("click", () => guarded(() => browsePaidOrders()));
+el("hqRefresh").addEventListener("click", () => guarded(loadHQOverview));
+el("hqBusinessDate").addEventListener("change", () => {
+  ++hqReadSerial;
+  hqLoadInFlight = false;
+  el("hqMetrics").replaceChildren();
+  el("hqStores").replaceChildren();
+  el("hqStatus").textContent = "Ngày đã đổi; nhấn Xem toàn hệ thống để xác minh lại.";
+  renderRoleControls();
+});
+el("categoryForm").addEventListener("submit", event => guarded(() => createCategory(event)));
+el("itemForm").addEventListener("submit", event => guarded(() => createItem(event)));
+el("closeDay").addEventListener("click", () => guarded(closeBusinessDay));
+for (const button of document.querySelectorAll(".app-nav-item")) {
+  button.addEventListener("click", () => showWorkspace(button.dataset.view));
+}
+
+guarded(loadClientConfig);
+</script>
+</body>
+</html>

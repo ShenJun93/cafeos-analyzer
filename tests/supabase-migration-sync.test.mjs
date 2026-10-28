@@ -93,3 +93,39 @@ test("migration sync normalization ignores line-ending style only", () => {
   assert.equal(normalizeSqlText(lf), normalizeSqlText(cr));
   assert.notEqual(normalizeSqlText("select 1;\n"), normalizeSqlText("select 2;\n"));
 });
+
+
+test("Core Commerce v1 migration stays text-equivalent to canonical contract", async () => {
+  const source = await readFile(
+    new URL("../db/contracts/core_commerce_v1.sql", import.meta.url),
+    "utf8"
+  );
+  const migration = await readFile(
+    new URL("../supabase/migrations/20261025094352_core_commerce_v1.sql", import.meta.url),
+    "utf8"
+  );
+  assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
+});
+
+
+test("Core Commerce future-date close guard migration matches its incremental canonical contract", async () => {
+  const source = await readFile(
+    new URL("../db/contracts/core_commerce_future_close_guard.sql", import.meta.url), "utf8"
+  );
+  const migration = await readFile(
+    new URL("../supabase/migrations/20261025130000_core_commerce_future_close_guard.sql", import.meta.url),
+    "utf8"
+  );
+  assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
+});
+
+
+test("Core Commerce order price snapshot guard CLI migration stays canonical", async () => {
+  const source = await readFile(
+    new URL("../db/contracts/core_commerce_order_price_snapshot_guard.sql", import.meta.url), "utf8"
+  );
+  const migration = await readFile(
+    new URL("../supabase/migrations/20261025140000_core_commerce_order_price_snapshot_guard.sql", import.meta.url), "utf8"
+  );
+  assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
+});

@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# Only the disposable GitHub Actions Supabase localhost stack may be used.
+# Tests real encrypted pg_dump/age streaming and clean-room Postgres restore.
+set -euo pipefail
+umask 077
+readonly DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+[[ "$DB_URL" == "postgresql://postgres:postgres@127.0.0.1:54322/postgres" ]]
+for binary in age age-keygen pg_dump pg_dumpall pg_restore createdb dropdb psql pg_isready; do
+  command -v "$binary" >/dev/null
+done
+for binary in pg_dump pg_dumpall pg_restore; do
+  [[ "$("$binary" --version)" == *" 17."* ]] || {
+    echo "STOP: disposable restore rehearsal requires PostgreSQL client major 17" >&2
+    exit 42
+  }
+done
+pg_isready -h 127.0.0.1 -p 54322 -U postgres -d postgres -q
+[[ "$(psql "$DB_URL" -Atq -c "select current_database()||':'||current_user")" == "postgres:postgres" ]]
+
+source_db="cafeos_age_src_$$"
+restore_db="cafeos_age_dst_$$"
+source_url="postgresql://postgres:postgres@127.0.0.1:54322/$source_db"
+restore_url="postgresql://postgres:postgres@127.0.0.1:54322/$restore_db"
+tmp="$(mktemp -d)"
+source_created=false
+restore_created=false
+cleanup() {
+  if [[ "$restore_created" == true ]]; then
+    dropdb --if-exists --maintenance-db="$DB_URL" "$restore_db" || true
+  fi
+  if [[ "$source_created" == true ]]; then
+    dropdb --if-exists --maintenance-db="$DB_URL" "$source_db" || true
+  fi
+  if [[ -d "$tmp/offline-copy" ]]; then
+    rm -f -- "$tmp/offline-copy/database.pgdump.age" "$tmp/offline-copy/globals.sql.age" "$tmp/offline-copy/source-ledger-sha256.txt" "$tmp/offline-copy/manifest.sha256"
+    rmdir -- "$tmp/offline-copy" 2>/dev/null || true
+  fi
+  rm -f -- "$tmp/identity" "$tmp/wrong-identity" "$tmp/recipients" "$tmp/database.pgdump.age" "$tmp/globals.sql.age" "$tmp/manifest.sha256"
+  rmdir -- "$tmp" 2>/dev/null || true
+}
+trap cleanup EXIT
+# The scratch names must be absent; never overwrite any existing database.
+for db in "$source_db" "$restore_db"; do
+  [[ "$(psql "$DB_URL" -Atq -c "select count(*) from pg_database where datname = '$db'")" == "0" ]]
+done
+createdb --maintenance-db="$DB_URL" "$source_db"
+source_created=true
+createdb --maintenance-db="$DB_URL" "$restore_db"
+restore_created=true
+psql "$source_url" -X -q -v ON_ERROR_STOP=1 <<'SQL'
+create schema synthetic;
+create table synthetic.sales (id integer primary key, title text not null, cents integer not null);
+insert into synthetic.sales(id,title,cents) values
+ (1,'Cà phê sữa đá',2900),(2,'Tổng thử nghiệm',255);
+create schema supabase_migrations;
+create table supabase_migrations.schema_migrations(version text primary key, name text not null, statements text[]);
+insert into supabase_migrations.schema_migrations values
+ ('20260921100732','synthetic_integration_fixture',array['select 1','select 2']);
+SQL
+# Negative control proves fingerprint detects modified SQL even without version drift.
+fp_script="scripts/sql/cafeos-staging-receipt-fingerprint.sql"
+baseline_fp="$(psql "$source_url" -XAtq -v ON_ERROR_STOP=1 -f "$fp_script")"
+[[ "$baseline_fp" =~ ^[0-9a-f]{64}$ ]]
+psql "$source_url" -XAtq -v ON_ERROR_STOP=1 -c \
+  "update supabase_migrations.schema_migrations set statements=array['tampered synthetic SQL'] where version='20260921100732'" >/dev/null
+changed_fp="$(psql "$source_url" -XAtq -v ON_ERROR_STOP=1 -f "$fp_script")"
+[[ "$changed_fp" != "$baseline_fp" ]]
+psql "$source_url" -XAtq -v ON_ERROR_STOP=1 -c \
+  "update supabase_migrations.schema_migrations set statements=array['select 1','select 2'] where version='20260921100732'" >/dev/null
+[[ "$(psql "$source_url" -XAtq -v ON_ERROR_STOP=1 -f "$fp_script")" == "$baseline_fp" ]]
+age-keygen -o "$tmp/identity" >/dev/null 2>&1
+age-keygen -y "$tmp/identity" > "$tmp/recipients"
+pg_dump -w -Fc --dbname="$source_url" | age -R "$tmp/recipients" -o "$tmp/database.pgdump.age"
+pg_dumpall -w --globals-only --no-role-passwords --dbname="$DB_URL" |
+  age -R "$tmp/recipients" -o "$tmp/globals.sql.age"
+[[ -s "$tmp/database.pgdump.age" && -s "$tmp/globals.sql.age" ]]
+age -d -i "$tmp/identity" "$tmp/database.pgdump.age" |
+  pg_restore --no-owner --no-acl --exit-on-error --dbname="$restore_url"
+age -d -i "$tmp/identity" "$tmp/globals.sql.age" | sha256sum >/dev/null
+(
+ cd "$tmp"
+ sha256sum database.pgdump.age globals.sql.age > manifest.sha256
+ sha256sum -c manifest.sha256 >/dev/null
+)
+# Copy only encrypted artifacts into a separate restricted directory. The age
+# identity stays outside the copy, mirroring an independent recovery custodian.
+offline_copy="$tmp/offline-copy"
+mkdir -m 700 "$offline_copy"
+cp -- "$tmp/database.pgdump.age" "$tmp/globals.sql.age" "$offline_copy/"
+printf '%s\n' "$baseline_fp" > "$offline_copy/source-ledger-sha256.txt"
+(
+  cd "$offline_copy"
+  sha256sum database.pgdump.age globals.sql.age source-ledger-sha256.txt > manifest.sha256
+)
+manifest_hash="$(sha256sum "$offline_copy/manifest.sha256")"
+manifest_hash="${manifest_hash%% *}"
+CAFEOS_ARCHIVE_DIR="$offline_copy" \
+CAFEOS_AGE_IDENTITY="$tmp/identity" \
+CAFEOS_EXPECTED_MANIFEST_SHA256="$manifest_hash" \
+CAFEOS_EXPECTED_RECEIPT_SHA256="$baseline_fp" \
+bash scripts/verify-cafeos-staging-age-archive.sh
+# Wrong retained manifest SHA must fail before accepting a copied archive.
+wrong_manifest="$(printf '%064d' 0)"
+[[ "$wrong_manifest" != "$manifest_hash" ]]
+if CAFEOS_ARCHIVE_DIR="$offline_copy" \
+   CAFEOS_AGE_IDENTITY="$tmp/identity" \
+   CAFEOS_EXPECTED_MANIFEST_SHA256="$wrong_manifest" \
+   CAFEOS_EXPECTED_RECEIPT_SHA256="$baseline_fp" \
+   bash scripts/verify-cafeos-staging-age-archive.sh >/dev/null 2>&1; then
+  echo "STOP: wrong original manifest fingerprint was accepted" >&2
+  exit 43
+fi
+echo "CAFEOS_SYNTHETIC_WRONG_MANIFEST_REJECTED"
+# Correct archive with another private identity must never decrypt successfully.
+age-keygen -o "$tmp/wrong-identity" >/dev/null 2>&1
+if CAFEOS_ARCHIVE_DIR="$offline_copy" \
+   CAFEOS_AGE_IDENTITY="$tmp/wrong-identity" \
+   CAFEOS_EXPECTED_MANIFEST_SHA256="$manifest_hash" \
+   CAFEOS_EXPECTED_RECEIPT_SHA256="$baseline_fp" \
+   bash scripts/verify-cafeos-staging-age-archive.sh >/dev/null 2>&1; then
+  echo "STOP: unrelated age private identity was accepted" >&2
+  exit 43
+fi
+echo "CAFEOS_SYNTHETIC_WRONG_AGE_IDENTITY_REJECTED"
+printf 'synthetic-tamper' >> "$offline_copy/database.pgdump.age"
+if CAFEOS_ARCHIVE_DIR="$offline_copy" \
+   CAFEOS_AGE_IDENTITY="$tmp/identity" \
+   CAFEOS_EXPECTED_MANIFEST_SHA256="$manifest_hash" \
+   CAFEOS_EXPECTED_RECEIPT_SHA256="$baseline_fp" \
+   bash scripts/verify-cafeos-staging-age-archive.sh >/dev/null 2>&1; then
+  echo "STOP: tampered offline ciphertext was accepted" >&2
+  exit 43
+fi
+echo "CAFEOS_SYNTHETIC_OFFLINE_TAMPER_REJECTED"
+s="$(psql "$source_url" -Atq -c "select count(*)::text||':'||sum(cents)::text||':'||md5(string_agg(title,',' order by id)) from synthetic.sales")"
+t="$(psql "$restore_url" -Atq -c "select count(*)::text||':'||sum(cents)::text||':'||md5(string_agg(title,',' order by id)) from synthetic.sales")"
+[[ "$s" == "$t" && "$s" == 2:3155:* ]] || {
+ echo "STOP: synthetic encrypted restore data mismatch" >&2; exit 41;
+}
+[[ "$(psql "$restore_url" -Atq -c "select version from supabase_migrations.schema_migrations")" == "20260921100732" ]]
+echo "CAFEOS_LOCAL_AGE_BACKUP_RESTORE_PASS: encrypted pg_dump + globals, isolated restore"

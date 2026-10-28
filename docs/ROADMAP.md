@@ -2,172 +2,182 @@
 
 ## Roadmap principle
 
-Build the smallest sequence that proves the full CafeOS loop:
+CafeOS is a full café operating ecosystem, but it should be built as **vertical operating loops**, not a feature-completeness checklist.
 
-`CONNECT → UNIFY → UNDERSTAND → ACT → MEASURE`
+Each phase must produce a usable end-to-end workflow and preserve deterministic business truth.
 
-Do not sequence work by “feature completeness.” Sequence it by uncertainty reduction and business leverage.
+## Phase 0 — Analyzer / external data foundation
 
-## Phase 0 — Analyzer / Data Foundation
-
-Status: **technical wedge exists**
+Status: **live technical wedge**
 
 Already built:
 
 - CSV/XLSX ingestion;
 - deterministic mapping/normalization;
-- canonical transaction model;
+- canonical imported transaction model;
 - deterministic metrics;
-- store/daypart anomaly evidence;
-- customer-identification coverage;
-- idempotency;
+- Store/Customer promotion primitives;
+- tenant/RLS foundation;
+- Store Health / Daily Brief read model;
+- Attention → Action → Measurement workflow;
 - privacy-safe validation tooling;
-- live public Analyzer.
+- public Analyzer.
 
 Role going forward:
 
 - acquisition/onboarding;
-- compatibility discovery;
-- reconciliation;
-- fallback import path;
-- fixture/test harness.
+- external POS compatibility;
+- migration/reconciliation;
+- connector fallback;
+- validation/fixture harness.
 
-Do not keep expanding Analyzer as a standalone product unless field evidence exposes a concrete blocker.
+Analyzer is not the full CafeOS product.
 
-## Phase 1 — CafeOS Control Tower
+## Phase 1 — Core Commerce / CafeOS POS
 
-Goal: give a multi-location café owner one trustworthy operating view above the existing POS.
+Status: **current implementation priority**
 
-### 1A. Persistent business graph
+Goal: create the first first-party operating spine:
 
-- tenant / brand / store
-- product/category
-- transaction/order
-- customer/customer identifier
-- consent/privacy metadata
-- metric snapshots
-- evidence/source lineage
+\`Menu → POS Order → Payment Record → Daily Close → Dashboard → Control Tower handoff\`
 
-Use the existing canonical semantics; promote the current static persistence contract into an actually exercised production path only with tenant isolation and migration tests.
+### 1A. Menu
 
-### 1B. Repeatable ingestion
+- categories;
+- items;
+- price;
+- active state;
+- tenant-safe management.
 
-Order of preference:
+### 1B. POS order
 
-1. permissioned file imports;
-2. official POS APIs/connectors where available;
-3. scheduled/continuous sync only after connector reliability is proven.
+- Store selection;
+- menu cart;
+- idempotent order creation;
+- server-owned price snapshots;
+- bounded channel/status lifecycle.
 
-Initial connector candidates should be selected by official API feasibility and target-ICP evidence, not brand prestige.
+### 1C. Payment record
 
-### 1C. Owner surfaces
+- cash/card/bank transfer/wallet/other;
+- exact-balance capture in v1;
+- settlement evidence only;
+- no acquiring or card-token processing yet.
 
-- Daily Brief
-- Store Health
-- Store comparison
-- Data Health
-- evidence drill-down
+### 1D. Daily close
 
-### 1D. Customer Intelligence
+- deterministic order/payment summary;
+- block close when open orders remain;
+- one immutable close per Store/business date.
 
-- Customer 360
-- lifecycle states
-- recency/frequency/spend
-- repeat/retention
-- at-risk regulars
-- deterministic segments
+### 1E. Authenticated CafeOS app shell
 
-### 1E. Action queue
-
-An insight must be able to become:
-
-- investigate;
-- assign/follow up;
-- create a segment;
-- create an experiment hypothesis;
-- dismiss with reason.
-
-This is the first point where CafeOS becomes an operating system rather than a report.
+- POS;
+- Menu;
+- Dashboard;
+- Daily Close;
+- Control Tower;
+- Analyzer.
 
 ### Phase 1 exit evidence
 
-Before broadening:
+- schema/RLS verified in staging;
+- cashier/manager/viewer role boundaries verified;
+- duplicate order submission is idempotent;
+- synthetic Menu → Order → Payment → Close passes;
+- no regression to Analyzer/Control Tower;
+- operator can complete the flow without hidden admin steps.
 
-- at least several real target-ICP operators can ingest/reconcile data;
-- Daily Brief/Store Health produces decisions they consider useful;
-- at least one recurring action loop is observed;
-- users express repeat-use intent for the Control Tower, not only the Analyzer.
+## Phase 1.1 — Unified operating read-model
 
-## Phase 2 — Revenue Loop
+Goal: let Control Tower consume both:
 
-Goal: close `ACT → MEASURE`.
+- CafeOS-native paid orders; and
+- external/imported transaction facts.
 
-Build:
+Requirements:
 
-- segment builder;
-- campaign/offer hypothesis;
-- treatment/control groups;
-- exposure/conversion data model;
-- incremental outcome measurement;
-- action/campaign history;
-- export/integration to existing messaging/loyalty channels.
+- preserve source namespace/lineage;
+- no fake imports;
+- common Store/business-date semantics;
+- shared deterministic net sales/orders/AOV definitions;
+- comparable freshness/coverage.
 
-North-star candidate: **incremental gross profit generated or retained**, not raw attributed revenue.
+## Phase 2 — Inventory + Finance foundation
 
-Avoid direct campaign sending until consent, delivery integrations and operator approval semantics are proven.
+Goal: connect what was sold to what was consumed and settled.
 
-## Phase 3 — Store Operations
+Build in small slices:
 
-Goal: connect recurring business exceptions to store execution.
+- ingredients/items;
+- recipes;
+- stock receipts/transfers;
+- theoretical depletion;
+- variance;
+- payment reconciliation;
+- COGS/gross margin;
+- bounded expense view.
 
-Possible modules:
+Do not attempt full accounting/ERP in one pass.
 
+## Phase 3 — Customers + Loyalty
+
+Goal: connect first-party commerce to retention.
+
+- Customer 360;
+- deterministic identifiers;
+- member profiles;
+- visit frequency/recency/spend;
+- points/benefits;
+- offers;
+- at-risk/retention segments.
+
+## Phase 4 — Staff + Store Operations
+
+Goal: connect operating exceptions to accountable execution.
+
+- staff directory;
+- roles;
+- shifts/attendance;
 - exception-to-task;
-- branch checklists;
-- SOP evidence;
-- issue recurrence;
-- cross-store follow-up;
-- role-based action ownership.
+- SOP/checklists;
+- recurring issue evidence;
+- cross-store follow-up.
 
-Do not build generic project management.
+## Phase 5 — Growth & Experimentation
 
-## Phase 4 — Customer Experience
+Goal: close ACT → MEASURE for commercial interventions.
 
-Only after the data/customer/growth loop is validated, consider owned guest-facing experiences:
+- segments;
+- offer/campaign hypothesis;
+- treatment/control;
+- exposure/conversion;
+- incremental outcome measurement;
+- export/integration to delivery channels.
 
-- membership;
-- personalized offers;
-- order-ahead / pickup;
+## Phase 6 — Customer Experience
+
+After the core transaction/identity/operations loops are stable:
+
+- order-ahead/pickup;
+- member portal;
+- personalized benefits;
 - gift/points;
-- owned ordering;
-- app/web member experience.
+- owned ordering surfaces.
 
-Prefer integration with existing fulfillment/payment infrastructure.
+## Cross-cutting constraints
 
-## Explicitly deferred
+- no LLM-owned numeric truth;
+- tenant isolation and RLS are release blockers;
+- system-of-record provenance stays explicit;
+- primary distribution stays pull/inbound;
+- do not add a module without its job, system-of-record boundary and measurable outcome.
 
-Until evidence changes the decision:
+## Immediate batch
 
-- full POS replacement;
-- payment processing;
-- KDS clone;
-- full inventory/accounting/payroll;
-- generic ERP;
-- broad AI chat as a product;
-- native mobile app solely for parity;
-- fully autonomous campaign execution.
+Implement Core Commerce v1 according to:
 
-## Immediate next batch
+- \`docs/superpowers/specs/2026-10-25-cafeos-core-commerce-v1-design.md\`;
+- \`docs/superpowers/plans/2026-10-25-cafeos-core-commerce-v1.md\`.
 
-Mission realignment, Control Tower PRD and reuse mapping are complete.
-
-Next:
-
-1. schema contract: Store/Customer/Attention/Action/Measurement;
-2. tenant/RLS/idempotency contract tests;
-3. authenticated product API boundary;
-4. Daily Brief + Store Health read path;
-5. Attention → Action → Measurement write/read path;
-6. real operator workflow validation before Phase 2.
-
-Implementation detail is locked in `docs/CONTROL_TOWER_IMPLEMENTATION_SLICE.md`.
+Production merchant data remains blocked until staging migration/advisor/synthetic acceptance gates pass.

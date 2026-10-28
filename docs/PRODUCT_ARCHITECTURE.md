@@ -2,164 +2,237 @@
 
 ## Positioning
 
-CafeOS is a **multi-location café operating + customer intelligence layer** that integrates with existing POS and digital systems.
+CafeOS is a **full café operating ecosystem** with a modular architecture.
 
-The product boundary is intentionally asymmetric:
+It can run first-party commerce through CafeOS POS and related operating modules, or integrate with an external POS when a merchant prefers to keep existing execution systems.
 
-- commodity transaction execution stays with established POS/order/payment systems where possible;
-- CafeOS owns the cross-system model, evidence, decision workflow, customer/store intelligence and measurement loop.
+The common requirement is one tenant-safe canonical operating model and one evidence-backed Control Tower.
 
-## Layer model
+## Architecture principles
 
-### Layer 0 — Existing systems
+- one tenant/store identity model;
+- deterministic business truth;
+- explicit source provenance;
+- module boundaries instead of one giant ERP service;
+- CafeOS-native and integrated sources can coexist;
+- no fake lineage to make modules appear unified;
+- browser clients never receive service-role/secret credentials;
+- RLS remains a database-enforced boundary.
 
-Examples:
-
-- POS / cashier
-- online ordering / delivery
-- payment
-- loyalty/member systems
-- inventory/accounting
-- staff scheduling
-
-CafeOS does not assume it is the system of record for all of these domains.
-
-### Layer 1 — Data Foundation
+## Layer 0 — Platform Core
 
 Responsibilities:
 
-- CSV/XLSX and API connectors;
-- tenant/store/source namespaces;
-- canonical transaction, product, store and customer models;
-- deterministic customer identity rules;
-- idempotent imports;
-- consent/privacy metadata;
-- source lineage and evidence pointers;
-- data-health and reconciliation.
+- Supabase Auth;
+- tenants and tenant memberships;
+- RBAC;
+- store identity;
+- privacy/security policy;
+- auditability;
+- API boundary;
+- backup/restore;
+- billing/settings later.
 
-Existing CafeOS Analyzer work belongs primarily here.
+## Layer 1 — Execution sources
 
-### Layer 2 — HQ / Owner Control Tower
+### CafeOS-native execution
+
+Core Commerce / CafeOS POS may own:
+
+- menu;
+- first-party order;
+- payment record;
+- daily close;
+- later table/service/KDS/order-ahead workflows.
+
+Other first-party modules may later own inventory, loyalty, staff and operational execution.
+
+### External execution
+
+Connectors/Analyzer may ingest from:
+
+- KiotViet;
+- Sapo FnB;
+- CUKCUK;
+- POS365;
+- iPOS;
+- Haravan;
+- Excel/CSV;
+- other supported systems.
+
+CafeOS does not require an external merchant to replace a working POS merely to use Control Tower.
+
+## Layer 2 — Canonical operating data
+
+Responsibilities:
+
+- Store;
+- Product/Menu;
+- Order/Transaction;
+- Payment record;
+- Customer identity;
+- inventory facts later;
+- staff facts later;
+- source namespace and lineage;
+- idempotency;
+- deterministic metric semantics.
+
+For CafeOS POS, Core Commerce tables are first-party system-of-record tables.
+
+For external POS, import/connector records remain the source boundary.
+
+## Layer 3 — Operations modules
+
+### Core Commerce / CafeOS POS
+
+Initial vertical slice:
+
+\`Menu → Order → Payment Record → Daily Close → Dashboard\`
+
+Trusted prices and totals are server/database-owned.
+
+### Store Operations
+
+Later:
+
+- exception-to-task;
+- checklists;
+- standards;
+- follow-up;
+- recurring issue evidence.
+
+### Inventory
+
+Later:
+
+- ingredient/product stock;
+- recipes;
+- receipts/transfers;
+- theoretical depletion;
+- variance;
+- reorder visibility.
+
+### Staff
+
+Later:
+
+- staff directory;
+- permissions;
+- shifts;
+- attendance;
+- operational accountability.
+
+### Finance & Reconciliation
+
+Later:
+
+- daily close;
+- settlement reconciliation;
+- COGS/gross margin;
+- bounded expenses;
+- accounting integrations.
+
+## Layer 4 — Analyzer / Integration Bridge
+
+Analyzer remains:
+
+- acquisition/onboarding;
+- file import;
+- POS compatibility;
+- reconciliation;
+- deterministic validation;
+- source-lineage inspection;
+- fallback path before an API connector exists.
+
+Analyzer is not the place to build POS, inventory, loyalty, payroll or accounting UI.
+
+## Layer 5 — Control Tower
 
 Primary surfaces:
 
-- Daily CEO / Owner Brief
-- Store Health board
-- revenue/order/AOV/customer-frequency movement
-- store/daypart/product anomalies
-- data-health warnings
-- evidence drill-down
-- decision/action queue
+- Daily Brief;
+- Store Health;
+- store comparison;
+- Data Health;
+- Attention;
+- Action;
+- Measurement;
+- evidence drill-down.
 
-The control tower should answer “what changed and where should I look first?” without requiring the operator to build dashboards.
+Control Tower should answer:
 
-### Layer 3 — Customer Intelligence
+- what changed?
+- where should I look first?
+- who owns the action?
+- what changed after the action?
 
-Capabilities:
+A later unified read-model will combine CafeOS-native commerce facts with external/import facts while preserving source lineage.
 
-- Customer 360
-- new / active / regular / VIP / at-risk / churned lifecycle states
-- visit frequency and recency
-- spend / AOV / product preferences
-- customer-identification coverage
-- deterministic segment definitions
-- retention/cohort views
-- cross-channel customer profile where lawful and technically supported
+## Layer 6 — Customers & Loyalty
 
-No fuzzy identity merging.
+Capabilities later:
 
-### Layer 4 — Growth & Experimentation
+- deterministic Customer 360;
+- lifecycle/retention;
+- membership;
+- points/benefits;
+- offers;
+- segments;
+- owned customer experience.
 
-Capabilities:
+No fuzzy person matching.
 
-- segment selection
-- offer/campaign hypothesis
-- treatment/control assignment
-- exposure/conversion tracking
-- incremental revenue/gross-profit measurement
-- campaign outcome comparison
-- export/integration to delivery channels
+## Layer 7 — Growth & Experimentation
 
-Initial versions may export segments/actions rather than send SMS/Zalo/email directly.
+Later:
 
-### Layer 5 — Store Operations
+- segment selection;
+- offer hypothesis;
+- treatment/control;
+- exposure/conversion;
+- incremental outcome measurement.
 
-Capabilities considered after Control Tower evidence exists:
+No autonomous consequential sending without bounded approval.
 
-- exception-to-task workflow
-- branch follow-up queue
-- SOP/checklist execution
-- store-level accountability
-- recurring issue tracking
-- quality/standards evidence
+## System-of-record matrix
 
-This layer should connect operational action back to measurable outcomes, not become a generic task manager.
-
-### Layer 6 — Customer Experience
-
-Later, evidence-gated capabilities may include:
-
-- membership/member portal
-- personalized benefits
-- loyalty integration
-- order-ahead / pickup
-- gift/points
-- owned ordering surface
-
-These are not Phase 1 requirements because established café/POS ecosystems already execute many of these workflows.
-
-## System boundaries
-
-### CafeOS should own
-
-- canonical cross-source data model;
-- metric definitions;
-- identity rules;
-- evidence/lineage;
-- anomaly and customer/store health semantics;
-- decision/action history;
-- experiment/incrementality measurement.
-
-### Prefer integration over rebuilding
-
-- POS checkout;
-- kitchen/bar routing;
-- payment acquiring;
-- e-invoicing;
-- inventory ledger;
-- payroll/accounting;
-- delivery fleet;
-- commodity loyalty balance engines.
+| Domain | CafeOS-native mode | Integrated mode |
+| --- | --- | --- |
+| Menu | CafeOS Core Commerce | external POS/menu connector |
+| Order | CafeOS POS | external POS/import |
+| Payment record | CafeOS Core Commerce | external payment/POS record |
+| Daily close | CafeOS Core Commerce | imported/reconciled close |
+| Customer | CafeOS deterministic identity | connector/import identity |
+| Metrics | CafeOS deterministic read-model | CafeOS deterministic read-model |
+| Action/Measurement | CafeOS Control Tower | CafeOS Control Tower |
 
 ## AI boundary
 
 AI may:
 
-- translate natural-language business questions into a validated metric/intent plan;
-- summarize deterministic results;
-- propose investigation/action options;
-- explain evidence in Vietnamese.
+- summarize deterministic facts;
+- explain evidence;
+- propose bounded investigation/action options;
+- translate user intent into a validated plan.
 
 AI may not:
 
-- invent or alter numeric metrics;
-- run arbitrary unvalidated SQL over tenant data;
-- fuzzy-merge customer identities;
-- autonomously send consequential campaigns or change operational systems without a bounded approval policy.
+- invent/alter prices, totals, balances or metrics;
+- run arbitrary unvalidated tenant SQL;
+- fuzzy-merge people;
+- autonomously move money or perform consequential operations without a bounded approval policy.
 
 ## Primary next-product shape
 
-The next actual CafeOS product is **CafeOS Control Tower**, not “Analyzer v0.2.”
+The current next implementation is **Core Commerce v1**, not Analyzer v0.2.
 
-Minimum product skeleton:
+Its first production-shaped spine is:
 
-1. persistent tenant/store model;
-2. repeatable ingestion from file and then selected POS connectors;
-3. Daily Brief;
-4. Store Health;
-5. Customer 360 / lifecycle;
-6. at-risk/attention segments;
-7. action queue with evidence;
-8. measurement of follow-up outcomes.
+1. Menu;
+2. CafeOS POS order;
+3. payment record;
+4. daily close;
+5. commerce dashboard;
+6. handoff into the same authenticated CafeOS shell as Control Tower and Analyzer.
 
-Analyzer remains the bootstrap path into this system.
+The next read-model step after this slice is to include CafeOS-native paid orders in Control Tower metrics without falsifying import provenance.

@@ -1,118 +1,121 @@
-# CafeOS Analyzer
+# CafeOS
 
-**Analyzer module of CafeOS — the operating and customer-intelligence layer for multi-location cafés.**
+**CafeOS is a full café operating ecosystem.**
 
-CafeOS product mission: see [`MISSION.md`](MISSION.md). Analyzer is the file-based acquisition/onboarding/data-validation wedge, not the whole product.
+This repository began as CafeOS Analyzer and now contains the Analyzer/data foundation, Control Tower contracts and the first implementation path for CafeOS Core Commerce.
 
-CafeOS Analyzer turns POS CSV/XLSX exports into deterministic revenue, order, customer-coverage, store and daypart insights without replacing the merchant's POS. Numeric business metrics are computed by deterministic code; AI, when added, is an explanation layer only.
+CafeOS supports two operating modes:
 
-## Analyzer module scope
+- **CafeOS-native:** CafeOS POS/Core Commerce owns first-party menu, orders, payment records and daily close.
+- **Integrated:** a merchant keeps an external POS and CafeOS ingests/reconciles it through Analyzer/connectors.
 
-- CSV and bounded XLSX ingestion
-- Vietnamese export-header mapping with explicit manual fallback
-- POS-independent canonical transaction model
-- deterministic revenue, order, AOV and customer-identification metrics
-- store/daypart anomaly detection with visible baselines and evidence
-- split/overlapping export handling without double counting
-- privacy-preserving compatibility profiles and pseudonymized validation packs
-- Postgres/Supabase tenant and RLS persistence contract
-- local Windows field-validation kit
+Canonical product mission: see \`MISSION.md\`.
 
-Not included in v0.1: POS replacement, payments, loyalty execution, payroll, accounting, delivery fleet or autonomous campaign sending.
+## Current modules
+
+### Analyzer — live validation/onboarding module
+
+- CSV/XLSX ingestion;
+- deterministic metrics;
+- compatibility/mapping;
+- reconciliation/data health;
+- external POS bridge.
+
+### Control Tower — implemented technical slice / evidence-gated product work
+
+- tenant/store model;
+- Daily Brief;
+- Store Health;
+- Attention;
+- Action;
+- Measurement;
+- local E1 validation surface.
+
+### Core Commerce — current implementation priority
+
+Target v1 spine:
+
+\`Menu → POS Order → Payment Record → Daily Close → Dashboard → Control Tower handoff\`
+
+Core Commerce is a separate CafeOS module. POS functionality must not be added to Analyzer.
+
+## Trust model
+
+CafeOS follows these rules:
+
+1. **Numbers are deterministic.** LLM output must not create or alter prices, totals, balances or business metrics.
+2. **Evidence stays inspectable.**
+3. **Missing data degrades capability explicitly.**
+4. **Tenant isolation and RLS are release blockers.**
+5. **Source provenance stays explicit across CafeOS-native and external systems.**
 
 ## Quick start
 
 Requirements: Node.js 20+.
 
-```bash
+\`\`\`bash
 npm install
 npm run test:dist
+\`\`\`
+
+Analyzer fixture:
+
+\`\`\`bash
 node scripts/analyze-fixture.mjs fixtures/known-anomaly.csv
-```
+\`\`\`
 
-Analyze one export:
+## Live surface
 
-```bash
-npm run build
-node scripts/analyze-file.mjs path/to/export.xlsx --out report.html
-```
+Current production validation surface:
 
-Analyze split/overlapping exports:
+https://cafeos-analyzer.vercel.app
 
-```bash
-npm run analyze:batch -- part-1.csv part-2.csv
-```
+The public Analyzer processes CSV/XLSX transiently and does not persist uploads.
 
-## Trust model
+Core Commerce production writes are **not** enabled merely because the product direction changed; its staging/RLS/security gates must pass first.
 
-CafeOS follows three rules:
+## Distribution
 
-1. **Numbers are deterministic.** LLM output must not create or alter business metrics.
-2. **Insights show evidence.** Scope, comparison baseline, coverage and supporting rows must be inspectable.
-3. **Missing data degrades capability explicitly.** The system should say what it cannot know rather than fabricate precision.
+CafeOS primary distribution must remain **pull/inbound**: product discovery, search/SEO, integrations, app/plugin directories and other user-initiated channels.
 
-See `AGENTS.md`, `docs/METRICS.md`, `docs/DATA_CONTRACT.md`, `docs/INSIGHTS.md` and `docs/PRIVACY.md`.
-
-## Live validation surface
-
-Try the public validation build at: https://cafeos-analyzer.vercel.app
-
-The live surface processes CSV/XLSX transiently, does not persist uploads, and enforces a 4 MiB request limit. It is a validation build, not a production SaaS claim.
-
-## Help validate POS compatibility
-
-Real export shapes are valuable evidence, but **do not upload raw merchant CSV/XLSX files to GitHub**.
-
-Generate a schema-only compatibility profile locally:
-
-```bash
-npm run validation:profile -- path/to/export.xlsx > compatibility-profile.json
-```
-
-Review the JSON, then open the **POS compatibility report** issue form and share only schema/header/count metadata. See `docs/PUBLIC_VALIDATION.md` for the public/private boundary.
-
-Compatibility reports improve import coverage. They do not count as repeat-use or willingness-to-pay evidence by themselves.
-
-## Deploy validation surface
-
-From a clean clone of canonical `main` on Windows:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\deploy-vercel.ps1
-```
-
-The launcher refuses to deploy a dirty tree or a local `main` that differs from `origin/main`, runs `npm run test:dist` and `npm run verify:deploy`, then deploys with pinned Vercel CLI and attempts to connect the project to the canonical GitHub remote for future Git-triggered deployments.
-
-First-time Vercel authentication may require the OAuth device/browser flow. Production deployment is explicit:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\deploy-vercel.ps1 -Production
-```
-
-See `docs/DEPLOYMENT.md`.
+The primary business must not depend on cold outbound sales.
 
 ## Data and privacy
 
-All files committed under `fixtures/` are synthetic test data. They are not merchant exports and contain no real customer identifiers. See `SYNTHETIC_DATA.md`.
+All committed fixtures are synthetic. Never commit real merchant exports, customer PII, credentials, validation registries or private operator records.
 
-Never commit real merchant exports, customer PII, HMAC keys, credentials, validation registries, willingness-to-pay notes or private operator records to this repository.
+See:
 
-## Project status
+- \`docs/PRIVACY.md\`
+- \`SECURITY.md\`
+- \`SYNTHETIC_DATA.md\`
 
-This repository currently contains the CafeOS Analyzer module plus the canonical product mission/architecture/roadmap used to prevent Analyzer scope from redefining CafeOS. Analyzer is technically live; CafeOS Control Tower and the broader action/measurement loop remain product-discovery work.
+## Product authority
 
-## Security
+Authority order:
 
-See `SECURITY.md`. Please do not open a public issue containing real merchant data or credentials.
+1. \`MISSION.md\`
+2. \`docs/PRODUCT_ARCHITECTURE.md\`
+3. \`docs/ROADMAP.md\`
+4. approved product/module specs
+5. implementation docs/tests
 
-## Contributing
+## What is deferred from Core Commerce v1
 
-See `CONTRIBUTING.md`.
+The full ecosystem direction includes Inventory, Customers/Loyalty, Staff, Finance/Reconciliation, Operations and Integrations, but v1 does not claim completion of:
+
+- payment acquiring/processor;
+- refunds/split payments;
+- inventory;
+- loyalty execution;
+- payroll;
+- full accounting/ERP;
+- KDS;
+- e-invoice;
+- delivery dispatch.
+
+See the roadmap for sequencing.
 
 ## License
 
-Source is publicly visible, but no open-source license has been granted yet. See `LICENSE`. Public visibility does not grant permission to copy, redistribute, sublicense or commercially deploy the code beyond rights provided by GitHub's platform terms.
-
-## Disclaimer
-
-CafeOS Analyzer is not affiliated with or endorsed by KiotViet, CUKCUK, POS365, Sapo, iPOS, Starbucks, Highlands Coffee, Trung Nguyên, Phê La or Phúc Long. Vendor-named fixtures are synthetic compatibility fixtures based on publicly documented field vocabulary, not captured merchant exports.
+Source is publicly visible, but no open-source license has been granted yet. See \`LICENSE\`.

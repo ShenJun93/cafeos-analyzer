@@ -37,7 +37,17 @@ const workflowRoutes = new Map([
   ['/api/app/actions', 'actions'],
   ['/api/app/action-status', 'action-status'],
   ['/api/app/measurement-window', 'measurement-window'],
-  ['/api/app/action-detail', 'action-detail']
+  ['/api/app/action-detail', 'action-detail'],
+  ['/api/app/commerce-menu', 'commerce-menu'],
+  ['/api/app/commerce-order', 'commerce-order'],
+  ['/api/app/commerce-payment', 'commerce-payment'],
+  ['/api/app/commerce-order-status', 'commerce-order-status'],
+  ['/api/app/commerce-receipt', 'commerce-receipt'],
+  ['/api/app/commerce-open-orders', 'commerce-open-orders'],
+  ['/api/app/commerce-paid-orders', 'commerce-paid-orders'],
+  ['/api/app/commerce-dashboard', 'commerce-dashboard'],
+  ['/api/app/commerce-hq', 'commerce-hq'],
+  ['/api/app/commerce-daily-close', 'commerce-daily-close']
 ]);
 
 const staticMap = new Map([
@@ -46,6 +56,7 @@ const staticMap = new Map([
   ['/analyzer', { dir: 'public', file: 'analyzer.html' }],
   ['/sample-report', { dir: 'public', file: 'sample-report.html' }],
   ['/feedback', { dir: 'public', file: 'feedback.html' }],
+  ['/app', { dir: 'public', file: 'app.html' }],
   ['/control-tower-e1', { dir: 'web', file: 'control-tower-e1.html' }],
   ['/cafeos-ui.css', { dir: 'public', file: 'cafeos-ui.css' }]
 ]);
@@ -137,7 +148,7 @@ export function createVercelShapePreviewServer({
           req.body = await parseJsonBody(req);
         }
         const originalUrl = req.url;
-        req.url = `/api/app/workflow?route=${encodeURIComponent(workflowRoute)}${url.search}`;
+        req.url = `/api/app/workflow?route=${encodeURIComponent(workflowRoute)}${url.search ? "&" + url.search.slice(1) : ""}`;
         try {
           return await dispatchWorkflow(req, res, deps);
         } finally {

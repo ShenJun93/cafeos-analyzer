@@ -278,3 +278,130 @@ textarea{min-height:110px;resize:vertical}
   .control-metrics .card{border-right:0;border-bottom:1px solid rgba(32,25,20,.12);padding:16px 0}
   .control-metrics .card:last-child{border-bottom:0;padding-left:0}
 }
+
+
+/* Core Commerce — operational application shell */
+.commerce-body{background:#e9ece9}
+.cafeos-app-shell{padding-top:14px}
+.app-masthead{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 0 18px;border-bottom:1px solid var(--line)}
+.app-auth{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(340px,.8fr);gap:48px;padding:34px;border-radius:var(--radius-lg);margin:26px 0}
+.app-auth .display-title{font-size:clamp(42px,5vw,66px);max-width:11ch;margin:8px 0 16px}
+.app-contextbar{display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr) auto;gap:12px;align-items:end;padding:18px 0}
+.app-nav{display:flex;gap:4px;align-items:center;overflow-x:auto;padding:10px 0;border-block:1px solid var(--line);scrollbar-width:thin}
+.app-nav-item,.app-nav-link{min-height:44px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;border:0;background:transparent;color:var(--espresso);border-radius:0;padding:10px 14px;text-decoration:none;font-weight:760}
+.app-nav-item:hover,.app-nav-link:hover{transform:none;background:rgba(255,255,255,.45)}
+.app-nav-item.active{background:var(--espresso);color:#fff}
+.app-workspace{padding:34px 0 64px}
+.workspace-heading{display:flex;justify-content:space-between;align-items:end;gap:24px;padding-bottom:22px;border-bottom:1px solid var(--line);margin-bottom:26px}
+.workspace-heading h2{font-family:var(--font-display);font-size:clamp(36px,5vw,58px);line-height:1;margin:5px 0 8px}
+.workspace-heading p{max-width:70ch}
+.channel-field{min-width:200px}
+.pos-layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,.6fr);gap:30px;align-items:start}
+.pos-menu-filters{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px;margin-top:14px}
+.menu-catalog{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+.menu-item-button{min-height:96px;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;text-align:left;background:var(--surface);color:var(--espresso);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px}
+.menu-item-button strong{font-size:17px}
+.menu-item-button span{color:var(--clay-deep);font-weight:760}
+.cart-panel{position:sticky;top:16px;background:var(--surface);border:1px solid var(--line);padding:22px;border-radius:var(--radius-md);box-shadow:var(--shadow-soft)}
+.cart-panel h3{font-family:var(--font-display);font-size:30px;margin:4px 0 12px}
+.cart-lines{display:grid;gap:0;border-top:1px solid var(--line);margin-bottom:14px}
+.cart-line{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+.quantity-controls{display:flex;align-items:center;gap:10px}
+.quantity-controls button{width:44px;padding:8px}
+.quantity-controls span{min-width:24px;text-align:center;font-weight:800}
+.open-order-list{display:grid;gap:8px;min-width:0;margin-top:12px}
+.open-order-list button{width:100%;min-width:0;min-height:44px;text-align:left;white-space:normal;overflow-wrap:anywhere}
+.payment-panel{display:grid;gap:12px;margin-top:22px;padding-top:20px;border-top:2px solid var(--espresso)}
+.server-total{font-family:var(--font-display);font-size:28px;font-weight:700}
+.menu-admin-grid{display:grid;grid-template-columns:.7fr 1.3fr;gap:24px;align-items:start}
+.commerce-form{display:grid;gap:12px;padding:22px;background:var(--surface);border:1px solid var(--line)}
+.menu-admin-list{margin-top:32px;border-top:1px solid var(--line)}
+.commerce-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--line)}
+.commerce-metrics .metric-display{padding-right:20px}
+.payment-mix,.control-brief{margin-top:30px;padding-top:22px;border-top:1px solid var(--line)}
+.daily-close-panel{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;align-items:center;padding:28px;background:var(--surface);border-left:5px solid var(--clay)}
+.close-preview{font-family:var(--font-display);font-size:clamp(22px,3vw,34px)}
+.close-receipt{margin-top:20px;font-weight:760}
+@media (max-width:720px){
+  .app-masthead,.workspace-heading{align-items:flex-start;flex-direction:column}
+  .app-auth,.app-contextbar,.pos-layout,.menu-admin-grid,.daily-close-panel{grid-template-columns:1fr}
+  .app-auth{padding:22px;gap:24px}
+  .app-nav{margin-inline:-14px;padding-inline:14px}
+  .pos-menu-filters{grid-template-columns:1fr}
+  .menu-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cart-panel{position:static}
+  .commerce-metrics{grid-template-columns:1fr 1fr}
+  .daily-close-panel{align-items:start}
+}
+@media (max-width:420px){
+  .menu-catalog,.commerce-metrics{grid-template-columns:1fr}
+}
+
+/* Core Commerce: all six module links remain visible on narrow POS screens.
+   A horizontally scrollable tab bar hid Daily Close / Control Tower / Analyzer. */
+@media (max-width:720px){
+  .commerce-body .app-nav{
+    margin-inline:0;
+    padding-inline:0;
+    flex-wrap:wrap;
+    overflow-x:visible;
+    gap:6px;
+  }
+  .commerce-body .app-nav-item,
+  .commerce-body .app-nav-link{
+    flex:1 1 calc(33.333% - 6px);
+    min-width:0;
+    min-height:48px;
+    padding:8px 6px;
+    white-space:normal;
+    text-align:center;
+    line-height:1.25;
+    border-radius:8px;
+  }
+}
+
+/* Only a verified server-backed paid receipt can be printed. */
+.paid-receipt{margin-top:24px;padding:20px 0 0;border-top:2px dashed var(--line);overflow-wrap:anywhere}
+.paid-receipt h4{font-family:var(--font-display);font-size:24px;margin:10px 0}
+.receipt-lines{display:grid;gap:9px;margin:16px 0;border-block:1px dashed var(--line);padding:14px 0}
+.receipt-line{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}
+.receipt-line span{min-width:0;flex:1}
+.receipt-line strong{text-align:right;white-space:nowrap}
+.receipt-total{font-size:20px;font-weight:800;margin-top:12px}
+.receipt-method{font-size:13px;margin-top:8px}
+.receipt-print-button{margin-top:12px}
+@media print{
+  @page{size:80mm auto;margin:4mm}
+  body.commerce-body{margin:0;background:#fff;color:#000}
+  body.commerce-body .cafeos-app-shell{display:block;width:72mm;max-width:72mm;margin:0;padding:0}
+  body.commerce-body .cafeos-app-shell > *{display:none!important}
+  body.commerce-body #appPanel,body.commerce-body #posWorkspace,
+  body.commerce-body .pos-layout,body.commerce-body .cart-panel,
+  body.commerce-body #paidReceipt{display:block!important}
+  body.commerce-body #appPanel > :not(#posWorkspace),
+  body.commerce-body #posWorkspace > :not(.pos-layout),
+  body.commerce-body .pos-layout > :not(.cart-panel),
+  body.commerce-body .cart-panel > :not(#paidReceipt),
+  body.commerce-body .receipt-print-button{display:none!important}
+  body.commerce-body .cart-panel{position:static;box-shadow:none;border:0;padding:0}
+  body.commerce-body #paidReceipt{border-top:0;margin:0;padding:0}
+  body.commerce-body .receipt-line{break-inside:avoid;font-size:12px}
+  body.commerce-body .receipt-line strong{white-space:normal}
+}
+
+.paid-order-history{margin-top:18px;padding-top:15px;border-top:1px solid var(--line)}
+.paid-order-history .section-label{margin-bottom:8px}
+.paid-order-history > button{width:100%;min-height:44px}
+
+/* HQ comparison uses the existing Hallmark evidence rows, without wide tables. */
+.hq-filters{display:flex;gap:12px;align-items:end;flex-wrap:wrap}
+.hq-filters .field-group{min-width:165px}
+.hq-store-list{margin-top:24px;border-top:1px solid var(--line)}
+.hq-store-row{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;overflow-wrap:anywhere}
+.hq-store-row span{min-width:0}
+.hq-store-row strong{text-align:right;white-space:nowrap}
+@media (max-width:720px){
+  .hq-filters{width:100%;align-items:stretch}
+  .hq-filters .field-group,.hq-filters button{flex:1 1 100%}
+  .hq-store-row strong{white-space:normal}
+}

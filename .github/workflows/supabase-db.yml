@@ -6,14 +6,40 @@ on:
       - "supabase/migrations/**"
       - "supabase/tests/database/**"
       - "supabase/restore-fixtures/**"
+      - "scripts/run-local-commerce-concurrency-drill.sh"
       - "scripts/run-supabase-restore-drill.sh"
+      - "scripts/run-local-ledger-reconciliation-drill.sh"
+      - "scripts/run-local-greenpath-ledger-drill.sh"
+      - "scripts/run-local-age-backup-drill.sh"
+      - "scripts/backup-cafeos-staging-age.sh"
+      - "scripts/verify-cafeos-staging-age-archive.sh"
+      - "scripts/verify-cafeos-age-recovery-offhost.sh"
+      - "scripts/run-local-age-offhost-recovery-drill.sh"
+      - "scripts/prepare-cafeos-age-recovery-recipient.sh"
+      - "scripts/sql/cafeos-staging-receipt-fingerprint.sql"
+      - "scripts/sql/cafeos-staging-post-repair-readonly-gate.sql"
+      - "scripts/sql/cafeos-staging-post-guards-readonly-gate.sql"
+      - "scripts/sql/cafeos-local-postguards-negative-fixture.sql"
       - ".github/workflows/supabase-db.yml"
   pull_request:
     paths:
       - "supabase/migrations/**"
       - "supabase/tests/database/**"
       - "supabase/restore-fixtures/**"
+      - "scripts/run-local-commerce-concurrency-drill.sh"
       - "scripts/run-supabase-restore-drill.sh"
+      - "scripts/run-local-ledger-reconciliation-drill.sh"
+      - "scripts/run-local-greenpath-ledger-drill.sh"
+      - "scripts/run-local-age-backup-drill.sh"
+      - "scripts/backup-cafeos-staging-age.sh"
+      - "scripts/verify-cafeos-staging-age-archive.sh"
+      - "scripts/verify-cafeos-age-recovery-offhost.sh"
+      - "scripts/run-local-age-offhost-recovery-drill.sh"
+      - "scripts/prepare-cafeos-age-recovery-recipient.sh"
+      - "scripts/sql/cafeos-staging-receipt-fingerprint.sql"
+      - "scripts/sql/cafeos-staging-post-repair-readonly-gate.sql"
+      - "scripts/sql/cafeos-staging-post-guards-readonly-gate.sql"
+      - "scripts/sql/cafeos-local-postguards-negative-fixture.sql"
       - ".github/workflows/supabase-db.yml"
 
 permissions:
@@ -54,11 +80,39 @@ jobs:
       - name: Run database tests
         run: supabase test db
 
+      - name: Verify concurrent Commerce writes on disposable localhost
+        run: bash scripts/run-local-commerce-concurrency-drill.sh
+
       - name: Run isolated synthetic restore drill
         run: bash scripts/run-supabase-restore-drill.sh
 
       - name: Re-run database tests after restore
         run: supabase test db
+
+      - name: Test history-only repair on disposable localhost
+        run: bash scripts/run-local-ledger-reconciliation-drill.sh
+
+      - name: Prove post-repair GREEN and guarded upgrade on disposable localhost
+        run: bash scripts/run-local-greenpath-ledger-drill.sh
+
+      - name: Install age and signed PGDG PostgreSQL 17 client for synthetic restore
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age curl ca-certificates
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl --fail --silent --show-error --proto '=https' --tlsv1.2             -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc             https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          printf 'Types: deb\nURIs: https://apt.postgresql.org/pub/repos/apt\nSuites: %s-pgdg\nComponents: main\nSigned-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc\n' "$VERSION_CODENAME"             | sudo tee /etc/apt/sources.list.d/pgdg.sources >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - name: Prove off-host recovery cryptography with disposable age identities and negative controls
+        run: bash scripts/run-local-age-offhost-recovery-drill.sh
+
+      - name: Restore age-encrypted synthetic PostgreSQL backup to a separate local database
+        run: bash scripts/run-local-age-backup-drill.sh
 
       - name: Show migration state
         if: always()
