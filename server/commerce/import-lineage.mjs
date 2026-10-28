@@ -193,6 +193,7 @@ export async function handle(req, res, deps = {}) {
       sourceBoundary: {
         status: "import_namespace_observation_only",
         transactionIdentity: "tenant_store_source_namespace_transaction_id",
+        sourceAccountProvenance: "not_verified",
         comparedToPos: false,
         deduplication: "not_performed",
         combinedSales: null,
