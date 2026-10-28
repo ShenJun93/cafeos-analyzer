@@ -1282,7 +1282,11 @@ function renderClosePreview() {
     " · " + currentDashboard.orderCount + " paid orders · " +
     money(currentDashboard.salesTotal) + " sales · " +
     currentDashboard.openOrderCount + " open orders" +
-    (currentDashboard.closed ? " · CLOSED" : " · OPEN");
+    (currentDashboard.closed ? " · CLOSED" : " · OPEN") +
+    (Number(currentDashboard.openOrderCount) > 0
+      ? " · ĐÓNG NGÀY BỊ CHẶN: sang POS → Khôi phục đơn chưa thanh toán để xác minh. "
+        + "CafeOS v1 chưa hỗ trợ hủy đơn; không ghi thanh toán giả để đóng ngày."
+      : "");
   el("closeDay").disabled = !canManageCommerce() || closeSubmitInFlight
     || menuWriteInFlight || hasUnfinishedCheckout()
     || Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
