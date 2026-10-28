@@ -129,3 +129,13 @@ test("Core Commerce order price snapshot guard CLI migration stays canonical", a
   );
   assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
 });
+
+test("incremental void-order migration stays byte-equivalent to first-party canonical SQL contract", async () => {
+  const source = await readFile(
+    new URL("../db/contracts/core_commerce_void_order.sql", import.meta.url), "utf8"
+  );
+  const migration = await readFile(
+    new URL("../supabase/migrations/20261028130000_core_commerce_void_order.sql", import.meta.url), "utf8"
+  );
+  assert.equal(normalizeSqlText(migration), normalizeSqlText(source));
+});

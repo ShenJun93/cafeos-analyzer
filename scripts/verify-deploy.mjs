@@ -26,6 +26,7 @@ const required = [
   'server/commerce/order.mjs',
   'server/commerce/payment.mjs',
   'server/commerce/order-status.mjs',
+  'server/commerce/void-order.mjs',
   'server/commerce/open-orders.mjs',
   'server/commerce/dashboard.mjs',
   'server/commerce/hq.mjs',

@@ -2038,3 +2038,18 @@ test("HQ Overview exposes manager-only, date-scoped first-party multi-store evid
   assert.match(preview, /'\/api\/app\/commerce-hq', 'commerce-hq'/);
   assert.doesNotMatch(html, /localStorage|sessionStorage|indexedDB/);
 });
+
+test("POS manager void UI is deliberately gated and never calls a payment or refund endpoint", async () => {
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  assert.match(html, /id="voidControls" class="void-controls hidden"/);
+  assert.match(html, /id="voidReason" maxlength="240"/);
+  assert.match(html, /id="voidOrder"/);
+  assert.match(html, /voidControls"\)\.classList\.toggle\("hidden", !manager\)/);
+  assert.match(html, /let pendingVoidIntent = null/);
+  assert.match(html, /voidSubmitInFlight/);
+  assert.match(html, /if \(!pendingVoidIntent\)/);
+  assert.match(html, /\/api\/app\/commerce-void-order/);
+  assert.match(html, /currentOrder = null;[\s\S]*invalidateOpenOrderReads\(\)/);
+  assert.match(html, /pendingVoidIntent[\s\S]*không ghi Payment/i);
+  assert.doesNotMatch(html, /localStorage|sessionStorage|indexedDB/);
+});

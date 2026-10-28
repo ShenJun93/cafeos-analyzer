@@ -405,3 +405,8 @@ textarea{min-height:110px;resize:vertical}
   .hq-filters .field-group,.hq-filters button{flex:1 1 100%}
   .hq-store-row strong{white-space:normal}
 }
+
+/* Manager-only POS cancellation evidence; not a payment or refund. */
+.void-controls{display:grid;gap:10px;margin-top:15px;padding:16px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface)}
+.void-controls.hidden{display:none}
+.void-controls button{justify-self:start}

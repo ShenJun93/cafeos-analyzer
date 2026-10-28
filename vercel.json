@@ -24,6 +24,10 @@
       "destination": "/api/app/workflow?route=commerce-order-status"
     },
     {
+      "source": "/api/app/commerce-void-order",
+      "destination": "/api/app/workflow?route=commerce-void-order"
+    },
+    {
       "source": "/api/app/commerce-receipt",
       "destination": "/api/app/workflow?route=commerce-receipt"
     },
