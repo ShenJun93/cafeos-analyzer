@@ -451,3 +451,29 @@ test("independent age recovery verifier rejects escrow-only trust and never mate
   assert.match(drill, /CAFEOS_SYNTHETIC_OFFHOST_RECOVERY_DRILL_PASS/);
   assert.doesNotMatch(drill, /wjatnyvdygvblirggdcm|PGHOST=|SUPABASE_ACCESS_TOKEN|service_role/i);
 });
+
+// Recovery scope probe may read aggregate counts/catalog names ONLY; it is not
+// a database dump, Auth export or a substitute for an actual isolated restore.
+test("staging recovery scope is a single non-secret SELECT-only inventory with a permanent NO-GO label", async () => {
+  const source = await readFile(
+    new URL("../scripts/sql/cafeos-staging-recovery-scope-readonly.sql", import.meta.url),
+    "utf8"
+  );
+  const sql = source.split("\n").filter(line => !/^\s*--/.test(line)).join("\n").trim();
+  assert.match(sql, /^with\s+/i);
+  assert.equal((sql.match(/;/g) || []).length, 1);
+  assert.match(sql, /SCOPE_INVENTORY_ONLY_BACKUP_AND_RESTORE_NOT_PROVEN/);
+  for (const path of [
+    "auth.users", "auth.identities", "storage.buckets", "storage.objects",
+    "vault.secrets", "supabase_migrations.schema_migrations",
+    "public.tenants", "public.tenant_members", "public.stores",
+    "public.menu_items", "public.pos_orders", "public.pos_payments",
+    "public.daily_closes", "pg_extension", "pg_trigger", "pg_policies"
+  ]) assert.ok(sql.includes(path), "missing aggregate scope: " + path);
+
+  assert.doesNotMatch(sql, /\b(?:insert|update|delete|create|alter|drop|truncate|grant|revoke|call|execute|copy)\b/i);
+  assert.doesNotMatch(sql, /(?:pg_read_file|pg_ls_dir|lo_import|dblink|http_post|net\.http)/i);
+  assert.doesNotMatch(sql, /\b(?:password|secret_key|service_role|access_token|refresh_token|raw_user_meta_data)\b/i);
+  assert.doesNotMatch(sql, /\bselect\s+\*\s+from\s+(?:auth|storage|vault|public)\./i);
+  assert.doesNotMatch(sql, /\b(?:current_setting\(['"]request\.jwt|auth\.jwt\(\)|auth\.uid\(\))/i);
+});
