@@ -11,6 +11,24 @@ import { validImported } from "./source-bridge.mjs";
 const MAX_STORES = 25;
 const PARALLEL_STORES = 3;
 
+// PostgREST can apply an upstream max_rows cap below requested limit=26.
+// A returned prefix is not proof of full HQ Store coverage. Check the exact
+// RLS-scoped filtered count and entire contiguous response before any RPCs.
+export function exactStoreDirectoryCount(rows, contentRange) {
+  const invalid = () => new AppHttpError(502, "SUPABASE_UPSTREAM",
+    "Source coverage Store directory is incomplete or unverifiable");
+  if (!Array.isArray(rows) || rows.length > MAX_STORES
+    || typeof contentRange !== "string") throw invalid();
+  if (contentRange === "*/0" && rows.length === 0) return 0;
+  const match = /^(\d+)-(\d+)\/(\d+)$/.exec(contentRange);
+  if (!match) throw invalid();
+  const [start, end, total] = match.slice(1).map(Number);
+  if (![start, end, total].every(Number.isSafeInteger)
+    || total > MAX_STORES || start !== 0
+    || end !== rows.length - 1 || total !== rows.length) throw invalid();
+  return total;
+}
+
 function validStore(row, tenantId) {
   return row && typeof row === "object" && !Array.isArray(row)
     && typeof row.id === "string" && UUID_RE.test(row.id)
@@ -49,10 +67,13 @@ export async function handle(req, res, deps = {}) {
       tenant_id: "eq." + ctx.tenant.id, active: "eq.true",
       order: "name.asc,id.asc", limit: String(MAX_STORES + 1)
     });
-    const stores = await supabaseJson("/rest/v1/stores?" + list, {
-      token: ctx.token, ...deps
+    const directory = await supabaseJson("/rest/v1/stores?" + list, {
+      token: ctx.token, ...deps,
+      headers: { prefer: "count=exact" }, includeResponseMeta: true
     });
-    if (!Array.isArray(stores) || stores.length > MAX_STORES
+    const exactCount = exactStoreDirectoryCount(directory.data, directory.contentRange);
+    const stores = directory.data;
+    if (stores.length > MAX_STORES
       || stores.some(row => !validStore(row, ctx.tenant.id))
       || new Set(stores.map(row => row.id.toLowerCase())).size !== stores.length) {
       throw new AppHttpError(502, "SUPABASE_UPSTREAM",
@@ -121,6 +142,10 @@ export async function handle(req, res, deps = {}) {
       report: {
         sourceBoundary: "separate_not_deduplicated",
         businessDate: date, activeStoreCount: rows.length, counts,
+        directoryEvidence: {
+          status: "exact_store_directory", verified: true,
+          matchedStoreCount: exactCount
+        },
         reconciliation: {
           status: "not_proven",
           sharedTransactionIdentity: "not_verified",

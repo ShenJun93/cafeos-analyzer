@@ -107,6 +107,7 @@ async function installMockTransport(page) {
         payload = { report: {
           sourceBoundary: "separate_not_deduplicated",
           businessDate: DATE, activeStoreCount: 1,
+          directoryEvidence: {status:"exact_store_directory",verified:true,matchedStoreCount:1},
           counts: { bothPresent: 1, posOnly: 0, importsOnly: 0, neither: 0 },
           reconciliation: { status: "not_proven",
             sharedTransactionIdentity: "not_verified",

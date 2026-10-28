@@ -2107,6 +2107,9 @@ test("HQ multi-store source coverage is manager-only, exact-date, fail-closed an
   assert.match(html, /async function loadHQSourceCoverage\(\)/);
   assert.match(html, /\/api\/app\/commerce-hq-sources\?businessDate=/);
   assert.match(html, /report\.sourceBoundary !== "separate_not_deduplicated"/);
+  assert.match(html, /report\.directoryEvidence\?\.status !== "exact_store_directory"/);
+  assert.match(html, /report\.directoryEvidence\?\.verified !== true/);
+  assert.match(html, /report\.directoryEvidence\?\.matchedStoreCount !== report\.activeStoreCount/);
   assert.match(html, /report\.reconciliation\?\.combinedSales !== null/);
   assert.match(html, /KhÔNG|CHƯA loại trùng|KHÔNG/i);
   assert.match(html, /serial === hqSourcesSerial/);
