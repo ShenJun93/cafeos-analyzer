@@ -437,7 +437,7 @@ test("PostgreSQL lowercase UUID readbacks reconcile uppercase POS and payment in
   status, { env, fetchImpl: authFetch("cashier", async url => {
     assert.equal(url.pathname, "/rest/v1/pos_orders");
     assert.equal(url.searchParams.get("id"), "eq." + order);
-    return jsonResponse([{ id: order, store_id: store, status: "paid", total: 35000 }]);
+    return jsonResponse([{ id: order, tenant_id: TENANT_A, store_id: store, status: "paid", total: 35000 }]);
   }) });
   assert.equal(status.statusCode, 200);
   assert.equal(parsed(status).order.id, order);
