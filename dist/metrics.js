@@ -1,6 +1,6 @@
 export function sourceScopedOrderIdentity(item) {
     const sourceNamespace = String(item.sourceNamespace ?? "legacy").trim() || "legacy";
-    return `${sourceNamespace}\u001f${item.transactionId}`;
+    return JSON.stringify([sourceNamespace, item.transactionId]);
 }
 export function computeCoreMetrics(items) {
     const orders = new Map();
