@@ -451,6 +451,42 @@ test("POS order identifiers and settlement references reject implicit string coe
   }
 });
 
+test("Commerce write boundaries reject JSON array/object coercion before any financial RPC", async () => {
+  let commerceWrites = 0;
+  const fetchImpl = authFetch("manager", async (url) => {
+    if (url.pathname.startsWith("/rest/v1/rpc/commerce_")) commerceWrites++;
+    return jsonResponse({}, 500);
+  });
+  const validOrder = {
+    storeId: STORE_A, clientOrderKey: "typed-order-intent-01",
+    channel: "counter", items: [{ menuItemId: ITEM_A, quantity: 1 }]
+  };
+  const validPayment = { orderId: ORDER_A, method: "cash", amount: 35000 };
+  const validClose = { storeId: STORE_A, businessDate: "2026-10-25" };
+
+  const scenarios = [
+    [orderHandle, { ...validOrder, storeId: [STORE_A] }, "COMMERCE_STORE_INVALID"],
+    [orderHandle, { ...validOrder, storeId: { value: STORE_A } }, "COMMERCE_STORE_INVALID"],
+    [orderHandle, { ...validOrder, channel: ["counter"] }, "COMMERCE_CHANNEL_INVALID"],
+    [orderHandle, { ...validOrder, channel: { value: "counter" } }, "COMMERCE_CHANNEL_INVALID"],
+    [paymentHandle, { ...validPayment, orderId: [ORDER_A] }, "COMMERCE_ORDER_INVALID"],
+    [paymentHandle, { ...validPayment, orderId: { value: ORDER_A } }, "COMMERCE_ORDER_INVALID"],
+    [dailyCloseHandle, { ...validClose, storeId: [STORE_A] }, "COMMERCE_STORE_INVALID"],
+    [dailyCloseHandle, { ...validClose, storeId: { value: STORE_A } }, "COMMERCE_STORE_INVALID"],
+    [dailyCloseHandle, { ...validClose, businessDate: ["2026-10-25"] }, "BUSINESS_DATE_INVALID"],
+    [dailyCloseHandle, { ...validClose, businessDate: { value: "2026-10-25" } }, "BUSINESS_DATE_INVALID"],
+    [dailyCloseHandle, { ...validClose, businessDate: 20261025 }, "BUSINESS_DATE_INVALID"]
+  ];
+  for (const [handler, body, expected] of scenarios) {
+    const response = res();
+    await handler(req(authHeaders, "POST", "/api/app/commerce-write", body),
+      response, { env, fetchImpl });
+    assert.equal(response.statusCode, 400, "invalid financial intent: " + expected);
+    assert.equal(parsed(response).error.code, expected);
+  }
+  assert.equal(commerceWrites, 0, "malformed typed intent must not write through any RPC");
+});
+
 test("payment, dashboard, and close handlers call only the fixed commerce RPCs", async () => {
   const seen = [];
   const fetchImpl = authFetch("manager", async (u, init) => {
