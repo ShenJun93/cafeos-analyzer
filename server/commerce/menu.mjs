@@ -134,7 +134,7 @@ function completeMenuPage(page, supportedLimit) {
   const range = page?.contentRange;
   if (range === "*/0" && rows.length === 0) return rows;
   const match = typeof range === "string"
-    ? /^(\\d+)-(\\d+)\/(\\d+)$/.exec(range) : null;
+    ? /^([0-9]+)-([0-9]+)[/]([0-9]+)$/.exec(range) : null;
   if (!match) throw invalid();
   const [start, end, total] = match.slice(1).map(Number);
   if (![start, end, total].every(Number.isSafeInteger)
