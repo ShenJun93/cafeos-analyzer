@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { handle } from "../server/commerce/hq-source-coverage.mjs";
+import { handle, exactStoreDirectoryCount } from "../server/commerce/hq-source-coverage.mjs";
 import { WORKFLOW_ROUTES } from "../api/app/workflow.mjs";
 
 const TENANT = "10000000-0000-4000-8000-000000000001";
@@ -21,7 +21,7 @@ const env = {
   SUPABASE_URL: "https://synthetic.supabase.invalid",
   SUPABASE_PUBLISHABLE_KEY: "sb_publishable_synthetic"
 };
-const response = (value, status = 200) => new Response(JSON.stringify(value), { status });
+const response = (value, status = 200, headers = {}) => new Response(JSON.stringify(value), { status, headers });
 const req = (params = "businessDate=" + DATE, method = "GET") => ({
   url: "/api/app/commerce-hq-sources?" + params,
   method, headers: {
@@ -60,7 +60,7 @@ function imported(store, present) {
   };
 }
 function fixture({
-  role = "owner", directory = stores,
+  role = "owner", directory = stores, directoryRange,
   overridePos = (p) => p, overrideImport = (x) => x,
   rejectStore = null
 } = {}) {
@@ -75,8 +75,12 @@ function fixture({
       assert.equal(path.searchParams.get("tenant_id"), "eq." + TENANT);
       assert.equal(path.searchParams.get("active"), "eq.true");
       assert.equal(path.searchParams.get("limit"), "26");
+      assert.equal(options.headers.prefer, "count=exact");
       calls.push("directory");
-      return response(directory);
+      const range = directoryRange === undefined
+        ? directory.length ? "0-" + (directory.length - 1) + "/" + directory.length : "*/0"
+        : directoryRange;
+      return response(directory, 200, range === null ? {} : {"content-range": range});
     }
     if (path.pathname === "/rest/v1/rpc/commerce_daily_dashboard" ||
         path.pathname === "/rest/v1/rpc/store_health_aggregate") {
@@ -111,6 +115,9 @@ test("HQ source coverage returns four clear states, no mixed money totals", asyn
   assert.equal(report.businessDate, DATE);
   assert.equal(report.sourceBoundary, "separate_not_deduplicated");
   assert.equal(report.activeStoreCount, 4);
+  assert.deepEqual(report.directoryEvidence, {
+    status: "exact_store_directory", verified: true, matchedStoreCount: 4
+  });
   assert.deepEqual(report.counts, {
     bothPresent: 1, posOnly: 1, importsOnly: 1, neither: 1
   });
@@ -197,5 +204,51 @@ test("empty tenant has zero coverage, not a fabricated imported sales number", a
     bothPresent: 0, posOnly: 0, importsOnly: 0, neither: 0
   });
   assert.deepEqual(parsed(out).report.stores, []);
+  assert.deepEqual(parsed(out).report.directoryEvidence, {
+    status: "exact_store_directory", verified: true, matchedStoreCount: 0
+  });
   assert.equal(parsed(out).report.reconciliation.combinedSales, null);
+});
+
+test("HQ exact Store directory count validates empty, bounded and 25 Store pages", () => {
+  const twentyFive = Array.from({length:25},(_,i)=>({id:i}));
+  assert.equal(exactStoreDirectoryCount([], "*/0"), 0);
+  assert.equal(exactStoreDirectoryCount(stores, "0-3/4"), 4);
+  assert.equal(exactStoreDirectoryCount(twentyFive, "0-24/25"), 25);
+});
+
+test("HQ exact Store count rejects backend row-cap truncation and unknown totals", async () => {
+  for(const directoryRange of [
+    "0-1/4", "0-1/*", "0-0/2", "1-2/2", "0-2/2",
+    "0-1/26", "0-1/999", "*/0", "0-1/NaN",
+    "0-1/9007199254740992", null
+  ]) {
+    const deps=fixture({directory:stores.slice(0,2),directoryRange}),out=res();
+    await handle(req(),out,deps);
+    assert.equal(out.statusCode,502,String(directoryRange));
+    assert.equal(parsed(out).error.code,"SUPABASE_UPSTREAM");
+    assert.equal(Object.hasOwn(parsed(out),"report"),false);
+    assert.deepEqual(deps.calls,["directory"]);
+  }
+});
+
+test("HQ exact Store directory accepts legitimate partial count only when it is complete", async () => {
+  const deps=fixture({directory:stores.slice(0,2),directoryRange:"0-1/2"}),out=res();
+  await handle(req(),out,deps);
+  assert.equal(out.statusCode,200);
+  assert.equal(parsed(out).report.activeStoreCount,2);
+  assert.equal(parsed(out).report.directoryEvidence.matchedStoreCount,2);
+  assert.equal(parsed(out).report.reconciliation.combinedSales,null);
+});
+
+test("HQ cannot infer total directory completeness from count alone", () => {
+  for(const [rows,range] of [
+    [[], "0-0/0"], [stores,"0-2/4"], [stores,"1-4/4"],
+    [stores,"0-3/*"], [stores,"0-3/26"],
+    [Array.from({length:26},()=>({})),"0-25/26"],
+    [stores,undefined]
+  ]) {
+    assert.throws(()=>exactStoreDirectoryCount(rows,range),
+      e => e.status===502 && e.code==="SUPABASE_UPSTREAM",String(range));
+  }
 });
