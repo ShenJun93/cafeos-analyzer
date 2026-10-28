@@ -42,7 +42,7 @@ export async function handle(req, res, deps = {}) {
       url.searchParams.get("storeId"), "COMMERCE_STORE_INVALID", "Invalid Store"
     );
     const orderParams = new URLSearchParams({
-      select: "id,store_id,order_number,channel,business_date,status,subtotal,discount_total,tax_total,total,paid_at",
+      select: "id,tenant_id,store_id,order_number,channel,business_date,status,subtotal,discount_total,tax_total,total,paid_at",
       tenant_id: "eq." + ctx.tenant.id,
       store_id: "eq." + storeId,
       id: "eq." + orderId,
@@ -51,14 +51,15 @@ export async function handle(req, res, deps = {}) {
     const orders = await supabaseJson("/rest/v1/pos_orders?" + orderParams, {
       token: ctx.token, ...deps
     });
-    if (!Array.isArray(orders)) {
+    if (!Array.isArray(orders) || orders.length > 1) {
       throw new AppHttpError(502, "SUPABASE_UPSTREAM", "Invalid receipt source");
     }
     const order = orders[0];
     if (!order) {
       throw new AppHttpError(404, "COMMERCE_ORDER_NOT_FOUND", "Order not found in selected Store");
     }
-    if (order.id !== orderId || order.store_id !== storeId) {
+    if (order.id !== orderId || order.tenant_id !== ctx.tenant.id
+        || order.store_id !== storeId) {
       throw new AppHttpError(502, "SUPABASE_UPSTREAM", "Invalid receipt order");
     }
     if (order.status !== "paid") {
@@ -66,21 +67,21 @@ export async function handle(req, res, deps = {}) {
     }
 
     const lineParams = new URLSearchParams({
-      select: "id,order_id,item_name,unit_price,quantity,line_total",
+      select: "id,tenant_id,order_id,item_name,unit_price,quantity,line_total",
       tenant_id: "eq." + ctx.tenant.id,
       order_id: "eq." + orderId,
       order: "created_at.asc,id.asc",
       limit: "101"
     });
     const paymentParams = new URLSearchParams({
-      select: "order_id,method,amount,status,paid_at,reference",
+      select: "tenant_id,order_id,method,amount,status,paid_at,reference",
       tenant_id: "eq." + ctx.tenant.id,
       order_id: "eq." + orderId,
       status: "eq.captured",
       limit: "2"
     });
     const storeParams = new URLSearchParams({
-      select: "id,name",
+      select: "id,tenant_id,name",
       tenant_id: "eq." + ctx.tenant.id,
       id: "eq." + storeId,
       limit: "1"
@@ -92,9 +93,11 @@ export async function handle(req, res, deps = {}) {
     ]);
     // Fail closed: never print partial receipts or rely on the browser's cart.
     if (!Array.isArray(lines) || lines.length === 0 || lines.length > 100
-        || lines.some(line => line.order_id !== orderId || !line.id || !line.item_name
+        || lines.some(line => line.tenant_id !== ctx.tenant.id
+          || line.order_id !== orderId || !line.id || !line.item_name
           || line.unit_price == null || line.quantity == null || line.line_total == null)
         || !Array.isArray(payments) || payments.length !== 1
+        || payments[0].tenant_id !== ctx.tenant.id
         || payments[0].order_id !== orderId || payments[0].status !== "captured"
         || payments[0].amount == null || !payments[0].method
         || !Object.hasOwn(payments[0], "reference")
@@ -103,6 +106,7 @@ export async function handle(req, res, deps = {}) {
                 || payments[0].reference.length > 500))
         || !payments[0].paid_at || payments[0].paid_at !== order.paid_at
         || !Array.isArray(stores) || stores.length !== 1
+        || stores[0].tenant_id !== ctx.tenant.id
         || stores[0].id !== storeId || !stores[0].name
         || !order.order_number || order.total == null || !order.paid_at) {
       throw new AppHttpError(502, "COMMERCE_RECEIPT_INCOMPLETE", "Server receipt is incomplete");
