@@ -1,0 +1,110 @@
+{
+  "schema": "cafeos-identity-collision-fixture-v1",
+  "syntheticOnly": true,
+  "notes": "All IDs/amounts are invented test data. Matching external strings or amounts never establish POS/import correspondence.",
+  "tenantId": "10000000-0000-4000-8000-000000000001",
+  "otherTenantId": "20000000-0000-4000-8000-000000000002",
+  "storeId": "11000000-0000-4000-8000-000000000001",
+  "otherStoreId": "11000000-0000-4000-8000-000000000002",
+  "userId": "a0000000-0000-4000-8000-000000000001",
+  "storeTimezone": "Asia/Ho_Chi_Minh",
+  "businessDate": "2026-10-28",
+  "posOrders": [
+    {
+      "id": "51000000-0000-4000-8000-000000000001",
+      "tenant_id": "10000000-0000-4000-8000-000000000001",
+      "store_id": "11000000-0000-4000-8000-000000000001",
+      "client_order_key": "native-intent-001",
+      "order_number": "COLLIDE-001",
+      "business_date": "2026-10-28",
+      "status": "paid",
+      "opened_at": "2026-10-28T02:00:00.000Z",
+      "total": "34000.00"
+    },
+    {
+      "id": "51000000-0000-4000-8000-000000000002",
+      "tenant_id": "10000000-0000-4000-8000-000000000001",
+      "store_id": "11000000-0000-4000-8000-000000000001",
+      "client_order_key": "native-intent-002",
+      "order_number": "NATIVE-002",
+      "business_date": "2026-10-28",
+      "status": "paid",
+      "opened_at": "2026-10-28T03:00:00.000Z",
+      "total": "12000.25"
+    }
+  ],
+  "importLineItems": [
+    {
+      "id": "31000000-0000-4000-8000-000000000001",
+      "tenant_id": "10000000-0000-4000-8000-000000000001",
+      "store_id": "11000000-0000-4000-8000-000000000001",
+      "source_namespace": "synthetic-alpha",
+      "transaction_id": "COLLIDE-001",
+      "source_record_key": "1111111111111111111111111111111111111111111111111111111111111111",
+      "first_import_id": "41000000-0000-4000-8000-000000000001",
+      "occurred_at": "2026-10-28T02:00:00.000Z",
+      "net_amount": "20000.00"
+    },
+    {
+      "id": "31000000-0000-4000-8000-000000000002",
+      "tenant_id": "10000000-0000-4000-8000-000000000001",
+      "store_id": "11000000-0000-4000-8000-000000000001",
+      "source_namespace": "synthetic-alpha",
+      "transaction_id": "COLLIDE-001",
+      "source_record_key": "2222222222222222222222222222222222222222222222222222222222222222",
+      "first_import_id": "41000000-0000-4000-8000-000000000001",
+      "occurred_at": "2026-10-28T02:00:00.000Z",
+      "net_amount": "14000.00"
+    },
+    {
+      "id": "31000000-0000-4000-8000-000000000003",
+      "tenant_id": "10000000-0000-4000-8000-000000000001",
+      "store_id": "11000000-0000-4000-8000-000000000001",
+      "source_namespace": "synthetic-beta",
+      "transaction_id": "COLLIDE-001",
+      "source_record_key": "3333333333333333333333333333333333333333333333333333333333333333",
+      "first_import_id": "41000000-0000-4000-8000-000000000001",
+      "occurred_at": "2026-10-28T02:00:00.000Z",
+      "net_amount": "34000.00"
+    },
+    {
+      "id": "31000000-0000-4000-8000-000000000004",
+      "tenant_id": "10000000-0000-4000-8000-000000000001",
+      "store_id": "11000000-0000-4000-8000-000000000001",
+      "source_namespace": "synthetic-alpha",
+      "transaction_id": "COLLIDE-002",
+      "source_record_key": "4444444444444444444444444444444444444444444444444444444444444444",
+      "first_import_id": "41000000-0000-4000-8000-000000000001",
+      "occurred_at": "2026-10-28T02:00:00.000Z",
+      "net_amount": "12000.25"
+    },
+    {
+      "id": "31000000-0000-4000-8000-000000000005",
+      "tenant_id": "10000000-0000-4000-8000-000000000001",
+      "store_id": "11000000-0000-4000-8000-000000000001",
+      "source_namespace": "synthetic-beta",
+      "transaction_id": "COLLIDE-003",
+      "source_record_key": "5555555555555555555555555555555555555555555555555555555555555555",
+      "first_import_id": "41000000-0000-4000-8000-000000000001",
+      "occurred_at": "2026-10-28T02:00:00.000Z",
+      "net_amount": "12000.25"
+    }
+  ],
+  "expectedObserved": {
+    "lineItems": 5,
+    "namespaceCount": 2,
+    "namespaceScopedTransactionCount": 4,
+    "namespaces": [
+      {
+        "sourceNamespace": "synthetic-alpha",
+        "lineItemCount": 3,
+        "sourceScopedTransactionCount": 2
+      },
+      {
+        "sourceNamespace": "synthetic-beta",
+        "lineItemCount": 2,
+        "sourceScopedTransactionCount": 2
+      }
+    ]
+  }
+}
