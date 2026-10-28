@@ -198,6 +198,7 @@ test("read-only namespace HTTP response never exposes external IDs or a cross-so
   const p = payload(out);
   assert.equal(p.observedLineItemCount, 5);
   assert.equal(p.sourceBoundary.comparedToPos, false);
+  assert.equal(p.sourceBoundary.sourceAccountProvenance, "not_verified");
   assert.equal(p.sourceBoundary.deduplication, "not_performed");
   assert.equal(p.sourceBoundary.combinedSales, null);
   assert.equal(p.sourceBoundary.transactionIdsExposed, false);
