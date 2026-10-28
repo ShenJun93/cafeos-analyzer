@@ -291,8 +291,9 @@ test("Menu POST confirms the exact committed Tenant, fields and cents without re
           assert.equal(payload.name, "Tea");
           assert.equal(payload.sort_order, -2);
         } else {
-          assert.equal(payload.price, 20000.25);
-          assert.equal(payload.category_id, CATEGORY_A.toUpperCase());
+          assert.equal(payload.price, Number(body.price));
+          assert.equal(payload.category_id, body.categoryId);
+          assert.equal(payload.sku, body.sku);
         }
         writes++;
         return jsonResponse(responseRows, 201);
@@ -1115,7 +1116,9 @@ test("Menu accepts exact two-decimal prices rejected by binary-float multiplicat
       fetchImpl: authFetch("manager", async (url, init) => {
         assert.equal(url.pathname, "/rest/v1/menu_items");
         transmitted = JSON.parse(init.body).price;
-        return jsonResponse([{ id: ITEM_A, price: transmitted }], 201);
+        return jsonResponse([{ id: ITEM_A, tenant_id: TENANT_A,
+          category_id: null, sku: null, name: "Decimal menu regression",
+          price: transmitted, active: true }], 201);
       })
     });
     assert.equal(response.statusCode, 201, "Menu should accept: " + price);
