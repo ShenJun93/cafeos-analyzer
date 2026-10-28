@@ -6,11 +6,15 @@ on:
       - ".github/workflows/provenance-postgres-disposable.yml"
       - "tests/security/provenance-postgres-disposable-preflight.sql"
       - "tests/security/fixtures/provenance-append-only-candidate-v1.sql"
+      - "tests/security/fixtures/provenance-concurrency-setup-v1.sql"
+      - "scripts/run-provenance-disposable-concurrency.sh"
   pull_request:
     paths:
       - ".github/workflows/provenance-postgres-disposable.yml"
       - "tests/security/provenance-postgres-disposable-preflight.sql"
       - "tests/security/fixtures/provenance-append-only-candidate-v1.sql"
+      - "tests/security/fixtures/provenance-concurrency-setup-v1.sql"
+      - "scripts/run-provenance-disposable-concurrency.sh"
 
 permissions:
   contents: read
@@ -56,3 +60,10 @@ jobs:
           test "$(psql -X -Atqc "select count(*) from pg_namespace where nspname='cafeos_preflight_private'")" = "0"
           test "$(psql -X -Atqc "select count(*) from pg_roles where rolname like 'cafeos_preflight_%'")" = "0"
           echo PROVENANCE_PG_PREFLIGHT_JOB_PASS
+      - name: Execute real two-session revision race using nonadmin synthetic worker
+        run: |
+          set -euo pipefail
+          bash scripts/run-provenance-disposable-concurrency.sh
+          test "$(psql -X -Atqc "select count(*) from pg_namespace where nspname='cafeos_preflight_private'")" = "0"
+          test "$(psql -X -Atqc "select count(*) from pg_roles where rolname='cafeos_concurrency_worker'")" = "0"
+          echo PROVENANCE_PG_CONCURRENCY_JOB_PASS

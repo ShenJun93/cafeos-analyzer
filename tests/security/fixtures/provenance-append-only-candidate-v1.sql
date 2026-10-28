@@ -13,7 +13,9 @@ END $preflight$;
 
 -- A candidate event insert invariant, not a trusted API or authorization
 -- boundary: the future permitted writer role and owner provenance need audit.
--- Lock the parent binding row to serialize appends for that binding.
+-- Serialize appends with a transaction advisory lock keyed by binding UUID.
+-- This avoids granting a worker UPDATE on the parent binding merely to lock it.
+-- A hash collision only over-serializes unrelated bindings (never bypasses checks).
 CREATE FUNCTION cafeos_preflight_private.guard_event_append()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -24,12 +26,14 @@ DECLARE
   last_revision integer;
   last_recorded_at timestamptz;
 BEGIN
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(NEW.binding_id::text, 0));
+
   PERFORM 1
     FROM cafeos_preflight_private.bindings
     WHERE id = NEW.binding_id
       AND tenant_id = NEW.tenant_id
-      AND store_id = NEW.store_id
-    FOR UPDATE;
+      AND store_id = NEW.store_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Binding scope missing' USING ERRCODE = '23503';
   END IF;
