@@ -2,7 +2,7 @@ import {
   AppHttpError, appContext, appError, appJson,
   onlyGet, requireCommerceWriteRole, supabaseJson
 } from "../../api/_app-auth.mjs";
-import { requiredUuid } from "./_shared.mjs";
+import { requiredUuid, validCommerceOrderListRow } from "./_shared.mjs";
 
 // Browse only currently-open first-party POS orders for manual checkout recovery.
 // No payment or state mutation is performed on this endpoint.
@@ -20,7 +20,7 @@ export async function handle(req, res, deps = {}) {
     }
     const offset = Number(requestedOffset);
     const params = new URLSearchParams({
-      select: "id,order_number,store_id,status,total,created_at,channel",
+      select: "id,tenant_id,order_number,store_id,status,total,created_at,channel",
       tenant_id: "eq." + ctx.tenant.id,
       store_id: "eq." + storeId,
       status: "eq.open",
@@ -31,14 +31,17 @@ export async function handle(req, res, deps = {}) {
     const payload = await supabaseJson("/rest/v1/pos_orders?" + params, {
       token: ctx.token, ...deps
     });
-    if (!Array.isArray(payload)) {
-      throw new AppHttpError(502, "SUPABASE_UPSTREAM", "Open order service returned an error");
+    const valid = Array.isArray(payload) && payload.length <= 21
+      && payload.every(row => validCommerceOrderListRow(
+        row, { tenantId: ctx.tenant.id, storeId, status: "open" }
+      ));
+    // Reject malformed lookahead row #21 too; otherwise the pagination flag
+    // may be based on another Store, a duplicate, or invalid financial data.
+    if (!valid || new Set(payload.map(row => row.id)).size !== payload.length) {
+      throw new AppHttpError(502, "SUPABASE_UPSTREAM", "Open order service returned invalid data");
     }
     const hasMore = payload.length > 20;
     const orders = payload.slice(0, 20).map(row => {
-      if (!row?.id || row.store_id !== storeId || row.status !== "open") {
-        throw new AppHttpError(502, "SUPABASE_UPSTREAM", "Open order service returned invalid data");
-      }
       return {
         id: row.id,
         orderNumber: row.order_number,
