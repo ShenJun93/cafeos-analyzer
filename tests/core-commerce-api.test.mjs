@@ -26,6 +26,8 @@ const CATEGORY_A = "17000000-0000-4000-8000-000000000001";
 const ORDER_A = "16000000-0000-4000-8000-000000000001";
 const ORDER_LINE_A = "18000000-0000-4000-8000-000000000001";
 const ORDER_LINE_B = "18000000-0000-4000-8000-000000000002";
+const PAYMENT_A = "19000000-0000-4000-8000-000000000003";
+const PAYMENT_PAID_AT = "2026-10-25T12:30:00+00:00";
 const env = {
   SUPABASE_URL: "https://example.supabase.co",
   SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test"
@@ -599,8 +601,8 @@ test("PostgreSQL lowercase UUID readbacks reconcile uppercase POS and payment in
     assert.equal(url.pathname, "/rest/v1/rpc/commerce_capture_payment");
     mutations++;
     paymentBody = JSON.parse(init.body);
-    return jsonResponse({ orderId: order, status: "paid",
-      payment: { status: "captured", method: "cash", amount: "35000.00", reference: null } });
+    return jsonResponse({ orderId: order, status: "paid", paidAt: PAYMENT_PAID_AT,
+      payment: { id: PAYMENT_A, status: "captured", method: "cash", amount: "35000.00", reference: null } });
   }) });
   assert.equal(settled.statusCode, 201, "a committed payment must not produce an artificial 502");
   assert.equal(paymentBody.p_order_id, order);
@@ -754,7 +756,7 @@ test("POS order identifiers and settlement references reject implicit string coe
       env, fetchImpl: authFetch("cashier", async (url, init) => {
         assert.equal(url.pathname, "/rest/v1/rpc/commerce_capture_payment");
         observed = JSON.parse(init.body).p_reference;
-        return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { method: "bank_transfer", status: "captured", amount: 50000, reference: observed } });
+        return jsonResponse({ orderId: ORDER_A, status: "paid", paidAt: PAYMENT_PAID_AT, payment: { id: PAYMENT_A, method: "bank_transfer", status: "captured", amount: 50000, reference: observed } });
       })
     });
     assert.equal(response.statusCode, 201);
@@ -803,7 +805,7 @@ test("payment, dashboard, and close handlers call only the fixed commerce RPCs",
   const fetchImpl = authFetch("manager", async (u, init) => {
     seen.push({ path: u.pathname, init });
     if (u.pathname === "/rest/v1/rpc/commerce_capture_payment") {
-      return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { method: "cash", status: "captured", amount: 100000, reference: null } });
+      return jsonResponse({ orderId: ORDER_A, status: "paid", paidAt: PAYMENT_PAID_AT, payment: { id: PAYMENT_A, method: "cash", status: "captured", amount: 100000, reference: null } });
     }
     if (u.pathname === "/rest/v1/rpc/commerce_daily_dashboard") {
       return jsonResponse({ tenantId: TENANT_A, storeId: STORE_A, businessDate: "2026-10-25", source: "cafeos_pos", orderCount: 1, openOrderCount: 0, salesTotal: "100000.00", paymentTotal: "100000.00", paymentMix: { cash: "100000.00" }, aov: "100000.00", closed: false });
@@ -1230,7 +1232,7 @@ test("Payment amount rejects invalid scale/types but accepts common floating-dec
     }), response, { env, fetchImpl: authFetch("cashier", async (url, init) => {
       assert.equal(url.pathname, "/rest/v1/rpc/commerce_capture_payment");
       transmitted = JSON.parse(init.body).p_amount;
-      return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { method: "cash", status: "captured", amount: transmitted, reference: null } });
+      return jsonResponse({ orderId: ORDER_A, status: "paid", paidAt: PAYMENT_PAID_AT, payment: { id: PAYMENT_A, method: "cash", status: "captured", amount: transmitted, reference: null } });
     }) });
     assert.equal(response.statusCode, 201, "Payment should accept: " + amount);
     assert.equal(transmitted, Number(amount));
@@ -1251,13 +1253,20 @@ test("Payment confirmation refuses mismatched capture evidence without retry or 
     orderId: ORDER_A, method: "cash", amount: "35000.29", reference: "terminal-1"
   };
   const accepted = {
-    orderId: ORDER_A, status: "paid",
-    payment: { method: "cash", status: "captured", amount: "35000.29", reference: "terminal-1" }
+    orderId: ORDER_A, status: "paid", paidAt: PAYMENT_PAID_AT,
+    payment: { id: PAYMENT_A, method: "cash", status: "captured", amount: "35000.29", reference: "terminal-1" }
   };
   const invalid = [
     { ...accepted, orderId: STORE_A },
     { ...accepted, orderId: null },
     { ...accepted, status: "open" },
+    { ...accepted, paidAt: null },
+    { ...accepted, paidAt: "invalid" },
+    { ...accepted, paidAt: "2026-10-25T12:30:00" },
+    { ...accepted, paidAt: "2026-02-30T12:30:00Z" },
+    { ...accepted, paidAt: "2026-10-25T12:30:00+99:00" },
+    { ...accepted, payment: { ...accepted.payment, id: null } },
+    { ...accepted, payment: { ...accepted.payment, id: "not-a-uuid" } },
     { ...accepted, payment: null },
     { ...accepted, payment: [] },
     { ...accepted, payment: { ...accepted.payment, method: "wallet" } },

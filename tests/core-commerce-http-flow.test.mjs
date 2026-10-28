@@ -153,7 +153,7 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
         reference: body.p_reference ?? null
       };
       order.status = "paid";
-      return json({ orderId: ORDER, status: "paid", payment });
+      return json({ orderId: ORDER, status: "paid", paidAt: DATE + "T08:30:00Z", payment });
     }
     if (path === "/rest/v1/rpc/commerce_daily_dashboard") {
       const paid = Number(order?.status === "paid");
