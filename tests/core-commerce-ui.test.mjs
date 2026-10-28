@@ -2072,3 +2072,23 @@ test("void reconciliation and history use manager-only read-only API plus stable
   assert.ok(vercel.rewrites.some(x => x.source === "/api/app/commerce-void-history"
     && x.destination === "/api/app/workflow?route=commerce-void-history"));
 });
+
+test("Control Tower source bridge displays source-scoped POS/import metrics, never combined totals", async () => {
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const css = await readFile(new URL("../public/cafeos-ui.css", import.meta.url), "utf8");
+  const vercel = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
+  assert.match(html, /id="sourceBridgeDate" type="date"/);
+  assert.match(html, /id="sourceBridgeRefresh"/);
+  assert.match(html, /id="sourceBridgeCards"/);
+  assert.match(html, /sourceBridgeDate"\)\.value = currentDashboard\.businessDate/);
+  assert.match(html, /sourceBridgeSerial === serial/);
+  assert.match(html, /payload\?\.sourceBoundary\?\.status !== "separate_not_deduplicated"/);
+  assert.match(html, /native\?\.source !== "cafeos_pos"/);
+  assert.match(html, /ext\?\.source !== "imported_line_items"/);
+  assert.match(html, /Không có dữ liệu import xác nhận/);
+  assert.match(html, /KHÔNG cộng tổng/);
+  assert.match(css, /source-bridge-cards/);
+  assert.ok(vercel.rewrites.some(r=>r.source==="/api/app/commerce-source-bridge"
+    && r.destination==="/api/app/workflow?route=commerce-source-bridge"));
+  assert.doesNotMatch(html, /localStorage|sessionStorage|indexedDB/);
+});
