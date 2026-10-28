@@ -1,0 +1,56 @@
+name: Provenance PostgreSQL Disposable Preflight
+
+on:
+  push:
+    paths:
+      - ".github/workflows/provenance-postgres-disposable.yml"
+      - "tests/security/provenance-postgres-disposable-preflight.sql"
+  pull_request:
+    paths:
+      - ".github/workflows/provenance-postgres-disposable.yml"
+      - "tests/security/provenance-postgres-disposable-preflight.sql"
+
+permissions:
+  contents: read
+
+jobs:
+  disposable-postgres-rls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: cafeos_provenance_preflight
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: disposable-fixture-only
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U postgres -d cafeos_provenance_preflight"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      PGHOST: "127.0.0.1"
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: disposable-fixture-only
+      PGDATABASE: cafeos_provenance_preflight
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client for disposable local service only
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          test "$PGHOST" = "127.0.0.1"
+          test "$PGDATABASE" = "cafeos_provenance_preflight"
+          test "$(psql -X -Atqc 'select current_database()')" = "cafeos_provenance_preflight"
+      - name: Execute transaction-rolled-back PostgreSQL RLS and FK preflight
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f tests/security/provenance-postgres-disposable-preflight.sql
+          test "$(psql -X -Atqc "select count(*) from pg_namespace where nspname='cafeos_preflight_private'")" = "0"
+          test "$(psql -X -Atqc "select count(*) from pg_roles where rolname like 'cafeos_preflight_%'")" = "0"
+          echo PROVENANCE_PG_PREFLIGHT_JOB_PASS
