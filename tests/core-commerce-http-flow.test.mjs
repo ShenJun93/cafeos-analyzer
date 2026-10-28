@@ -18,9 +18,9 @@ const MANAGER = "a0000000-0000-4000-8000-000000000002";
 const VIEWER = "a0000000-0000-4000-8000-000000000003";
 const DATE = "2026-10-25";
 
-function json(value, status = 200) {
+function json(value, status = 200, additionalHeaders = {}) {
   return new Response(JSON.stringify(value), {
-    status, headers: { "content-type": "application/json" }
+    status, headers: { "content-type": "application/json", ...additionalHeaders }
   });
 }
 
@@ -68,14 +68,16 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
         category = { id: CATEGORY, ...body };
         return json([category], 201);
       }
-      return json(category ? [category] : []);
+      return json(category ? [category] : [], 200,
+        { "content-range": category ? "0-0/1" : "*/0" });
     }
     if (path === "/rest/v1/menu_items") {
       if (options.method === "POST") {
         item = { id: ITEM, ...body };
         return json([item], 201);
       }
-      return json(item ? [item] : []);
+      return json(item ? [item] : [], 200,
+        { "content-range": item ? "0-0/1" : "*/0" });
     }
     if (path === "/rest/v1/rpc/commerce_create_order") {
       assert.equal(body.p_tenant_id, TENANT);
