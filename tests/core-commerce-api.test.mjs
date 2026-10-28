@@ -112,7 +112,7 @@ test("menu GET is tenant scoped and menu POST is manager bounded with strict bod
         if (u.pathname === "/rest/v1/menu_items") {
           assert.equal(u.searchParams.get("tenant_id"), "eq." + TENANT_A);
           assert.match(u.searchParams.get("select"), /tenant_id/);
-          return jsonResponse([{ id: ITEM_A, tenant_id: TENANT_A, category_id: CATEGORY_A, name: "Latte", price: 50000, active: true }]);
+          return jsonResponse([{ id: ITEM_A, tenant_id: TENANT_A, category_id: CATEGORY_A, sku: null, name: "Latte", price: 50000, active: true }]);
         }
         return jsonResponse({}, 500);
       })
@@ -142,7 +142,7 @@ test("menu GET is tenant scoped and menu POST is manager bounded with strict bod
 
 test("POS Menu read fails closed on malformed, financial-invalid and truncated catalog data", async () => {
   const category = { id: CATEGORY_A, tenant_id: TENANT_A, name: "Coffee", sort_order: 0, active: true };
-  const item = { id: ITEM_A, tenant_id: TENANT_A, category_id: CATEGORY_A, name: "Latte",
+  const item = { id: ITEM_A, tenant_id: TENANT_A, category_id: CATEGORY_A, sku: null, name: "Latte",
     price: "35000.00", active: true };
   const failures = [
     { categories: { categories: [category] }, items: [item],
@@ -175,6 +175,14 @@ test("POS Menu read fails closed on malformed, financial-invalid and truncated c
       status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
     { categories: [category], items: [{ ...item, category_id: "not-a-uuid" }],
       status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    ...["0", 0.5, null, true, 2147483648, -2147483649].map(sort_order => ({
+      categories: [{ ...category, sort_order }], items: [item],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID"
+    })),
+    ...[undefined, "", "  ", "x".repeat(101), [], ["LATTE"], {}, 123, true].map(sku => ({
+      categories: [category], items: [{ ...item, sku }],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID"
+    })),
     { categories: Array.from({ length: 200 }, () => category), items: [item],
       status: 503, code: "COMMERCE_MENU_CATALOG_LIMIT" },
     { categories: [category], items: Array.from({ length: 1000 }, () => item),
@@ -213,6 +221,20 @@ test("POS Menu read fails closed on malformed, financial-invalid and truncated c
   });
   assert.equal(healthy.statusCode, 200, "valid exact-decimal and zero-price Menu remains readable");
   assert.equal(parsed(healthy).items.length, 2);
+
+  // Active items can still reference a valid but inactive category. The
+  // active-only category query must not accidentally block those items.
+  const categoryHidden = res();
+  await menuHandle(req(authHeaders, "GET", "/api/app/commerce-menu"), categoryHidden, {
+    env, fetchImpl: authFetch("cashier", async url => jsonResponse(
+      url.pathname === "/rest/v1/menu_categories"
+        ? [{ ...category, sort_order: -2147483648 }]
+        : [{ ...item, sku: "LATTE-01", category_id: "17000000-0000-4000-8000-000000000002" }]
+    ))
+  });
+  assert.equal(categoryHidden.statusCode, 200,
+    "inactive categories must not hide otherwise active items");
+  assert.equal(parsed(categoryHidden).items[0].sku, "LATTE-01");
 });
 
 test("Menu manager writes reject implicit coercion of category, SKU, names and record kind", async () => {

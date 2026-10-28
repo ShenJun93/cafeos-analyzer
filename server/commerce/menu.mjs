@@ -12,6 +12,20 @@ import { UUID_RE, strictFields, parseCommerceMoney, commerceReturnedCents } from
 const CATEGORY_FIELDS = new Set(["kind", "name", "sortOrder"]);
 const ITEM_FIELDS = new Set(["kind", "categoryId", "sku", "name", "price"]);
 
+// PostgreSQL returns category sort_order as int4 and optional item SKU as
+// text/null. These are exposed to the cashier's category filter and SKU
+// search: do not allow malformed read models to silently reach the POS UI.
+function validReadCategorySort(value) {
+  return typeof value === "number" && Number.isInteger(value)
+    && value >= -2147483648 && value <= 2147483647;
+}
+
+function validReadSku(value) {
+  return value === null
+    || (typeof value === "string" && value.trim().length >= 1
+      && value.trim().length <= 100);
+}
+
 function validReadPrice(value) {
   if ((typeof value !== "number" && typeof value !== "string")
       || (typeof value === "number" && !Number.isFinite(value))) return false;
@@ -142,12 +156,14 @@ export async function handle(req, res, deps = {}) {
       if (categories.some(row => !row || row.tenant_id !== ctx.tenant.id
           || typeof row.id !== "string" || !UUID_RE.test(row.id)
           || typeof row.name !== "string" || !row.name.trim() || row.name.length > 200
+          || !validReadCategorySort(row.sort_order)
           || row.active !== true)
           || items.some(row => !row || row.tenant_id !== ctx.tenant.id
             || typeof row.id !== "string" || !UUID_RE.test(row.id)
             || (row.category_id !== null
               && (typeof row.category_id !== "string" || !UUID_RE.test(row.category_id)))
             || typeof row.name !== "string" || !row.name.trim() || row.name.length > 300
+            || !validReadSku(row.sku)
             || row.active !== true || !validReadPrice(row.price))
           || new Set(categories.map(row => row.id)).size !== categories.length
           || new Set(items.map(row => row.id)).size !== items.length) {
