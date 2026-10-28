@@ -2,7 +2,7 @@ import {
   AppHttpError, appContext, appError, appJson,
   onlyGet, requireCommerceWriteRole, supabaseJson
 } from "../../api/_app-auth.mjs";
-import { requiredUuid } from "./_shared.mjs";
+import { requiredUuid, validCommerceOrderListRow } from "./_shared.mjs";
 
 // Browse settled first-party orders for receipt lookup/reprint. The list is
 // metadata only: the full receipt is separately verified as PAID per Store.
@@ -22,7 +22,7 @@ export async function handle(req, res, deps = {}) {
     }
     const offset = Number(requestedOffset);
     const params = new URLSearchParams({
-      select: "id,order_number,store_id,status,total,paid_at,business_date",
+      select: "id,tenant_id,order_number,store_id,status,total,paid_at,business_date",
       tenant_id: "eq." + ctx.tenant.id,
       store_id: "eq." + storeId,
       status: "eq.paid",
@@ -33,15 +33,14 @@ export async function handle(req, res, deps = {}) {
     const rows = await supabaseJson("/rest/v1/pos_orders?" + params, {
       token: ctx.token, ...deps
     });
-    if (!Array.isArray(rows) || rows.length > 21) {
+    const valid = Array.isArray(rows) && rows.length <= 21
+      && rows.every(row => validCommerceOrderListRow(
+        row, { tenantId: ctx.tenant.id, storeId, status: "paid" }
+      ));
+    if (!valid || new Set(rows.map(row => row.id)).size !== rows.length) {
       throw new AppHttpError(502, "SUPABASE_UPSTREAM", "Paid order service returned invalid data");
     }
     const orders = rows.slice(0, 20).map(row => {
-      if (!row?.id || row.store_id !== storeId || row.status !== "paid"
-          || !row.order_number || row.total == null
-          || !row.paid_at || !row.business_date) {
-        throw new AppHttpError(502, "SUPABASE_UPSTREAM", "Paid order service returned invalid data");
-      }
       return {
         id: row.id, orderNumber: row.order_number,
         storeId: row.store_id, status: row.status, total: row.total,
