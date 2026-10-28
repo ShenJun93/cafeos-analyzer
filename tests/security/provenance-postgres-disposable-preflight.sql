@@ -58,7 +58,7 @@ CREATE TABLE cafeos_preflight_private.binding_events (
   CONSTRAINT scoped_binding_event FOREIGN KEY (tenant_id, store_id, binding_id)
     REFERENCES cafeos_preflight_private.bindings (tenant_id, store_id, id)
 );
-ALTER TABLE cafeos_preflight_private.stores ENABLE ROW LEVEL SECURITY;
+-- Run the auditable experimental candidate under this transaction only.\n\ir fixtures/provenance-append-only-candidate-v1.sql\n\nALTER TABLE cafeos_preflight_private.stores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cafeos_preflight_private.bindings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cafeos_preflight_private.binding_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cafeos_preflight_private.stores FORCE ROW LEVEL SECURITY;
@@ -270,6 +270,99 @@ END
 $private_deny$;
 RESET ROLE;
 \echo PROVENANCE_PG_GENERIC_AUTH_DENIED_PASS
+
+-- Candidate event-history protections run after role RLS checks so each probe
+-- continues to see exactly one synthetic event per Tenant.
+DO $append$
+DECLARE
+  clock_time timestamptz;
+BEGIN
+  BEGIN
+    INSERT INTO cafeos_preflight_private.binding_events
+      (tenant_id,store_id,binding_id,revision,lifecycle,recorded_at,effective_from)
+    VALUES (
+      '10000000-0000-4000-8000-000000000001',
+      '11000000-0000-4000-8000-000000000001',
+      '51000000-0000-4000-8000-000000000001',3,'proposed',
+      '2000-01-01T00:00:00+00','2026-10-28T08:00:00+00');
+    RAISE EXCEPTION 'FAIL: skipped revision 2 accepted';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
+  INSERT INTO cafeos_preflight_private.binding_events
+    (tenant_id,store_id,binding_id,revision,lifecycle,recorded_at,effective_from)
+  VALUES (
+    '10000000-0000-4000-8000-000000000001',
+    '11000000-0000-4000-8000-000000000001',
+    '51000000-0000-4000-8000-000000000001',2,'revoked',
+    '2000-01-01T00:00:00+00','2026-10-28T09:00:00+00');
+
+  SELECT recorded_at INTO clock_time
+    FROM cafeos_preflight_private.binding_events
+    WHERE binding_id='51000000-0000-4000-8000-000000000001'
+      AND revision=2;
+  IF clock_time IS NULL OR clock_time < '2026-01-01T00:00:00+00' THEN
+    RAISE EXCEPTION 'FAIL: client-supplied recorded timestamp accepted';
+  END IF;
+
+  BEGIN
+    INSERT INTO cafeos_preflight_private.binding_events
+      (tenant_id,store_id,binding_id,revision,lifecycle,recorded_at,effective_from)
+    VALUES (
+      '10000000-0000-4000-8000-000000000001',
+      '11000000-0000-4000-8000-000000000001',
+      '51000000-0000-4000-8000-000000000001',3,'proposed',
+      '2000-01-01T00:00:00+00','2026-10-28T10:00:00+00');
+    RAISE EXCEPTION 'FAIL: unreviewed reactivation after revocation';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
+  BEGIN
+    UPDATE cafeos_preflight_private.bindings
+      SET source_namespace='synthetic:forged'
+      WHERE source_namespace='synthetic:a';
+    RAISE EXCEPTION 'FAIL: binding owner mutation accepted';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
+  BEGIN
+    DELETE FROM cafeos_preflight_private.binding_events
+      WHERE binding_id='51000000-0000-4000-8000-000000000001';
+    RAISE EXCEPTION 'FAIL: binding event deleted';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
+  BEGIN
+    UPDATE cafeos_preflight_private.binding_events
+      SET lifecycle='proposed'
+      WHERE binding_id='51000000-0000-4000-8000-000000000001';
+    RAISE EXCEPTION 'FAIL: historical status overwritten';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
+  IF (SELECT count(*) FROM cafeos_preflight_private.binding_events
+      WHERE binding_id='51000000-0000-4000-8000-000000000001') <> 2 THEN
+    RAISE EXCEPTION 'FAIL: rejected event writes changed history';
+  END IF;
+END $append$;
+\echo PROVENANCE_PG_APPEND_ONLY_HISTORY_PASS
+
+-- The trigger function must not be callable by anonymous/public roles, and
+-- privileges of temporary app roles must not include TRUNCATE.
+DO $guard$
+BEGIN
+  IF has_function_privilege('PUBLIC',
+        'cafeos_preflight_private.guard_event_append()', 'EXECUTE')
+     OR has_function_privilege('PUBLIC',
+        'cafeos_preflight_private.deny_binding_mutation()', 'EXECUTE') THEN
+     RAISE EXCEPTION 'FAIL: trigger helper executable by PUBLIC';
+  END IF;
+  IF has_table_privilege('cafeos_preflight_auth',
+     'cafeos_preflight_private.binding_events','TRUNCATE') THEN
+     RAISE EXCEPTION 'FAIL: generic auth can truncate event ledger';
+  END IF;
+END $guard$;
+\echo PROVENANCE_PG_FUNCTION_AND_TRUNCATE_DENIED_PASS
 
 -- No objects/roles from the fixture survive. Tests have no production DDL.
 ROLLBACK;
