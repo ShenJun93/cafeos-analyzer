@@ -62,7 +62,23 @@ function authFetch(role = "owner", business = async () => jsonResponse([])) {
     if (u.pathname === "/rest/v1/tenant_members") {
       return jsonResponse([{ tenant_id: TENANT_A, role }]);
     }
-    return business(u, init);
+    const result = await business(u, init);
+    // Existing Menu API fixtures model complete, tenant-filtered responses.
+    // Provide a matching synthetic PostgREST exact Content-Range for GETs;
+    // dedicated completeness tests supply incomplete/missing evidence directly.
+    if ((u.pathname === "/rest/v1/menu_categories"
+        || u.pathname === "/rest/v1/menu_items")
+        && (init.method === undefined || init.method === "GET")
+        && result.ok && !result.headers.has("content-range")) {
+      const payload = await result.clone().json();
+      if (Array.isArray(payload)) {
+        const headers = new Headers(result.headers);
+        headers.set("content-range", payload.length === 0
+          ? "*/0" : `0-${payload.length - 1}/${payload.length}`);
+        return new Response(await result.text(), { status: result.status, headers });
+      }
+    }
+    return result;
   };
 }
 const authHeaders = {
