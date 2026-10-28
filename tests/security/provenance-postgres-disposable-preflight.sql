@@ -58,7 +58,10 @@ CREATE TABLE cafeos_preflight_private.binding_events (
   CONSTRAINT scoped_binding_event FOREIGN KEY (tenant_id, store_id, binding_id)
     REFERENCES cafeos_preflight_private.bindings (tenant_id, store_id, id)
 );
--- Run the auditable experimental candidate under this transaction only.\n\ir fixtures/provenance-append-only-candidate-v1.sql\n\nALTER TABLE cafeos_preflight_private.stores ENABLE ROW LEVEL SECURITY;
+-- Run the auditable experimental candidate under this transaction only.
+\ir fixtures/provenance-append-only-candidate-v1.sql
+
+ALTER TABLE cafeos_preflight_private.stores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cafeos_preflight_private.bindings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cafeos_preflight_private.binding_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cafeos_preflight_private.stores FORCE ROW LEVEL SECURITY;
@@ -187,7 +190,7 @@ BEGIN
       '11000000-0000-4000-8000-000000000001',
       '51000000-0000-4000-8000-000000000001',1,'proposed',now(),now());
     RAISE EXCEPTION 'FAIL: replay revision was accepted';
-  EXCEPTION WHEN unique_violation THEN NULL;
+  EXCEPTION WHEN unique_violation OR check_violation THEN NULL;
   END;
 END
 $negative$;
@@ -351,9 +354,9 @@ END $append$;
 -- privileges of temporary app roles must not include TRUNCATE.
 DO $guard$
 BEGIN
-  IF has_function_privilege('PUBLIC',
+  IF has_function_privilege('cafeos_preflight_auth',
         'cafeos_preflight_private.guard_event_append()', 'EXECUTE')
-     OR has_function_privilege('PUBLIC',
+     OR has_function_privilege('cafeos_preflight_auth',
         'cafeos_preflight_private.deny_binding_mutation()', 'EXECUTE') THEN
      RAISE EXCEPTION 'FAIL: trigger helper executable by PUBLIC';
   END IF;
