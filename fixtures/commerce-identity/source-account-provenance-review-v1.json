@@ -1,0 +1,68 @@
+{
+  "schema": "cafeos-source-account-provenance-review-fixtures-v1",
+  "syntheticOnly": true,
+  "context": {
+    "tenantId": "10000000-0000-4000-8000-000000000001",
+    "storeId": "11000000-0000-4000-8000-000000000001",
+    "sourceNamespace": "synthetic:tenant-source-a",
+    "asOf": "2026-10-28T12:00:00.000Z"
+  },
+  "claims": {
+    "base": {
+      "bindingId": "51000000-0000-4000-8000-000000000001",
+      "tenantId": "10000000-0000-4000-8000-000000000001",
+      "storeId": "11000000-0000-4000-8000-000000000001",
+      "sourceNamespace": "synthetic:tenant-source-a",
+      "providerFamily": "synthetic-pos",
+      "sourceAccountRef": "opaque-synthetic-acct-a",
+      "sourceBranchRef": "opaque-synthetic-branch-1",
+      "evidenceRef": "synthetic-file-proof-1",
+      "evidenceKind": "operator_document",
+      "lifecycle": "proposed",
+      "revision": 1,
+      "recordedAt": "2026-10-28T08:00:00.000Z",
+      "effectiveFrom": "2026-10-01T00:00:00.000Z",
+      "effectiveUntil": null
+    },
+    "revoked": {
+      "bindingId": "51000000-0000-4000-8000-000000000001",
+      "tenantId": "10000000-0000-4000-8000-000000000001",
+      "storeId": "11000000-0000-4000-8000-000000000001",
+      "sourceNamespace": "synthetic:tenant-source-a",
+      "providerFamily": "synthetic-pos",
+      "sourceAccountRef": "opaque-synthetic-acct-a",
+      "sourceBranchRef": "opaque-synthetic-branch-1",
+      "evidenceRef": "synthetic-revoke-record",
+      "evidenceKind": "operator_document",
+      "lifecycle": "revoked",
+      "revision": 2,
+      "recordedAt": "2026-10-28T09:00:00.000Z",
+      "effectiveFrom": "2026-10-28T09:00:00.000Z",
+      "effectiveUntil": null
+    },
+    "otherAccount": {
+      "bindingId": "51000000-0000-4000-8000-000000000002",
+      "tenantId": "10000000-0000-4000-8000-000000000001",
+      "storeId": "11000000-0000-4000-8000-000000000001",
+      "sourceNamespace": "synthetic:tenant-source-a",
+      "providerFamily": "synthetic-pos",
+      "sourceAccountRef": "opaque-synthetic-acct-b",
+      "sourceBranchRef": "opaque-synthetic-branch-1",
+      "evidenceRef": "synthetic-file-proof-2",
+      "evidenceKind": "operator_document",
+      "lifecycle": "proposed",
+      "revision": 1,
+      "recordedAt": "2026-10-28T08:00:00.000Z",
+      "effectiveFrom": "2026-10-01T00:00:00.000Z",
+      "effectiveUntil": null
+    }
+  },
+  "expected": {
+    "noRecords": "unknown",
+    "oneProposed": "review_required",
+    "twoAccounts": "namespace_conflict",
+    "revoked": "revoked",
+    "futureOnly": "not_recorded",
+    "expired": "expired"
+  }
+}
