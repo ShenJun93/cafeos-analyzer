@@ -219,7 +219,7 @@ test("HQ exact Store directory count validates empty, bounded and 25 Store pages
 
 test("HQ exact Store count rejects backend row-cap truncation and unknown totals", async () => {
   for(const directoryRange of [
-    "0-1/4", "0-1/*", "0-1/2", "1-2/2", "0-2/2",
+    "0-1/4", "0-1/*", "0-0/2", "1-2/2", "0-2/2",
     "0-1/26", "0-1/999", "*/0", "0-1/NaN",
     "0-1/9007199254740992", null
   ]) {
