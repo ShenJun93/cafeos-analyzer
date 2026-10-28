@@ -1172,12 +1172,14 @@ test("paid receipt refuses role misuse, cross-store, unpaid, missing and partial
     status: "captured", paid_at: order.paid_at, reference: null }];
   const lines = [{ id: "line-1", tenant_id: TENANT_A, order_id: ORDER_A, item_name: "Latte",
     unit_price: "35000.00", quantity: 2, line_total: "70000.00" }];
-  const fake = (orderRows, itemRows = lines, payRows = payments) => authFetch("cashier", async url => {
+  const fake = (orderRows, itemRows = lines, payRows = payments,
+    storeRows = [{ id: STORE_A, tenant_id: TENANT_A, name: "Store A" }])
+    => authFetch("cashier", async url => {
     calls++;
     if (url.pathname === "/rest/v1/pos_orders") return jsonResponse(orderRows);
     if (url.pathname === "/rest/v1/pos_order_items") return jsonResponse(itemRows);
     if (url.pathname === "/rest/v1/pos_payments") return jsonResponse(payRows);
-    if (url.pathname === "/rest/v1/stores") return jsonResponse([{ id: STORE_A, tenant_id: TENANT_A, name: "Store A" }]);
+    if (url.pathname === "/rest/v1/stores") return jsonResponse(storeRows);
     return jsonResponse({}, 500);
   });
   for (const [url, code] of [
@@ -1230,6 +1232,16 @@ test("paid receipt refuses role misuse, cross-store, unpaid, missing and partial
       { env, fetchImpl: fake(orderRows, itemRows, payRows) });
     assert.equal(response.statusCode, status);
     assert.equal(parsed(response).error.code, code);
+  }
+  for (const badStore of [
+    { id: STORE_A, tenant_id: STORE_A, name: "Other tenant" },
+    { id: STORE_A, name: "Missing tenant" }
+  ]) {
+    const response = res();
+    await receiptHandle(req(authHeaders, "GET", route), response,
+      { env, fetchImpl: fake([order], lines, payments, [badStore]) });
+    assert.equal(response.statusCode, 502);
+    assert.equal(parsed(response).error.code, "COMMERCE_RECEIPT_INCOMPLETE");
   }
 });
 
