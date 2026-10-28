@@ -89,10 +89,15 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
         order = {
           id: ORDER, tenantId: TENANT, storeId: STORE,
           clientOrderKey: body.p_client_order_key, channel: body.p_channel,
-          orderNumber: "C-0001", status: "open", total: item.price * body.p_items[0].quantity
+          orderNumber: "C-0001", status: "open",
+          subtotal: Number((item.price * body.p_items[0].quantity).toFixed(2)),
+          discountTotal: 0, taxTotal: 0,
+          total: Number((item.price * body.p_items[0].quantity).toFixed(2))
         };
       }
-      return json({ order, items: [{ menuItemId: ITEM, unitPrice: item.price, quantity: 2 }] });
+      return json({ order, items: [{ id: "18000000-0000-4000-8000-000000000001",
+        menuItemId: ITEM, name: item.name, unitPrice: item.price, quantity: 2,
+        lineTotal: order.subtotal }] });
     }
     if (path === "/rest/v1/pos_orders") {
       assert.equal(url.searchParams.get("tenant_id"), "eq." + TENANT);
