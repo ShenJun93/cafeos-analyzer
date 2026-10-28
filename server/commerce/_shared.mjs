@@ -14,7 +14,9 @@ export function requiredUuid(value, code, message) {
   if (typeof value !== "string") throw new AppHttpError(400, code, message);
   const normalized = value.trim();
   if (!UUID_RE.test(normalized)) throw new AppHttpError(400, code, message);
-  return normalized;
+  // PostgreSQL UUID output is canonical lowercase. Normalize once before
+  // constructing RPC bodies and comparing commit/recovery acknowledgements.
+  return normalized.toLowerCase();
 }
 
 export function optionalBusinessDate(value) {
