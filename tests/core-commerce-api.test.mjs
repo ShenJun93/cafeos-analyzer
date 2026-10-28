@@ -1124,8 +1124,11 @@ test("paid receipt reads Store/Tenant-scoped immutable items and payment without
     if (url.pathname === "/rest/v1/pos_payments") {
       assert.equal(url.searchParams.get("order_id"), "eq." + ORDER_A);
       assert.equal(url.searchParams.get("status"), "eq.captured");
+      assert.equal(url.searchParams.get("select"),
+        "order_id,method,amount,status,paid_at,reference");
       return jsonResponse([{ order_id: ORDER_A, method: "cash",
-        amount: "70000.00", status: "captured", paid_at: paidAt }]);
+        amount: "70000.00", status: "captured", paid_at: paidAt,
+        reference: "bank-txn-123" }]);
     }
     if (url.pathname === "/rest/v1/stores") {
       assert.equal(url.searchParams.get("id"), "eq." + STORE_A);
@@ -1144,7 +1147,9 @@ test("paid receipt reads Store/Tenant-scoped immutable items and payment without
   assert.equal(receipt.total, "70000.00");
   assert.equal(receipt.items[0].name, "Cà phê sữa & <script>unsafe</script>");
   assert.equal(receipt.items[0].unitPrice, "35000.00");
-  assert.deepEqual(receipt.payment, { method: "cash", amount: "70000.00", paidAt });
+  assert.deepEqual(receipt.payment, {
+    method: "cash", amount: "70000.00", reference: "bank-txn-123", paidAt
+  });
   assert.deepEqual(calls.map(x => x.url.pathname).sort(), [
     "/rest/v1/pos_order_items", "/rest/v1/pos_orders",
     "/rest/v1/pos_payments", "/rest/v1/stores"
@@ -1162,7 +1167,7 @@ test("paid receipt refuses role misuse, cross-store, unpaid, missing and partial
     total: "70000.00", paid_at: "2026-10-27T09:30:00Z"
   };
   const payments = [{ order_id: ORDER_A, method: "cash", amount: "70000.00",
-    status: "captured", paid_at: order.paid_at }];
+    status: "captured", paid_at: order.paid_at, reference: null }];
   const lines = [{ id: "line-1", order_id: ORDER_A, item_name: "Latte",
     unit_price: "35000.00", quantity: 2, line_total: "70000.00" }];
   const fake = (orderRows, itemRows = lines, payRows = payments) => authFetch("cashier", async url => {
@@ -1206,6 +1211,12 @@ test("paid receipt refuses role misuse, cross-store, unpaid, missing and partial
     [[order], lines, [...payments, ...payments], 502, "COMMERCE_RECEIPT_INCOMPLETE"],
     [[order], lines, [{ ...payments[0], paid_at: "2026-10-27T09:30:01Z" }],
       502, "COMMERCE_RECEIPT_INCOMPLETE"],
+    [[order], lines, [{ ...payments[0], reference: true }],
+      502, "COMMERCE_RECEIPT_INCOMPLETE"],
+    [[order], lines, [{ ...payments[0], reference: "x".repeat(501) }],
+      502, "COMMERCE_RECEIPT_INCOMPLETE"],
+    [[order], lines, [{ ...payments[0], reference: undefined }],
+      502, "COMMERCE_RECEIPT_INCOMPLETE"],
     [[order], [{ ...lines[0], order_id: STORE_A }], payments, 502, "COMMERCE_RECEIPT_INCOMPLETE"]
   ]) {
     const response = res();
@@ -1236,7 +1247,7 @@ test("paid receipt reconciles items, discounts, tax, and captured payment in exa
         if (url.pathname === "/rest/v1/pos_order_items") return jsonResponse(items);
         if (url.pathname === "/rest/v1/pos_payments") return jsonResponse([{
           order_id: ORDER_A, method: "cash", amount: paidAmount,
-          status: "captured", paid_at: order.paid_at
+          status: "captured", paid_at: order.paid_at, reference: null
         }]);
         if (url.pathname === "/rest/v1/stores") return jsonResponse([{ id: STORE_A, name: "Store A" }]);
         return jsonResponse({}, 500);
