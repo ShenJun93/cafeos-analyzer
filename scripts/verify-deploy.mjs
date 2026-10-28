@@ -32,6 +32,7 @@ const required = [
   'server/commerce/dashboard.mjs',
   'server/commerce/hq.mjs',
   'server/commerce/source-bridge.mjs',
+  'server/commerce/hq-source-coverage.mjs',
   'server/commerce/daily-close.mjs',
   'public/cafeos-ui.css',
   'public/app.html',
