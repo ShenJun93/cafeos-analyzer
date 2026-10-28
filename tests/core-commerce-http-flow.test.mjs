@@ -61,7 +61,7 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
     if (path === "/rest/v1/tenants") return json([{ id: TENANT, name: "CafeOS Test" }]);
     if (path === "/rest/v1/stores") {
       assert.equal(url.searchParams.get("tenant_id"), "eq." + TENANT);
-      return json([{ id: STORE, name: "Test Store", timezone: "Asia/Ho_Chi_Minh", active: true }]);
+      return json([{ id: STORE, tenant_id: TENANT, name: "Test Store", timezone: "Asia/Ho_Chi_Minh", active: true }]);
     }
     if (path === "/rest/v1/menu_categories") {
       if (options.method === "POST") {
@@ -103,11 +103,11 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
         }
         const receiptRead = url.searchParams.get("select")?.includes("order_number");
         return json(receiptRead
-          ? [{ id: order.id, store_id: STORE, order_number: order.orderNumber,
+          ? [{ id: order.id, tenant_id: TENANT, store_id: STORE, order_number: order.orderNumber,
             channel: "counter", business_date: DATE, status: order.status,
             subtotal: order.total, discount_total: 0, tax_total: 0,
              total: order.total, paid_at: order.status === "paid" ? DATE + "T08:30:00Z" : null }]
-          : [{ id: order.id, store_id: STORE, status: order.status, total: order.total }]);
+          : [{ id: order.id, tenant_id: TENANT, store_id: STORE, status: order.status, total: order.total }]);
       }
       assert.equal(url.searchParams.get("store_id"), "eq." + STORE);
       const filter = url.searchParams.get("status");
@@ -125,7 +125,7 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
     if (path === "/rest/v1/pos_order_items") {
       assert.equal(url.searchParams.get("tenant_id"), "eq." + TENANT);
       assert.equal(url.searchParams.get("order_id"), "eq." + ORDER);
-      return json([{ id: "line-1", order_id: ORDER,
+      return json([{ id: "line-1", tenant_id: TENANT, order_id: ORDER,
         item_name: "Latte", unit_price: "35000.00", quantity: "2.000",
         line_total: "70000.00" }]);
     }
@@ -133,7 +133,7 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
       assert.equal(url.searchParams.get("tenant_id"), "eq." + TENANT);
       assert.equal(url.searchParams.get("order_id"), "eq." + ORDER);
       return json(payment ? [{
-        order_id: ORDER, amount: payment.amount, method: payment.method,
+        tenant_id: TENANT, order_id: ORDER, amount: payment.amount, method: payment.method,
         status: "captured", paid_at: DATE + "T08:30:00Z",
         reference: payment.reference ?? null
       }] : []);
