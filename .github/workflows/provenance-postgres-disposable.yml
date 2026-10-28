@@ -5,10 +5,12 @@ on:
     paths:
       - ".github/workflows/provenance-postgres-disposable.yml"
       - "tests/security/provenance-postgres-disposable-preflight.sql"
+      - "tests/security/fixtures/provenance-append-only-candidate-v1.sql"
   pull_request:
     paths:
       - ".github/workflows/provenance-postgres-disposable.yml"
       - "tests/security/provenance-postgres-disposable-preflight.sql"
+      - "tests/security/fixtures/provenance-append-only-candidate-v1.sql"
 
 permissions:
   contents: read
