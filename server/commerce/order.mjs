@@ -11,20 +11,13 @@ import {
 import {
   UUID_RE,
   commerceUpstreamError,
+  commerceReturnedCents,
   requiredUuid,
   strictFields
 } from "./_shared.mjs";
 
 const ALLOWED_FIELDS = new Set(["storeId", "clientOrderKey", "channel", "items"]);
 const CHANNELS = new Set(["counter", "takeaway", "pickup", "delivery"]);
-
-function validReturnedTotal(value) {
-  if ((typeof value !== "number" && typeof value !== "string")
-      || (typeof value === "number" && !Number.isFinite(value))) return false;
-  const raw = String(value);
-  return /^(?:0|[1-9][0-9]*)(?:[.][0-9]{1,2})?$/.test(raw)
-    && Number(raw) > 0 && Number(raw) <= 1000000000000;
-}
 
 function normalizeItems(value) {
   if (!Array.isArray(value) || value.length < 1 || value.length > 100) {
@@ -58,10 +51,10 @@ function normalizeItems(value) {
   });
 }
 
-// The order RPC may return line items in a different order and may serialize
-// SQL NUMERIC(12,3) as JSON numbers or decimal strings. Compare exact
-// thousandths, not floating-point equality or array order. Distinct duplicate
-// menu IDs remain valid only if all requested (ID,quantity) pairs are present.
+// The order RPC may reorder lines and serialize SQL NUMERIC as strings or
+// numbers. Match (menu UUID, exact milli-quantity) as a multiset and verify
+// the immutable server-owned price snapshot and generated numeric(18,2)
+// line totals in exact integer cents. Positive SQL rounding uses half-up.
 function quantityMilli(value) {
   if ((typeof value !== "number" && typeof value !== "string")
       || (typeof value === "number" && !Number.isFinite(value))) return null;
@@ -72,27 +65,37 @@ function quantityMilli(value) {
   return milli > 0n && milli <= 1000000n ? String(milli) : null;
 }
 
-function returnedItemsMatchIntent(returned, requested) {
-  if (!Array.isArray(returned) || returned.length !== requested.length) return false;
+function returnedItemsSnapshotCents(returned, requested) {
+  if (!Array.isArray(returned) || returned.length !== requested.length) return null;
   const remaining = new Map();
   for (const item of requested) {
     const quantity = quantityMilli(item.quantity);
-    if (quantity === null) return false;
+    if (quantity === null) return null;
     const key = item.menuItemId + ":" + quantity;
     remaining.set(key, (remaining.get(key) ?? 0) + 1);
   }
+  let subtotal = 0n;
+  const lineIds = new Set();
   for (const item of returned) {
     if (!item || typeof item !== "object" || Array.isArray(item)
-        || typeof item.menuItemId !== "string" || !UUID_RE.test(item.menuItemId)) return false;
+        || typeof item.id !== "string" || !UUID_RE.test(item.id)
+        || lineIds.has(item.id)
+        || typeof item.name !== "string" || !item.name.trim()
+        || typeof item.menuItemId !== "string" || !UUID_RE.test(item.menuItemId)) return null;
+    lineIds.add(item.id);
     const quantity = quantityMilli(item.quantity);
-    if (quantity === null) return false;
+    const price = commerceReturnedCents(item.unitPrice);
+    const lineTotal = commerceReturnedCents(item.lineTotal);
+    if (quantity === null || price === null || lineTotal === null
+        || (price * BigInt(quantity) + 500n) / 1000n !== lineTotal) return null;
     const key = item.menuItemId + ":" + quantity;
     const remainingCount = remaining.get(key) ?? 0;
-    if (remainingCount === 0) return false;
+    if (remainingCount === 0) return null;
     if (remainingCount === 1) remaining.delete(key);
     else remaining.set(key, remainingCount - 1);
+    subtotal += lineTotal;
   }
-  return remaining.size === 0;
+  return remaining.size === 0 ? subtotal : null;
 }
 
 export async function handle(req, res, deps = {}) {
@@ -135,6 +138,11 @@ export async function handle(req, res, deps = {}) {
     // retains the exact intent/key for safe reconciliation rather than
     // generating a replacement order with a fresh key.
     const confirmed = payload?.order;
+    const itemSubtotal = returnedItemsSnapshotCents(payload?.items, items);
+    const subtotal = commerceReturnedCents(confirmed?.subtotal);
+    const discount = commerceReturnedCents(confirmed?.discountTotal);
+    const tax = commerceReturnedCents(confirmed?.taxTotal);
+    const total = commerceReturnedCents(confirmed?.total);
     if (!confirmed || typeof confirmed !== "object" || Array.isArray(confirmed)
         || typeof confirmed.id !== "string" || !UUID_RE.test(confirmed.id)
         || confirmed.tenantId !== ctx.tenant.id
@@ -143,8 +151,10 @@ export async function handle(req, res, deps = {}) {
         || confirmed.channel !== channel
         || !["open", "paid", "voided"].includes(confirmed.status)
         || typeof confirmed.orderNumber !== "string" || !confirmed.orderNumber.trim()
-        || !validReturnedTotal(confirmed.total)
-        || !returnedItemsMatchIntent(payload.items, items)) {
+        || itemSubtotal === null || subtotal === null
+        || discount === null || tax === null || total === null
+        || total <= 0n || itemSubtotal !== subtotal
+        || subtotal - discount + tax !== total) {
       throw new AppHttpError(502, "SUPABASE_UPSTREAM",
         "Commerce order service returned inconsistent order evidence");
     }
