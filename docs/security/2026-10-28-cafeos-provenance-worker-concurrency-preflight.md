@@ -26,6 +26,7 @@ It does not receive binding insert/update, event update/delete/truncate, role cr
 - `PROVENANCE_PG_RACE_OVERLAP_CONFIRMED_PASS` — lock is held when the contender runs.
 - `PROVENANCE_PG_RACE_SERIALIZATION_PASS` — one and only one competing revision accepted.
 - `PROVENANCE_PG_RACE_FOREIGN_TENANT_DENIED_PASS` — no Tenant B append by Tenant A worker.
+- `PROVENANCE_PG_RACE_FORBIDDEN_DML_DENIED_PASS` — actual worker attempts to UPDATE binding/events, DELETE/TRUNCATE events or INSERT a new binding all fail with PostgreSQL SQLSTATE 42501.
 - `PROVENANCE_PG_RACE_REVOKED_TERMINAL_PASS` — no unreviewed reactivation.
 - `PROVENANCE_PG_RACE_PREFLIGHT_PASS` and `PROVENANCE_PG_CONCURRENCY_JOB_PASS` — complete and cleaned up.
 
