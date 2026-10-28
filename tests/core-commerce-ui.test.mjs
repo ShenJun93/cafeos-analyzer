@@ -2019,3 +2019,22 @@ test("paid history drops obsolete Store responses and refuses unpaid/other-Store
   await assert.rejects(runInContext("browsePaidOrders()", ctx), /không hợp lệ/);
   assert.equal(el("paidOrderList").children.length, 1);
 });
+
+test("HQ Overview exposes manager-only, date-scoped first-party multi-store evidence without local fake data", async () => {
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const vercel = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
+  const preview = await readFile(new URL("../scripts/serve-vercel-preview.mjs", import.meta.url), "utf8");
+  assert.match(html, /id="hqNav"[^>]*data-view="hqWorkspace"/);
+  assert.match(html, /id="hqBusinessDate" type="date"/);
+  assert.match(html, /id="hqMetrics"/);
+  assert.match(html, /id="hqStores"/);
+  assert.match(html, /hqNav"\)\.classList\.toggle\("hidden", !manager\)/);
+  assert.match(html, /\/api\/app\/commerce-hq\?businessDate=/);
+  assert.match(html, /overview\.source !== "cafeos_pos"/);
+  assert.match(html, /hqMoney\(overview\.salesTotal\)/);
+  assert.match(html, /không công bố tổng một phần/);
+  assert.ok(vercel.rewrites.some(x => x.source === "/api/app/commerce-hq"
+    && x.destination === "/api/app/workflow?route=commerce-hq"));
+  assert.match(preview, /'\/api\/app\/commerce-hq', 'commerce-hq'/);
+  assert.doesNotMatch(html, /localStorage|sessionStorage|indexedDB/);
+});

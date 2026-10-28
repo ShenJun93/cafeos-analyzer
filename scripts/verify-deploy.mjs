@@ -28,6 +28,7 @@ const required = [
   'server/commerce/order-status.mjs',
   'server/commerce/open-orders.mjs',
   'server/commerce/dashboard.mjs',
+  'server/commerce/hq.mjs',
   'server/commerce/daily-close.mjs',
   'public/cafeos-ui.css',
   'public/app.html',

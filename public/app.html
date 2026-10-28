@@ -46,6 +46,7 @@
       <button class="app-nav-item active" type="button" data-view="posWorkspace">POS</button>
       <button class="app-nav-item" type="button" data-view="menuWorkspace">Menu</button>
       <button class="app-nav-item" type="button" data-view="dashboardWorkspace">Dashboard</button>
+      <button id="hqNav" class="app-nav-item hidden" type="button" data-view="hqWorkspace">HQ Overview</button>
       <button class="app-nav-item" type="button" data-view="closeWorkspace">Daily Close</button>
       <button class="app-nav-item" type="button" data-view="controlWorkspace">Control Tower</button>
       <a class="app-nav-link" href="/analyzer">Analyzer</a>
@@ -171,6 +172,23 @@
       <div id="paymentMix" class="payment-mix"></div>
     </section>
 
+    <section id="hqWorkspace" class="app-workspace hidden">
+      <header class="workspace-heading">
+        <div>
+          <div class="section-label">Multi-store · first-party Commerce only</div>
+          <h2>HQ Overview</h2>
+          <p class="muted">Doanh thu CafeOS POS theo cùng business date, không gộp dữ liệu import/Control Tower. Dữ liệu chỉ đọc, không tự động Daily Close.</p>
+        </div>
+        <div class="hq-filters">
+          <label class="field-group">Business date<input id="hqBusinessDate" type="date"></label>
+          <button id="hqRefresh" type="button" disabled>Xem toàn hệ thống</button>
+        </div>
+      </header>
+      <p id="hqStatus" class="muted" aria-live="polite">Chọn ngày để tổng hợp các Store.</p>
+      <div id="hqMetrics" class="commerce-metrics"></div>
+      <div id="hqStores" class="hq-store-list"></div>
+    </section>
+
     <section id="closeWorkspace" class="app-workspace hidden">
       <header class="workspace-heading">
         <div>
@@ -222,6 +240,8 @@ let viewEpoch = 0;
 let dashboardReadSerial = 0;
 let menuReadSerial = 0;
 let controlReadSerial = 0;
+let hqReadSerial = 0;
+let hqLoadInFlight = false;
 let menuState = { categories: [], items: [] };
 let paidReceiptState = null;
 let receiptReadSerial = 0;
@@ -339,6 +359,8 @@ function renderRoleControls() {
   el("menuWriteControls").classList.toggle("hidden", !manager);
   el("menuReadOnlyNotice").classList.toggle("hidden", manager);
   el("closeManagerNotice").classList.toggle("hidden", manager);
+  el("hqNav").classList.toggle("hidden", !manager);
+  el("hqRefresh").disabled = !manager || hqLoadInFlight;
   el("closeDay").disabled = !manager || !currentDashboard || menuWriteInFlight
     || closeSubmitInFlight || hasUnfinishedCheckout()
     || Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
@@ -346,6 +368,17 @@ function renderRoleControls() {
 
 function hasUnfinishedCheckout() {
   return Boolean(pendingOrderSubmission || currentOrder || orderSubmitInFlight || paymentSubmitInFlight);
+}
+
+// Never let old authenticated Tenant/Store HQ data survive a context reset.
+function invalidateHQ() {
+  ++hqReadSerial;
+  hqLoadInFlight = false;
+  el("hqBusinessDate").value = "";
+  el("hqStatus").textContent = "Chọn ngày để tổng hợp các Store.";
+  el("hqMetrics").replaceChildren();
+  el("hqStores").replaceChildren();
+  el("hqRefresh").disabled = !canManageCommerce();
 }
 
 function preventUnsafeContextReset() {
@@ -394,6 +427,7 @@ function clearSessionState() {
   menuState = { categories: [], items: [] };
   invalidateOpenOrderReads();
   invalidatePaidOrderReads();
+  invalidateHQ();
   clearPaidReceipt();
   for (const id of ["menuCatalog", "menuAdminList", "commerceMetrics", "paymentMix", "controlBrief"]) {
     el(id).replaceChildren();
@@ -454,6 +488,7 @@ async function loadTenant() {
   cartState.clear();
   invalidateOpenOrderReads();
   invalidatePaidOrderReads();
+  invalidateHQ();
   menuState = { categories: [], items: [] };
   el("menuCatalog").replaceChildren();
   el("menuAdminList").replaceChildren();
@@ -497,6 +532,7 @@ async function refreshStore() {
   el("posMenuCategory").value = "";
   invalidateOpenOrderReads();
   invalidatePaidOrderReads();
+  invalidateHQ();
   // Control Tower reports on imported facts and must not block first-party sales.
   // Menu and daily dashboard remain required; their failures still fail closed.
   let controlTowerReady;
@@ -1247,6 +1283,7 @@ async function loadDashboard() {
       || requestedTenant !== currentTenantId || requestedStore !== currentStoreId
       || requestedToken !== sessionToken) return;
   currentDashboard = payload.dashboard;
+  if (!el("hqBusinessDate").value) el("hqBusinessDate").value = currentDashboard.businessDate;
 
   const metrics = el("commerceMetrics");
   metrics.replaceChildren(
@@ -1273,6 +1310,79 @@ async function loadDashboard() {
     mix.append(row);
   }
   renderClosePreview();
+}
+
+// Server totals are exact decimal strings. Display them without converting the
+// cross-store sum to IEEE-754 Number (which can lose large integer cents).
+function hqMoney(value) {
+  if (value === null) return "—";
+  const match = /^(0|[1-9][0-9]*)[.]([0-9]{2})$/.exec(value);
+  return match ? BigInt(match[1]).toLocaleString("vi-VN") + "," + match[2] + " ₫" : "—";
+}
+
+async function loadHQOverview() {
+  if (!canManageCommerce()) throw new Error("Chỉ Owner/Admin/Manager được xem HQ.");
+  if (hqLoadInFlight || !sessionToken || !currentTenantId) return;
+  const date = el("hqBusinessDate").value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error("Chọn business date hợp lệ để xem HQ.");
+  }
+  const serial = ++hqReadSerial, epoch = viewEpoch;
+  const tenant = currentTenantId, token = sessionToken;
+  const stillCurrent = () => serial === hqReadSerial && epoch === viewEpoch
+    && tenant === currentTenantId && token === sessionToken
+    && date === el("hqBusinessDate").value;
+  hqLoadInFlight = true;
+  el("hqRefresh").disabled = true;
+  el("hqStatus").textContent = "Đang xác minh doanh thu từng Store…";
+  el("hqMetrics").replaceChildren();
+  el("hqStores").replaceChildren();
+  try {
+    const { overview } = await appFetch(
+      "/api/app/commerce-hq?businessDate=" + encodeURIComponent(date)
+    );
+    if (!stillCurrent()) return;
+    if (!overview || overview.source !== "cafeos_pos" || overview.businessDate !== date
+        || !Array.isArray(overview.stores)
+        || overview.stores.length !== overview.storeCount) {
+      throw new Error("HQ trả về dữ liệu nguồn hoặc business date không khớp.");
+    }
+    el("hqMetrics").replaceChildren(
+      metric("First-party sales", hqMoney(overview.salesTotal)),
+      metric("Paid orders", String(overview.orderCount)),
+      metric("Weighted AOV", hqMoney(overview.aov)),
+      metric("Open orders", String(overview.openOrderCount))
+    );
+    const list = el("hqStores");
+    for (const store of overview.stores) {
+      const row = document.createElement("div");
+      row.className = "evidence-row hq-store-row";
+      const name = document.createElement("span");
+      name.textContent = store.name + " · " + store.orderCount + " đã thanh toán"
+        + " · " + store.openOrderCount + " chưa thanh toán"
+        + (store.status === "closed" ? " · CLOSED" : " · OPEN");
+      const amount = document.createElement("strong");
+      amount.textContent = hqMoney(store.salesTotal);
+      row.append(name, amount);
+      list.append(row);
+    }
+    el("hqStatus").textContent = "CafeOS POS · " + date + " · "
+      + overview.storeCount + " Store · " + overview.closedStoreCount
+      + " đã đóng ngày. Nguồn import không nằm trong tổng này.";
+    if (!overview.storeCount) list.textContent = "Tenant chưa có Store hoạt động.";
+  } catch (error) {
+    if (stillCurrent()) {
+      el("hqMetrics").replaceChildren();
+      el("hqStores").replaceChildren();
+      el("hqStatus").textContent = "HQ không đủ bằng chứng tất cả Store; không công bố tổng một phần.";
+      throw error;
+    }
+  } finally {
+    if (serial === hqReadSerial) {
+      hqLoadInFlight = false;
+      el("hqRefresh").disabled = !canManageCommerce();
+    }
+  }
 }
 
 function renderClosePreview() {
@@ -1402,6 +1512,9 @@ async function loadControlTower() {
 }
 
 function showWorkspace(id) {
+  if (id === "hqWorkspace" && canManageCommerce() && el("hqBusinessDate").value) {
+    void guarded(loadHQOverview);
+  }
   for (const workspace of document.querySelectorAll(".app-workspace")) {
     workspace.classList.toggle("hidden", workspace.id !== id);
   }
@@ -1429,6 +1542,15 @@ el("capturePayment").addEventListener("click", () => guarded(capturePayment));
 el("printPaidReceipt").addEventListener("click", printPaidReceipt);
 el("recoverOpenOrders").addEventListener("click", () => guarded(() => loadOpenOrdersForRecovery()));
 el("browsePaidOrders").addEventListener("click", () => guarded(() => browsePaidOrders()));
+el("hqRefresh").addEventListener("click", () => guarded(loadHQOverview));
+el("hqBusinessDate").addEventListener("change", () => {
+  ++hqReadSerial;
+  hqLoadInFlight = false;
+  el("hqMetrics").replaceChildren();
+  el("hqStores").replaceChildren();
+  el("hqStatus").textContent = "Ngày đã đổi; nhấn Xem toàn hệ thống để xác minh lại.";
+  renderRoleControls();
+});
 el("categoryForm").addEventListener("submit", event => guarded(() => createCategory(event)));
 el("itemForm").addEventListener("submit", event => guarded(() => createItem(event)));
 el("closeDay").addEventListener("click", () => guarded(closeBusinessDay));

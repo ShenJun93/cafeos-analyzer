@@ -20,7 +20,7 @@ import {
 const PAYMENT_METHODS = new Set(["cash", "card", "bank_transfer", "wallet", "other"]);
 
 // The Daily Close receipt state must remain consistent with the SQL audit fields.
-function validDashboard(payload, tenantId, storeId, businessDate) {
+export function validDashboard(payload, tenantId, storeId, businessDate) {
   if (!payload || Array.isArray(payload) || typeof payload !== "object"
       || payload.tenantId !== tenantId || payload.storeId !== storeId
       || payload.source !== "cafeos_pos"

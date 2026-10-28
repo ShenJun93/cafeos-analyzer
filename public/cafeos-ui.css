@@ -392,3 +392,16 @@ textarea{min-height:110px;resize:vertical}
 .paid-order-history{margin-top:18px;padding-top:15px;border-top:1px solid var(--line)}
 .paid-order-history .section-label{margin-bottom:8px}
 .paid-order-history > button{width:100%;min-height:44px}
+
+/* HQ comparison uses the existing Hallmark evidence rows, without wide tables. */
+.hq-filters{display:flex;gap:12px;align-items:end;flex-wrap:wrap}
+.hq-filters .field-group{min-width:165px}
+.hq-store-list{margin-top:24px;border-top:1px solid var(--line)}
+.hq-store-row{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;overflow-wrap:anywhere}
+.hq-store-row span{min-width:0}
+.hq-store-row strong{text-align:right;white-space:nowrap}
+@media (max-width:720px){
+  .hq-filters{width:100%;align-items:stretch}
+  .hq-filters .field-group,.hq-filters button{flex:1 1 100%}
+  .hq-store-row strong{white-space:normal}
+}
