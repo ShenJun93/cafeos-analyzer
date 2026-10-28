@@ -124,6 +124,13 @@ export function inspectNamespaceAccountClaims({
   ])));
   if (identities.size !== 1) return response("namespace_conflict", observed.length);
 
+  // Even if the provider/account/branch tuple is identical, two separately
+  // claimed binding IDs for the same Tenant/Store/namespace are an unresolved
+  // ownership/replay conflict. A future verified ledger must make binding
+  // rotation or supersession explicit; do not infer it from matching strings.
+  const bindingIds = new Set(observed.map(record => record.bindingId));
+  if (bindingIds.size !== 1) return response("binding_conflict", observed.length);
+
   const inEffect = observed.filter(record => timestamp(record.effectiveFrom) <= at);
   // Revocation/rejection is sticky: never reactivate by adding a later claim
   // unless a separately reviewed future contract explicitly allows it.
