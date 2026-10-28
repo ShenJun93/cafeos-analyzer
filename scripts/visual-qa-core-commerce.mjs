@@ -100,6 +100,32 @@ async function installMockTransport(page) {
         } };
         break;
       }
+      case "/api/app/commerce-hq-sources": {
+        assert.equal(req.method(), "GET");
+        assert.equal(url.searchParams.get("businessDate"), DATE);
+        assert.equal(manager, true, "cashier may not read HQ source coverage");
+        payload = { report: {
+          sourceBoundary: "separate_not_deduplicated",
+          businessDate: DATE, activeStoreCount: 1,
+          counts: { bothPresent: 1, posOnly: 0, importsOnly: 0, neither: 0 },
+          reconciliation: { status: "not_proven",
+            sharedTransactionIdentity: "not_verified",
+            deduplication: "not_performed", combinedSales: null },
+          stores: [{
+            storeId: STORE, storeName: "Synthetic Flagship", businessDate: DATE,
+            status: "both_present_overlap_unresolved",
+            pos: {
+              source: "cafeos_pos", hasData: true, salesTotal: "70000.00",
+              paidOrders: 1, openOrders: 0, closed: state.closed
+            },
+            imports: {
+              source: "imported_line_items", hasData: true,
+              netSales: "34000.00", orders: 1, baselineStatus: "insufficient_history"
+            }
+          }]
+        } };
+        break;
+      }
       case "/api/app/brief":
         payload = {
           kind: "control-tower-daily-brief",
@@ -299,6 +325,12 @@ async function runViewport(browser, width, height, base) {
     assert.match(await page.locator("#hqStatus").innerText(), /1 Store/);
     assert.match(await page.locator("#hqStores").innerText(), /Synthetic Flagship/);
     await snapshot(page, width, "hq-overview");
+    await page.locator("#hqSourcesRefresh").click();
+    await page.locator("#hqSourcesRows .hq-source-row").first().waitFor({state:"visible"});
+    assert.match(await page.locator("#hqSourcesRows").innerText(), /Synthetic Flagship/);
+    assert.match(await page.locator("#hqSourcesRows").innerText(), /CHƯA loại trùng/);
+    assert.match(await page.locator("#hqSourcesStatus").innerText(), /Không có tổng doanh thu gộp/);
+    await snapshot(page, width, "hq-source-coverage");
     await page.locator('[data-view="posWorkspace"]').click();
     const latte = page.locator("#menuCatalog .menu-item-button").filter({ hasText: "Latte" });
     await latte.click();
@@ -393,6 +425,7 @@ async function runViewport(browser, width, height, base) {
     assert.equal(await cashier.locator("#voidControls").isVisible(), false);
     assert.equal(await cashier.locator("#voidHistorySection").isVisible(), false);
     assert.equal(await cashier.locator("#hqNav").isVisible(), false);
+    assert.equal(await cashier.locator("#hqSourcesRefresh").isVisible(), false);
     assert.equal(await cashier.locator("#menuCatalog .menu-item-button").first().isEnabled(), true);
     await snapshot(cashier, width, "cashier");
     console.log("BROWSER_VISUAL_PASS cashier " + width + "x" + height);

@@ -2092,3 +2092,28 @@ test("Control Tower source bridge displays source-scoped POS/import metrics, nev
     && r.destination==="/api/app/workflow?route=commerce-source-bridge"));
   assert.doesNotMatch(html, /localStorage|sessionStorage|indexedDB/);
 });
+
+
+test("HQ multi-store source coverage is manager-only, exact-date, fail-closed and never combines POS+import sales", async () => {
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const css = await readFile(new URL("../public/cafeos-ui.css", import.meta.url), "utf8");
+  const vercel = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
+  const preview = await readFile(new URL("../scripts/serve-vercel-preview.mjs", import.meta.url), "utf8");
+  assert.match(html, /id="hqSourcesRefresh"/);
+  assert.match(html, /id="hqSourcesStatus"/);
+  assert.match(html, /id="hqSourcesCounts"/);
+  assert.match(html, /id="hqSourcesRows"/);
+  assert.match(html, /hqSourcesRefresh"\)\.disabled = !manager/);
+  assert.match(html, /async function loadHQSourceCoverage\(\)/);
+  assert.match(html, /\/api\/app\/commerce-hq-sources\?businessDate=/);
+  assert.match(html, /report\.sourceBoundary !== "separate_not_deduplicated"/);
+  assert.match(html, /report\.reconciliation\?\.combinedSales !== null/);
+  assert.match(html, /KhÔNG|CHƯA loại trùng|KHÔNG/i);
+  assert.match(html, /serial === hqSourcesSerial/);
+  assert.match(html, /invalidateHQSources\(\)/);
+  assert.match(css, /\.hq-source-row/);
+  assert.ok(vercel.rewrites.some(r => r.source === "/api/app/commerce-hq-sources"
+    && r.destination === "/api/app/workflow?route=commerce-hq-sources"));
+  assert.match(preview, /'\/api\/app\/commerce-hq-sources', 'commerce-hq-sources'/);
+  assert.doesNotMatch(html, /localStorage|sessionStorage|indexedDB/);
+});

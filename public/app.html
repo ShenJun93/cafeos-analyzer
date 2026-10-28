@@ -200,6 +200,15 @@
       <p id="hqStatus" class="muted" aria-live="polite">Chọn ngày để tổng hợp các Store.</p>
       <div id="hqMetrics" class="commerce-metrics"></div>
       <div id="hqStores" class="hq-store-list"></div>
+      <section class="hq-source-panel">
+        <div class="section-label">Phase 1.1 · source coverage across Stores</div>
+        <h3>Độ phủ dữ liệu POS / import</h3>
+        <p class="muted">Cùng ngày nghiệp vụ, từng Store. Hai doanh thu giữ độc lập: có cả hai nguồn KHÔNG chứng minh đã loại trùng.</p>
+        <button id="hqSourcesRefresh" class="secondary" type="button" disabled>Kiểm tra độ phủ nguồn</button>
+        <p id="hqSourcesStatus" class="muted" aria-live="polite">Chọn ngày và xác minh nguồn từng Store.</p>
+        <div id="hqSourcesCounts" class="commerce-metrics"></div>
+        <div id="hqSourcesRows" class="hq-source-rows"></div>
+      </section>
     </section>
 
     <section id="closeWorkspace" class="app-workspace hidden">
@@ -274,6 +283,8 @@ let sourceBridgeSerial = 0;
 let sourceBridgeInFlight = false;
 let hqReadSerial = 0;
 let hqLoadInFlight = false;
+let hqSourcesSerial = 0;
+let hqSourcesInFlight = false;
 let menuState = { categories: [], items: [] };
 let paidReceiptState = null;
 let receiptReadSerial = 0;
@@ -395,6 +406,7 @@ function renderRoleControls() {
   el("voidHistorySection").classList.toggle("hidden", !manager);
   el("hqNav").classList.toggle("hidden", !manager);
   el("hqRefresh").disabled = !manager || hqLoadInFlight;
+  el("hqSourcesRefresh").disabled = !manager || hqSourcesInFlight;
   el("sourceBridgeRefresh").disabled = !sessionToken || !currentStoreId || sourceBridgeInFlight;
   el("closeDay").disabled = !manager || !currentDashboard || menuWriteInFlight
     || closeSubmitInFlight || hasUnfinishedCheckout()
@@ -406,8 +418,18 @@ function hasUnfinishedCheckout() {
     || paymentSubmitInFlight || voidSubmitInFlight || pendingVoidIntent);
 }
 
+function invalidateHQSources() {
+  ++hqSourcesSerial;
+  hqSourcesInFlight = false;
+  el("hqSourcesRows").replaceChildren();
+  el("hqSourcesCounts").replaceChildren();
+  el("hqSourcesStatus").textContent = "Chọn ngày và xác minh nguồn từng Store.";
+  el("hqSourcesRefresh").disabled = !canManageCommerce();
+}
+
 // Never let old authenticated Tenant/Store HQ data survive a context reset.
 function invalidateHQ() {
+  invalidateHQSources();
   ++hqReadSerial;
   hqLoadInFlight = false;
   el("hqBusinessDate").value = "";
@@ -1593,6 +1615,7 @@ async function loadHQOverview() {
     && tenant === currentTenantId && token === sessionToken
     && date === el("hqBusinessDate").value;
   hqLoadInFlight = true;
+  invalidateHQSources();
   el("hqRefresh").disabled = true;
   el("hqStatus").textContent = "Đang xác minh doanh thu từng Store…";
   el("hqMetrics").replaceChildren();
@@ -1641,6 +1664,111 @@ async function loadHQOverview() {
     if (serial === hqReadSerial) {
       hqLoadInFlight = false;
       el("hqRefresh").disabled = !canManageCommerce();
+    }
+  }
+}
+
+// Store-by-Store source availability, NOT a unified financial rollup.
+async function loadHQSourceCoverage() {
+  if (!canManageCommerce()) throw new Error("Chỉ Owner/Admin/Manager được xem độ phủ HQ.");
+  if (!sessionToken || !currentTenantId || hqSourcesInFlight) return;
+  const date = el("hqBusinessDate").value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Chọn business date hợp lệ.");
+  const serial = ++hqSourcesSerial, epoch = viewEpoch;
+  const tenant = currentTenantId, token = sessionToken;
+  const stillCurrent = () => serial === hqSourcesSerial && epoch === viewEpoch
+    && tenant === currentTenantId && token === sessionToken
+    && date === el("hqBusinessDate").value;
+  hqSourcesInFlight = true;
+  el("hqSourcesRefresh").disabled = true;
+  const countsRoot = el("hqSourcesCounts"), rowsRoot = el("hqSourcesRows");
+  countsRoot.replaceChildren();
+  rowsRoot.replaceChildren();
+  el("hqSourcesStatus").textContent = "Đang xác minh hai nguồn trên tất cả Store…";
+  try {
+    const { report } = await appFetch("/api/app/commerce-hq-sources?businessDate="
+      + encodeURIComponent(date));
+    if (!stillCurrent()) return;
+    const validCount = n => Number.isSafeInteger(n) && n >= 0 && n <= 25;
+    const keys = ["bothPresent", "posOnly", "importsOnly", "neither"];
+    if (!report || report.sourceBoundary !== "separate_not_deduplicated"
+      || report.businessDate !== date || !validCount(report.activeStoreCount)
+      || !Array.isArray(report.stores) || report.stores.length !== report.activeStoreCount
+      || !report.counts || keys.some(k => !validCount(report.counts[k]))
+      || keys.reduce((sum, k) => sum + report.counts[k], 0) !== report.activeStoreCount
+      || report.reconciliation?.combinedSales !== null
+      || report.reconciliation?.deduplication !== "not_performed") {
+      throw new Error("Không xác minh được độ phủ hoặc ranh giới nguồn.");
+    }
+    const labels = {
+      both_present_overlap_unresolved: "Cả hai nguồn · CHƯA loại trùng",
+      pos_only_observed: "Chỉ POS có đơn đã thanh toán",
+      imports_only_observed: "Chỉ import có giao dịch",
+      neither_observed: "Chưa ghi nhận giao dịch từ hai nguồn"
+    };
+    const seen = new Set();
+    for (const store of report.stores) {
+      const expectedStatus = store?.pos?.hasData && store?.imports?.hasData
+        ? "both_present_overlap_unresolved"
+        : store?.pos?.hasData ? "pos_only_observed"
+        : store?.imports?.hasData ? "imports_only_observed" : "neither_observed";
+      if (!store || typeof store.storeId !== "string" || !store.storeName
+        || store.businessDate !== date || !(store.status in labels)
+        || store.status !== expectedStatus
+        || seen.has(store.storeId)
+        || store.pos?.source !== "cafeos_pos"
+        || store.imports?.source !== "imported_line_items"
+        || typeof store.pos.hasData !== "boolean"
+        || typeof store.imports.hasData !== "boolean"
+        || !Number.isSafeInteger(store.pos.paidOrders)
+        || store.pos.paidOrders < 0
+        || !Number.isSafeInteger(store.pos.openOrders)
+        || store.pos.openOrders < 0
+        || !/^(0|[1-9][0-9]*)[.]([0-9]{2})$/.test(store.pos.salesTotal)
+        || (store.imports.hasData && store.imports.netSales == null)
+        || (!store.imports.hasData && store.imports.netSales !== null)) {
+        throw new Error("Bằng chứng từng Store không hợp lệ.");
+      }
+      seen.add(store.storeId);
+    }
+    // Build only after validating all Store rows to avoid incomplete views.
+    countsRoot.replaceChildren(
+      metric("Cả hai nguồn", String(report.counts.bothPresent)),
+      metric("Chỉ POS", String(report.counts.posOnly)),
+      metric("Chỉ import", String(report.counts.importsOnly)),
+      metric("Không có ghi nhận", String(report.counts.neither))
+    );
+    for (const store of report.stores) {
+      const row = document.createElement("div");
+      row.className = "hq-source-row";
+      const heading = document.createElement("strong");
+      heading.textContent = store.storeName;
+      const status = document.createElement("span");
+      status.textContent = labels[store.status];
+      const pos = document.createElement("span");
+      pos.textContent = "POS: " + hqMoney(store.pos.salesTotal)
+        + " · " + store.pos.paidOrders + " đơn đã thanh toán";
+      const imported = document.createElement("span");
+      imported.textContent = "Import: " + (store.imports.hasData
+        ? String(store.imports.netSales) + " (net sales, nguồn ngoài)"
+        : "Chưa có bằng chứng dữ liệu ngày này");
+      row.append(heading, status, pos, imported);
+      rowsRoot.append(row);
+    }
+    if (!report.stores.length) rowsRoot.textContent = "Tenant chưa có Store hoạt động.";
+    el("hqSourcesStatus").textContent = date + " · " + report.activeStoreCount
+      + " Store đã kiểm tra. Không có tổng doanh thu gộp POS + import.";
+  } catch (error) {
+    if (stillCurrent()) {
+      countsRoot.replaceChildren();
+      rowsRoot.replaceChildren();
+      el("hqSourcesStatus").textContent = "Không đầy đủ bằng chứng tất cả Store; đã ẩn toàn bộ kết quả.";
+      throw error;
+    }
+  } finally {
+    if (serial === hqSourcesSerial) {
+      hqSourcesInFlight = false;
+      el("hqSourcesRefresh").disabled = !canManageCommerce();
     }
   }
 }
@@ -1888,6 +2016,7 @@ el("printPaidReceipt").addEventListener("click", printPaidReceipt);
 el("recoverOpenOrders").addEventListener("click", () => guarded(() => loadOpenOrdersForRecovery()));
 el("browsePaidOrders").addEventListener("click", () => guarded(() => browsePaidOrders()));
 el("hqRefresh").addEventListener("click", () => guarded(loadHQOverview));
+el("hqSourcesRefresh").addEventListener("click", () => guarded(loadHQSourceCoverage));
 el("sourceBridgeRefresh").addEventListener("click", () => guarded(loadSourceBridge));
 el("sourceBridgeDate").addEventListener("change", () => {
   ++sourceBridgeSerial;
@@ -1896,6 +2025,7 @@ el("sourceBridgeDate").addEventListener("change", () => {
   el("sourceBridgeStatus").textContent = "Ngày đổi; nhấn Xem hai nguồn để xác minh lại.";
 });
 el("hqBusinessDate").addEventListener("change", () => {
+  invalidateHQSources();
   ++hqReadSerial;
   hqLoadInFlight = false;
   el("hqMetrics").replaceChildren();

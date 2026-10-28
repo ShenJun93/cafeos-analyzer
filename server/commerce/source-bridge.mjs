@@ -19,7 +19,7 @@ function metricValue(value, { count = false } = {}) {
     || !Number.isSafeInteger(Number(text)))) return false;
   return true;
 }
-function validImported(raw, tenant, store, businessDate) {
+export function validImported(raw, tenant, store, businessDate) {
   if (!raw || Array.isArray(raw) || typeof raw !== "object"
     || raw.tenantId !== tenant || !raw.store || Array.isArray(raw.store)
     || raw.store.id !== store || raw.store.active !== true
