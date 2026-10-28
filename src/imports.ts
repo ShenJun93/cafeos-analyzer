@@ -17,8 +17,20 @@ function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+// Preserve existing import hashes for ordinary data; refuse identity fields
+// that could alias when the legacy U+001F-separated record key is serialized.
+const RECORD_SEPARATOR = "\u001f";
+
+function safeScopePart(value: string, label: string): string {
+  if (typeof value !== "string" || !value || value.trim() !== value
+    || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw new Error("Unsafe import " + label + ": control characters or empty scope");
+  }
+  return value;
+}
+
 function baseIdentity(item: CanonicalLineItem): string {
-  return [
+  const fields = [
     item.transactionId,
     item.occurredAt,
     item.store,
@@ -26,7 +38,11 @@ function baseIdentity(item: CanonicalLineItem): string {
     item.quantity.toString(),
     item.netAmount.toString(),
     item.customerKey ?? ""
-  ].join("\u001f");
+  ];
+  if (fields.some(value => value.includes(RECORD_SEPARATOR))) {
+    throw new Error("Unsafe import record identity: reserved separator in source field");
+  }
+  return fields.join(RECORD_SEPARATOR);
 }
 
 /**
@@ -45,6 +61,8 @@ export function keyCanonicalItems(items: CanonicalLineItem[]): KeyedLineItem[] {
 }
 
 export function fingerprintImport(tenantId: string, sourceNamespace: string, keyedItems: KeyedLineItem[]): string {
+  safeScopePart(tenantId, "tenant");
+  safeScopePart(sourceNamespace, "source namespace");
   const keys = keyedItems.map(x => x.sourceRecordKey).sort();
   return sha256([tenantId, sourceNamespace, ...keys].join("\n"));
 }
@@ -55,6 +73,8 @@ export function planImport(
   items: CanonicalLineItem[],
   existingRecordKeys: ReadonlySet<string> = new Set()
 ): ImportPlan {
+  safeScopePart(tenantId, "tenant");
+  safeScopePart(sourceNamespace, "source namespace");
   const keyedItems = keyCanonicalItems(items);
   const newItems = keyedItems.filter(x => !existingRecordKeys.has(x.sourceRecordKey));
   return {
@@ -69,7 +89,9 @@ export class InMemoryImportLedger {
   private readonly keysByTenantAndSource = new Map<string, Set<string>>();
 
   ingest(tenantId: string, sourceNamespace: string, items: CanonicalLineItem[]): ImportPlan {
-    const namespace = `${tenantId}\u001f${sourceNamespace}`;
+    safeScopePart(tenantId, "tenant");
+    safeScopePart(sourceNamespace, "source namespace");
+    const namespace = JSON.stringify([tenantId, sourceNamespace]);
     const known = this.keysByTenantAndSource.get(namespace) ?? new Set<string>();
     const plan = planImport(tenantId, sourceNamespace, items, known);
     for (const x of plan.newItems) known.add(x.sourceRecordKey);
@@ -78,6 +100,8 @@ export class InMemoryImportLedger {
   }
 
   size(tenantId: string, sourceNamespace: string): number {
-    return this.keysByTenantAndSource.get(`${tenantId}\u001f${sourceNamespace}`)?.size ?? 0;
+    safeScopePart(tenantId, "tenant");
+    safeScopePart(sourceNamespace, "source namespace");
+    return this.keysByTenantAndSource.get(JSON.stringify([tenantId, sourceNamespace]))?.size ?? 0;
   }
 }
