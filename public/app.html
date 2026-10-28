@@ -897,6 +897,7 @@ async function capturePayment() {
     const attemptedOrderId = currentOrder.id;
     const attemptedTotal = currentOrder.total;
     const attemptedMethod = el("paymentMethod").value;
+    const attemptedReference = el("paymentReference").value.trim() || null;
     const attemptedCents = paymentCents(attemptedTotal);
     if (attemptedCents === null) {
       throw new Error("Server total không hợp lệ; không gửi Payment.");
@@ -909,7 +910,7 @@ async function capturePayment() {
           orderId: attemptedOrderId,
           method: attemptedMethod,
           amount: Number(attemptedTotal),
-          reference: el("paymentReference").value.trim() || null
+          reference: attemptedReference
         }
       });
     } catch (paymentError) {
@@ -936,6 +937,10 @@ async function capturePayment() {
             && receipt?.storeId === currentStoreId
             && receipt?.status === "paid"
             && receipt?.payment?.method === attemptedMethod
+            // Matching method+amount is not sufficient when another cashier
+            // captures the same order. Compare the actual recorded reference
+            // as well; a null reference is not a unique transaction ID.
+            && receipt?.payment?.reference === attemptedReference
             && paymentCents(receipt?.payment?.amount) === attemptedCents
             && paymentCents(receipt?.total) === attemptedCents;
         }
@@ -956,7 +961,7 @@ async function capturePayment() {
     void loadPaidReceipt(attemptedOrderId);
     await refreshDashboardAfterSale(
       recovered
-        ? "Server xác nhận đơn đã thu đủ, phương thức và số tiền captured khớp sau lỗi phản hồi."
+        ? "Server xác nhận đơn đã thanh toán với phương thức, số tiền và mã tham chiếu khớp. Không thể xác định chính POST bị mất phản hồi đã ghi nhận nếu thiếu mã giao dịch duy nhất."
         : "Payment record đã captured. Order đã paid."
     );
   } finally {
