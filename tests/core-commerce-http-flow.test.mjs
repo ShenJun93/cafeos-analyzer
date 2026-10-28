@@ -115,7 +115,7 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
       const expectedStatus = filter.slice(3);
       return json(order?.status === expectedStatus && url.searchParams.get("offset") !== "20"
         ? [{
-          id: ORDER, store_id: STORE, order_number: "C-0001", channel: "counter",
+          id: ORDER, tenant_id: TENANT, store_id: STORE, order_number: "C-0001", channel: "counter",
           status: expectedStatus, total: order.total, created_at: DATE + "T07:00:00Z",
           paid_at: expectedStatus === "paid" ? DATE + "T08:30:00Z" : null,
           business_date: DATE
