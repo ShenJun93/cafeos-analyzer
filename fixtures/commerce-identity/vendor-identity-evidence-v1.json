@@ -1,0 +1,99 @@
+{
+  "schemaVersion": "cafeos-vendor-identity-evidence-v1",
+  "purpose": "Documented field presence and synthetic negative controls only; no live merchant ingestion or cross-POS matching claims",
+  "syntheticOnly": true,
+  "vendors": [
+    {
+      "vendor": "kiotviet",
+      "productFamily": "KiotViet Retail public API (not proof for F&B)",
+      "sourceUrl": "https://www.kiotviet.vn/huong-dan-su-dung-kiotviet/retail-ket-noi-api/public-api/",
+      "documentedFields": [
+        "id",
+        "code",
+        "branchId",
+        "purchaseDate"
+      ],
+      "candidateVendorOrderId": "id",
+      "displayOrderField": "code",
+      "accountScopeField": null,
+      "branchScopeField": "branchId",
+      "sourceFamilyScopeProven": false,
+      "stableIdentityAcrossLifecycleVerified": false,
+      "globalUniquenessVerified": false,
+      "crossPosLinkVerified": false,
+      "notes": "Retail API exposes invoice id/code/detail lookup. Does not establish F&B CSV equivalence or lifecycle/global scope."
+    },
+    {
+      "vendor": "cukcuk",
+      "productFamily": "CUKCUK OpenPlatform orders paging API",
+      "sourceUrl": "https://graphapi.cukcuk.vn/document/api/orders_paging.html",
+      "documentedFields": [
+        "CompanyCode",
+        "Id",
+        "No",
+        "BranchId",
+        "Date",
+        "Status"
+      ],
+      "candidateVendorOrderId": "Id",
+      "displayOrderField": "No",
+      "accountScopeField": "CompanyCode",
+      "branchScopeField": "BranchId",
+      "sourceFamilyScopeProven": true,
+      "stableIdentityAcrossLifecycleVerified": false,
+      "globalUniquenessVerified": false,
+      "crossPosLinkVerified": false,
+      "observedDocCollision": {
+        "field": "No",
+        "sameDisplay": "1.2",
+        "distinctIds": [
+          "cbfeea95-6996-4b86-9f7b-915b3217726f",
+          "6f8ac33c-266f-4dc1-a647-8a0c5ebb8070"
+        ]
+      },
+      "notes": "Official example repeats No 1.2 across distinct Ids. Id is described as order GUID; long-term reuse/immutable lifecycle still unverified."
+    },
+    {
+      "vendor": "pos365",
+      "productFamily": "POS365 OrderSave API metadata",
+      "sourceUrl": "https://api.pos365.vn/api/json/metadata?op=OrderSave",
+      "documentedFields": [
+        "Id",
+        "Code",
+        "RetailerId",
+        "BranchId",
+        "PurchaseDate",
+        "ModifiedDate"
+      ],
+      "candidateVendorOrderId": "Id",
+      "displayOrderField": "Code",
+      "accountScopeField": "RetailerId",
+      "branchScopeField": "BranchId",
+      "sourceFamilyScopeProven": false,
+      "stableIdentityAcrossLifecycleVerified": false,
+      "globalUniquenessVerified": false,
+      "crossPosLinkVerified": false,
+      "notes": "OrderSave schema describes fields; does not prove export column identity, scope uniqueness, or read-path mapping."
+    },
+    {
+      "vendor": "sapo_fnb",
+      "productFamily": "Sapo FnB invoice Excel export",
+      "sourceUrl": "https://help.sapo.vn/xuat-danh-sach-hoa-don-tren-trang-quan-tri-sapo-fnb",
+      "documentedFields": [
+        "overview-export",
+        "detailed-export",
+        "date-filter",
+        "max-20000-lines"
+      ],
+      "candidateVendorOrderId": null,
+      "displayOrderField": null,
+      "accountScopeField": null,
+      "branchScopeField": null,
+      "sourceFamilyScopeProven": true,
+      "stableIdentityAcrossLifecycleVerified": false,
+      "globalUniquenessVerified": false,
+      "crossPosLinkVerified": false,
+      "notes": "Official export help documents overview vs detail and 20k line cap; it does not specify a stable API order ID in the exported Excel."
+    }
+  ]
+}
