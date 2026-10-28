@@ -1,5 +1,5 @@
 {
-  "sha256": "0d1daf466277e472899169fa4eb63448f7c755ac237035a990bfd7b7e9f21a61",
+  "sha256": "641ad27df8c613dca6b9e66a7f71a9c06d488141ef46d9337e48f0aafe8dadb2",
   "files": [
     "src/acquisition.ts",
     "src/analyze.ts",
