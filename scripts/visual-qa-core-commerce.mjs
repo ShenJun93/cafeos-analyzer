@@ -79,6 +79,27 @@ async function installMockTransport(page) {
       case "/api/app/commerce-dashboard":
         payload = { dashboard: { ...day(), closed: state.closed } };
         break;
+      case "/api/app/commerce-hq": {
+        assert.equal(req.method(), "GET");
+        assert.equal(url.searchParams.get("businessDate"), DATE);
+        if (!manager) {
+          status = 403;
+          payload = { error: { code: "COMMERCE_MANAGER_FORBIDDEN", message: "Manager role required" } };
+          break;
+        }
+        payload = { overview: {
+          source: "cafeos_pos", businessDate: DATE,
+          storeCount: 1, closedStoreCount: 0, orderCount: 1, openOrderCount: 0,
+          salesTotal: "70000.00", paymentTotal: "70000.00",
+          aov: "70000.00", paymentMix: { cash: "70000.00" },
+          stores: [{
+            id: STORE, name: "Synthetic Flagship", businessDate: DATE,
+            status: "open", orderCount: 1, openOrderCount: 0,
+            salesTotal: "70000.00", paymentTotal: "70000.00"
+          }]
+        } };
+        break;
+      }
       case "/api/app/brief":
         payload = {
           kind: "control-tower-daily-brief",
@@ -200,13 +221,20 @@ async function runViewport(browser, width, height, base) {
         return { name: el.textContent.trim(), left: box.left, right: box.right, width: box.width };
       })
     );
-    assert.equal(modules.length, 6, "all modules must appear in POS navigation");
+    assert.equal(modules.length, 7, "all modules including HQ must appear in manager navigation");
+    assert.ok(modules.some(x => x.name === "HQ Overview"), "missing HQ navigation");
     for (const link of modules) {
       assert.ok(link.left >= -1 && link.right <= width + 1 && link.width > 0,
         width + "px module tab clipped: " + JSON.stringify(link));
     }
     assert.equal(await page.locator("#menuWriteControls").evaluate(el => el.classList.contains("hidden")), false);
     await snapshot(page, width, "pos");
+    await page.locator("#hqNav").click();
+    await page.locator("#hqMetrics .metric-display").first().waitFor({ state: "visible" });
+    assert.match(await page.locator("#hqStatus").innerText(), /1 Store/);
+    assert.match(await page.locator("#hqStores").innerText(), /Synthetic Flagship/);
+    await snapshot(page, width, "hq-overview");
+    await page.locator('[data-view="posWorkspace"]').click();
     const latte = page.locator("#menuCatalog .menu-item-button").filter({ hasText: "Latte" });
     await latte.click();
     await latte.click();
@@ -269,6 +297,7 @@ async function runViewport(browser, width, height, base) {
     await signIn(cashier, "cashier@synthetic.invalid", "synthetic-only");
     assert.equal(await cashier.locator("#menuWriteControls").evaluate(el => el.classList.contains("hidden")), true);
     assert.equal(await cashier.locator("#closeDay").isDisabled(), true);
+    assert.equal(await cashier.locator("#hqNav").isVisible(), false);
     assert.equal(await cashier.locator("#menuCatalog .menu-item-button").first().isEnabled(), true);
     await snapshot(cashier, width, "cashier");
     console.log("BROWSER_VISUAL_PASS cashier " + width + "x" + height);
