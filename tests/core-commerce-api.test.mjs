@@ -281,7 +281,7 @@ test("Menu POST confirms the exact committed Tenant, fields and cents without re
     const response = res();
     await menuHandle(req(authHeaders, "POST", "/api/app/commerce-menu", body), response, {
       env, fetchImpl: authFetch("manager", async (url, init) => {
-        assert.match(url.pathname, /^\\/rest\\/v1\\/menu_(categories|items)$/);
+        assert.ok(["/rest/v1/menu_categories", "/rest/v1/menu_items"].includes(url.pathname));
         assert.equal(init.method, "POST");
         assert.equal(init.headers.Prefer, "return=representation");
         assert.match(url.searchParams.get("select"), /tenant_id/);
