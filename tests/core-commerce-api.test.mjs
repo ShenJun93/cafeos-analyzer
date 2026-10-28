@@ -512,6 +512,52 @@ test("POS order confirmation requires original Tenant, Store, idempotency intent
   }
 });
 
+test("POS line snapshots reconcile fractional quantities and PostgreSQL half-cent rounding", async () => {
+  const intent = {
+    storeId: STORE_A, clientOrderKey: "half-cent-snapshot-01",
+    channel: "counter", items: [{ menuItemId: ITEM_A, quantity: "0.100" }]
+  };
+  // SQL numeric(18,2): 0.05 * 0.100 = 0.005 -> line_total 0.01.
+  const confirmed = {
+    order: {
+      id: ORDER_A, tenantId: TENANT_A, storeId: STORE_A,
+      clientOrderKey: intent.clientOrderKey, channel: "counter",
+      orderNumber: "C-HALF-CENT", status: "open",
+      subtotal: "0.01", discountTotal: "0.00", taxTotal: "0.00", total: "0.01"
+    },
+    items: [{ id: ORDER_LINE_A, menuItemId: ITEM_A, name: "Tiny pour",
+      unitPrice: "0.05", quantity: "0.100", lineTotal: "0.01" }]
+  };
+  async function verify(responseBody, expected) {
+    let writes = 0;
+    const response = res();
+    await orderHandle(req(authHeaders, "POST", "/api/app/commerce-order", intent),
+      response, { env, fetchImpl: authFetch("cashier", async (url, init) => {
+        assert.equal(url.pathname, "/rest/v1/rpc/commerce_create_order");
+        assert.equal(init.method, "POST");
+        writes++;
+        return jsonResponse(responseBody);
+      }) });
+    assert.equal(writes, 1, "never retry ambiguous order writes");
+    assert.equal(response.statusCode, expected);
+    if (expected === 502) assert.equal(parsed(response).error.code, "SUPABASE_UPSTREAM");
+  }
+  await verify(confirmed, 201);
+  await verify({ ...confirmed, order: { ...confirmed.order,
+    subtotal: "0.02", total: "0.02" } }, 502);
+  await verify({ ...confirmed, items: [{ ...confirmed.items[0], lineTotal: "0.00" }] }, 502);
+  await verify({ ...confirmed, items: [{ ...confirmed.items[0], unitPrice: "0.049" }] }, 502);
+  await verify({ ...confirmed, items: [{ ...confirmed.items[0], quantity: "0.101" }] }, 502);
+  await verify({ ...confirmed, items: [{ ...confirmed.items[0], name: null }] }, 502);
+  await verify({ ...confirmed, order: { ...confirmed.order, discountTotal: "0.01" } }, 502);
+  await verify({ ...confirmed, order: { ...confirmed.order, taxTotal: "0.01" } }, 502);
+
+  // Legitimate server-owned discount/tax adjustment can still reconcile to
+  // exact cents when the final total is positive.
+  await verify({ ...confirmed, order: { ...confirmed.order,
+    subtotal: "0.01", discountTotal: "0.01", taxTotal: "0.01", total: "0.01" } }, 201);
+});
+
 test("PostgreSQL lowercase UUID readbacks reconcile uppercase POS and payment intent", async () => {
   // The built-in fixtures contain only digits; use UUIDs with letters to
   // exercise SQL uuid's lowercase output after a client supplied uppercase.
