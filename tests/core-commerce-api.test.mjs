@@ -915,7 +915,7 @@ test("cashier can list bounded open orders for own tenant/store; viewer, wrong s
     { env, fetchImpl: authFetch("cashier", async (url) => {
       calls.push(url);
       return jsonResponse([{
-        id: ORDER_A, order_number: "C-101", store_id: STORE_A,
+        id: ORDER_A, tenant_id: TENANT_A, order_number: "C-101", store_id: STORE_A,
         status: "open", total: 35000, created_at: "2026-10-25T08:00:00Z", channel: "counter"
       }]);
     }) }
@@ -964,7 +964,9 @@ test("open-order recovery paginates older orders without unbounded reads", async
   const offsets = [];
   const sample = Array.from({ length: 21 }, (_, i) => ({
     id: `16000000-0000-4000-8000-${String(i+1).padStart(12, "0")}`,
-    store_id: STORE_A, order_number: "C-" + i, status: "open", total: 1000
+    tenant_id: TENANT_A, store_id: STORE_A, order_number: "C-" + i,
+    status: "open", total: 1000, channel: "counter",
+    created_at: "2026-10-25T08:00:00Z"
   }));
   const deps = {
     env,
@@ -1284,7 +1286,7 @@ test("paid receipt reconciles items, discounts, tax, and captured payment in exa
 test("paid-order receipt browse is tenant/store scoped, limited, and read-only", async () => {
   const rows = Array.from({ length: 21 }, (_, i) => ({
     id: "16000000-0000-4000-8000-" + String(i+1).padStart(12, "0"),
-    store_id: STORE_A, order_number: "C-" + i, status: "paid",
+    tenant_id: TENANT_A, store_id: STORE_A, order_number: "C-" + i, status: "paid",
     total: "35000.00", paid_at: "2026-10-27T09:00:00Z",
     business_date: "2026-10-27"
   }));
@@ -1301,7 +1303,7 @@ test("paid-order receipt browse is tenant/store scoped, limited, and read-only",
       assert.equal(url.searchParams.get("order"), "paid_at.desc,id.desc");
       assert.equal(url.searchParams.get("limit"), "21");
       assert.equal(url.searchParams.get("select"),
-        "id,order_number,store_id,status,total,paid_at,business_date");
+        "id,tenant_id,order_number,store_id,status,total,paid_at,business_date");
       return jsonResponse(rows);
     })
   };
@@ -1335,6 +1337,84 @@ test("paid-order receipt browse is tenant/store scoped, limited, and read-only",
   assert.equal(reads, 2, "invalid queries must not reach paid-order data");
 });
 
+test("order browse pages verify all 21 rows, tenant identity, dates and exact money before cashier sees them", async () => {
+  const openRoute = "/api/app/commerce-open-orders?storeId=" + STORE_A;
+  const paidRoute = "/api/app/commerce-paid-orders?storeId=" + STORE_A;
+  const open = {
+    id: ORDER_A, tenant_id: TENANT_A, store_id: STORE_A, status: "open",
+    order_number: "POS-OPEN-1", total: "35000.29", channel: "pickup",
+    created_at: "2026-10-27T07:00:00.123456+00:00"
+  };
+  const paid = {
+    id: ORDER_A, tenant_id: TENANT_A, store_id: STORE_A, status: "paid",
+    order_number: "POS-PAID-1", total: "35000.29",
+    paid_at: "2026-10-27T08:00:00+00:00", business_date: "2026-10-27"
+  };
+  const foreignTenant = "20000000-0000-4000-8000-000000000002";
+  const invalid = [
+    [openOrdersHandle, openRoute, open, [
+      { ...open, tenant_id: foreignTenant },
+      { ...open, id: "invalid-uuid" },
+      { ...open, total: "35000.290" },
+      { ...open, total: "NaN" },
+      { ...open, total: -1 },
+      { ...open, total: true },
+      { ...open, channel: "unknown" },
+      { ...open, created_at: "invalid" },
+      { ...open, order_number: "" }
+    ]],
+    [paidOrdersHandle, paidRoute, paid, [
+      { ...paid, tenant_id: foreignTenant },
+      { ...paid, total: "0.001" },
+      { ...paid, total: 0 },
+      { ...paid, total: null },
+      { ...paid, paid_at: "invalid" },
+      { ...paid, business_date: "2026-02-30" },
+      { ...paid, business_date: "invalid" },
+      { ...paid, id: "invalid-uuid" }
+    ]]
+  ];
+  let writeCalls = 0;
+  for (const [handle, url, good, badRows] of invalid) {
+    for (const row of badRows) {
+      for (const page of [[row], [
+        ...Array.from({ length: 20 }, (_, i) => ({
+          ...good, id: "16000000-0000-4000-8000-" + String(i + 1).padStart(12, "0")
+        })), row
+      ]]) {
+        const response = res();
+        await handle(req(authHeaders, "GET", url), response, {
+          env, fetchImpl: authFetch("cashier", async (u, init) => {
+            assert.equal(init.method ?? "GET", "GET");
+            if (u.pathname !== "/rest/v1/pos_orders") writeCalls++;
+            return jsonResponse(page);
+          })
+        });
+        assert.equal(response.statusCode, 502,
+          "invalid displayed or lookahead order row must not reach cashier UI");
+        assert.equal(parsed(response).error.code, "SUPABASE_UPSTREAM");
+      }
+    }
+    for (const payload of [
+      Array.from({ length: 22 }, () => good),
+      [good, good]
+    ]) {
+      const response = res();
+      await handle(req(authHeaders, "GET", url), response, {
+        env, fetchImpl: authFetch("cashier", async () => jsonResponse(payload))
+      });
+      assert.equal(response.statusCode, 502, "oversized or duplicate list must fail closed");
+    }
+    const validResponse = res();
+    await handle(req(authHeaders, "GET", url), validResponse, {
+      env, fetchImpl: authFetch("cashier", async () => jsonResponse([good]))
+    });
+    assert.equal(validResponse.statusCode, 200);
+    assert.equal(parsed(validResponse).orders.length, 1);
+  }
+  assert.equal(writeCalls, 0, "browse endpoints must never send a write RPC");
+});
+
 test("paid-order browsing denies unauthorized callers and fails closed on malformed upstream rows", async () => {
   const uri = "/api/app/commerce-paid-orders?storeId=" + STORE_A;
   for (const [headers, role, expected] of [
@@ -1351,7 +1431,7 @@ test("paid-order browsing denies unauthorized callers and fails closed on malfor
     { env, fetchImpl: authFetch("cashier") });
   assert.equal(notGet.statusCode, 405);
   const expected = {
-    id: ORDER_A, store_id: STORE_A, order_number: "C-1",
+    id: ORDER_A, tenant_id: TENANT_A, store_id: STORE_A, order_number: "C-1",
     total: "35000.00", status: "paid",
     business_date: "2026-10-27", paid_at: "2026-10-27T08:30:00Z"
   };
