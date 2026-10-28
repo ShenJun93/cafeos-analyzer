@@ -82,6 +82,11 @@ export async function handle(req, res, deps = {}) {
         || !payload.payment || Array.isArray(payload.payment)
         || payload.payment.status !== "captured"
         || payload.payment.method !== method
+        // The SQL function persists the canonical trimmed reference and
+        // returns it on every captured payment (null when not supplied).
+        // Never acknowledge an unverified terminal/bank reference as paid.
+        || !Object.hasOwn(payload.payment, "reference")
+        || payload.payment.reference !== reference
         || capturedCents(payload.payment.amount) !== capturedCents(amount)) {
       throw new AppHttpError(502, "SUPABASE_UPSTREAM",
         "Commerce payment service returned inconsistent settlement evidence");
