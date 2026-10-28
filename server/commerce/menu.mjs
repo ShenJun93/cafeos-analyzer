@@ -63,14 +63,17 @@ function confirmedMenuCategory(rows, requested) {
 function confirmedMenuItem(rows, requested) {
   if (!Array.isArray(rows) || rows.length !== 1) return null;
   const row = rows[0];
+  const expectedCategory = requested.category_id === null
+    ? null : requested.category_id.toLowerCase();
+  const returnedCents = commerceReturnedCents(row?.price);
   if (!row || typeof row !== "object" || Array.isArray(row)
       || typeof row.id !== "string" || !UUID_RE.test(row.id)
       || row.tenant_id !== requested.tenant_id
       || row.name !== requested.name || row.sku !== requested.sku
-      || row.category_id !== requested.category_id?.toLowerCase() && !(row.category_id === null && requested.category_id === null)
+      || row.category_id !== expectedCategory
       || row.active !== true
-      || commerceReturnedCents(row.price) === null
-      || commerceReturnedCents(row.price) !== commerceReturnedCents(requested.price)) return null;
+      || returnedCents === null
+      || returnedCents !== commerceReturnedCents(requested.price)) return null;
   return row;
 }
 
