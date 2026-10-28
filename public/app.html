@@ -248,6 +248,14 @@
         </div>
         <p id="sourceBridgeStatus" class="muted" aria-live="polite">Chọn ngày và Store để đọc đối chiếu nguồn.</p>
         <div id="sourceBridgeCards" class="source-bridge-cards"></div>
+        <section id="importLineagePanel" class="import-lineage-panel hidden">
+          <div class="section-label">Manager · định danh nguồn import</div>
+          <h4>Source Namespace Evidence</h4>
+          <p class="muted">Chỉ đếm mã giao dịch theo từng namespace của Store/ngày. Không kết luận trùng với CafeOS POS.</p>
+          <button id="importLineageRefresh" type="button" class="secondary" disabled>Kiểm tra namespace</button>
+          <p id="importLineageStatus" class="muted" aria-live="polite">Chọn ngày để kiểm tra.</p>
+          <div id="importLineageRows" class="import-lineage-rows"></div>
+        </section>
       </section>
     </section>
   </section>
@@ -281,6 +289,8 @@ let menuReadSerial = 0;
 let controlReadSerial = 0;
 let sourceBridgeSerial = 0;
 let sourceBridgeInFlight = false;
+let importLineageSerial = 0;
+let importLineageInFlight = false;
 let hqReadSerial = 0;
 let hqLoadInFlight = false;
 let hqSourcesSerial = 0;
@@ -408,6 +418,8 @@ function renderRoleControls() {
   el("hqRefresh").disabled = !manager || hqLoadInFlight;
   el("hqSourcesRefresh").disabled = !manager || hqSourcesInFlight;
   el("sourceBridgeRefresh").disabled = !sessionToken || !currentStoreId || sourceBridgeInFlight;
+  el("importLineagePanel").classList.toggle("hidden", !manager);
+  el("importLineageRefresh").disabled = !manager || !sessionToken || !currentStoreId || importLineageInFlight;
   el("closeDay").disabled = !manager || !currentDashboard || menuWriteInFlight
     || closeSubmitInFlight || hasUnfinishedCheckout()
     || Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
@@ -439,7 +451,15 @@ function invalidateHQ() {
   el("hqRefresh").disabled = !canManageCommerce();
 }
 
+function invalidateImportLineage() {
+  ++importLineageSerial;
+  importLineageInFlight = false;
+  el("importLineageRows").replaceChildren();
+  el("importLineageStatus").textContent = "Chọn ngày để kiểm tra namespace.";
+  el("importLineageRefresh").disabled = !canManageCommerce() || !sessionToken || !currentStoreId;
+}
 function invalidateSourceBridge() {
+  invalidateImportLineage();
   ++sourceBridgeSerial;
   sourceBridgeInFlight = false;
   el("sourceBridgeDate").value = "";
@@ -1871,6 +1891,81 @@ function sourceMetric(label, value) {
   return metric(label, value == null ? "—" : String(value));
 }
 
+async function loadImportLineage() {
+  if (!canManageCommerce()) throw new Error("Chỉ Manager/Owner/Admin được xem namespace.");
+  if (!sessionToken || !currentStoreId || importLineageInFlight) return;
+  const date = el("sourceBridgeDate").value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Chọn business date hợp lệ.");
+  const serial = ++importLineageSerial, epoch = viewEpoch;
+  const tenant = currentTenantId, store = currentStoreId, token = sessionToken;
+  const current = () => serial === importLineageSerial && epoch === viewEpoch
+    && tenant === currentTenantId && store === currentStoreId
+    && token === sessionToken && date === el("sourceBridgeDate").value;
+  const root = el("importLineageRows");
+  importLineageInFlight = true;
+  el("importLineageRefresh").disabled = true;
+  root.replaceChildren();
+  el("importLineageStatus").textContent = "Đang xác minh nguồn import theo múi giờ Store…";
+  try {
+    const p = await appFetch("/api/app/commerce-import-lineage?storeId="
+      + encodeURIComponent(store) + "&businessDate=" + encodeURIComponent(date));
+    if (!current()) return;
+    const valid = n => Number.isSafeInteger(n) && n >= 0 && n <= 500;
+    if (p?.store?.id !== store || p.businessDate !== date
+      || p.sourceBoundary?.status !== "import_namespace_observation_only"
+      || p.sourceBoundary?.deduplication !== "not_performed"
+      || p.sourceBoundary?.combinedSales !== null
+      || p.sourceBoundary?.transactionIdsExposed !== false
+      || p.completeness?.status !== "bounded_read_only"
+      || p.completeness?.maxLineItems !== 500
+      || !Array.isArray(p.namespaces) || !valid(p.observedLineItemCount)
+      || !valid(p.observedNamespaceCount)
+      || p.namespaces.length !== p.observedNamespaceCount
+      || p.namespaces.reduce((n, r) => n + (r?.lineItemCount ?? 0), 0)
+         !== p.observedLineItemCount) {
+      throw new Error("Bằng chứng namespace không nhất quán.");
+    }
+    const seen = new Set();
+    for (const r of p.namespaces) {
+      if (!r || typeof r.sourceNamespace !== "string" || !r.sourceNamespace.trim()
+        || seen.has(r.sourceNamespace) || !valid(r.lineItemCount)
+        || !valid(r.sourceScopedTransactionCount) || r.sourceScopedTransactionCount < 1
+        || r.sourceScopedTransactionCount > r.lineItemCount) {
+        throw new Error("Bằng chứng namespace không hợp lệ.");
+      }
+      seen.add(r.sourceNamespace);
+    }
+    for (const r of p.namespaces) {
+      const row = document.createElement("div");
+      row.className = "import-lineage-row";
+      const name = document.createElement("strong");
+      name.textContent = r.sourceNamespace;
+      const detail = document.createElement("span");
+      detail.textContent = r.sourceScopedTransactionCount + " mã giao dịch nguồn · "
+        + r.lineItemCount + " dòng";
+      row.append(name, detail);
+      root.append(row);
+    }
+    if (!p.namespaces.length) root.textContent =
+      "Chưa quan sát thấy dữ liệu import; KHÔNG kết luận doanh thu bằng 0.";
+    el("importLineageStatus").textContent = p.store.name + " · " + date
+      + " · " + p.observedNamespaceCount + " namespace · "
+      + p.observedLineItemCount + "/500 dòng. KHÔNG đối soát trùng với POS.";
+  } catch (e) {
+    if (current()) {
+      root.replaceChildren();
+      el("importLineageStatus").textContent =
+        "Thiếu bằng chứng toàn diện; không công bố namespace một phần.";
+      throw e;
+    }
+  } finally {
+    if (serial === importLineageSerial) {
+      importLineageInFlight = false;
+      el("importLineageRefresh").disabled = !canManageCommerce() || !sessionToken || !currentStoreId;
+    }
+  }
+}
+
 async function loadSourceBridge() {
   if (!sessionToken || !currentStoreId || sourceBridgeInFlight) return;
   const date = el("sourceBridgeDate").value;
@@ -1881,6 +1976,7 @@ async function loadSourceBridge() {
     && tenant === currentTenantId && store === currentStoreId
     && token === sessionToken && date === el("sourceBridgeDate").value;
   sourceBridgeInFlight = true;
+  invalidateImportLineage();
   el("sourceBridgeRefresh").disabled = true;
   const cards = el("sourceBridgeCards");
   cards.replaceChildren();
@@ -2018,7 +2114,9 @@ el("browsePaidOrders").addEventListener("click", () => guarded(() => browsePaidO
 el("hqRefresh").addEventListener("click", () => guarded(loadHQOverview));
 el("hqSourcesRefresh").addEventListener("click", () => guarded(loadHQSourceCoverage));
 el("sourceBridgeRefresh").addEventListener("click", () => guarded(loadSourceBridge));
+el("importLineageRefresh").addEventListener("click", () => guarded(loadImportLineage));
 el("sourceBridgeDate").addEventListener("change", () => {
+  invalidateImportLineage();
   ++sourceBridgeSerial;
   sourceBridgeInFlight = false;
   el("sourceBridgeCards").replaceChildren();

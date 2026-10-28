@@ -199,6 +199,34 @@ async function installMockTransport(page) {
         };
         break;
       }
+      case "/api/app/commerce-import-lineage": {
+        assert.equal(manager, true, "only manager may inspect import namespace evidence");
+        assert.equal(req.method(), "GET");
+        assert.equal(url.searchParams.get("storeId"), STORE);
+        assert.equal(url.searchParams.get("businessDate"), DATE);
+        payload = {
+          tenant: { id: TENANT },
+          store: { id: STORE, name: "Synthetic Flagship", timezone: "Asia/Ho_Chi_Minh" },
+          businessDate: DATE,
+          boundedUtcRange: {
+            start: "2026-10-27T17:00:00.000Z", end: "2026-10-28T17:00:00.000Z"
+          },
+          sourceBoundary: {
+            status: "import_namespace_observation_only",
+            transactionIdentity: "tenant_store_source_namespace_transaction_id",
+            comparedToPos: false, deduplication: "not_performed",
+            combinedSales: null, transactionIdsExposed: false
+          },
+          completeness: { status:"bounded_read_only",
+            maxLineItems: 500, noRowLimitReached:true },
+          observedLineItemCount: 3, observedNamespaceCount: 2,
+          namespaces: [
+            {sourceNamespace:"kiotviet",lineItemCount:2,sourceScopedTransactionCount:1},
+            {sourceNamespace:"sapo",lineItemCount:1,sourceScopedTransactionCount:1}
+          ]
+        };
+        break;
+      }
       case "/api/app/commerce-void-history": {
         assert.equal(manager, true);
         assert.equal(req.method(), "GET");
@@ -408,6 +436,13 @@ async function runViewport(browser, width, height, base) {
     assert.match(await page.locator("#sourceBridgeCards").innerText(),/Nguồn import/);
     assert.match(await page.locator("#sourceBridgeStatus").innerText(),/KHÔNG cộng tổng/);
     await snapshot(page, width, "source-separated-bridge");
+    await page.locator("#importLineageRefresh").click();
+    await page.locator("#importLineageRows .import-lineage-row").first().waitFor({state:"visible"});
+    assert.equal(await page.locator("#importLineageRows .import-lineage-row").count(),2);
+    assert.match(await page.locator("#importLineageRows").innerText(),/kiotviet/);
+    assert.match(await page.locator("#importLineageRows").innerText(),/sapo/);
+    assert.match(await page.locator("#importLineageStatus").innerText(),/KHÔNG đối soát trùng/);
+    await snapshot(page, width, "import-namespace-evidence");
     assert.deepEqual(errors, [], "browser JS console errors");
     console.log("BROWSER_VISUAL_PASS manager " + width + "x" + height);
   } finally {
@@ -425,6 +460,7 @@ async function runViewport(browser, width, height, base) {
     assert.equal(await cashier.locator("#voidControls").isVisible(), false);
     assert.equal(await cashier.locator("#voidHistorySection").isVisible(), false);
     assert.equal(await cashier.locator("#hqNav").isVisible(), false);
+    assert.equal(await cashier.locator("#importLineagePanel").isVisible(), false);
     assert.equal(await cashier.locator("#hqSourcesRefresh").isVisible(), false);
     assert.equal(await cashier.locator("#menuCatalog .menu-item-button").first().isEnabled(), true);
     await snapshot(cashier, width, "cashier");

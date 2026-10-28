@@ -436,3 +436,11 @@ textarea{min-height:110px;resize:vertical}
 .hq-source-row{display:grid;grid-template-columns:minmax(110px,1.1fr) minmax(145px,1.5fr) minmax(145px,1fr) minmax(145px,1fr);gap:12px;border-bottom:1px solid var(--line);padding:12px 0;overflow-wrap:anywhere}
 .hq-source-row span{min-width:0}
 @media(max-width:800px){.hq-source-row{grid-template-columns:1fr;gap:5px;padding:14px 0}}
+
+/* Imported identity diagnostics: namespace-scoped counts, never raw IDs or amounts. */
+.import-lineage-panel{margin-top:24px;padding-top:18px;border-top:1px solid var(--line)}
+.import-lineage-panel.hidden{display:none}
+.import-lineage-rows{display:grid;gap:10px;margin-top:16px}
+.import-lineage-row{display:flex;gap:16px;justify-content:space-between;align-items:center;overflow-wrap:anywhere;border-bottom:1px solid var(--line);padding:10px 0}
+.import-lineage-row strong,.import-lineage-row span{min-width:0}
+@media(max-width:720px){.import-lineage-row{flex-direction:column;align-items:flex-start;gap:4px}}
