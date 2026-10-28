@@ -1089,6 +1089,24 @@ test("order status endpoint is authenticated, GET-only, tenant-scoped and read-o
     noAuth, { env, fetchImpl: authFetch("cashier") });
   assert.equal(noAuth.statusCode, 401);
 
+  // Recovery status is a POS operational read, not a general-purpose
+  // dashboard read. Deny viewer/analyst before any order data query.
+  for (const role of ["viewer", "analyst"]) {
+    let orderReads = 0;
+    const forbidden = res();
+    await orderStatusHandle(req(authHeaders, "GET",
+      "/api/app/commerce-order-status?orderId=" + ORDER_A), forbidden, {
+      env, fetchImpl: authFetch(role, async () => {
+        orderReads++;
+        return jsonResponse([{ id: ORDER_A, tenant_id: TENANT_A, store_id: STORE_A,
+          status: "paid", total: "100000.00" }]);
+      })
+    });
+    assert.equal(forbidden.statusCode, 403, role + " must not recover a POS order");
+    assert.equal(parsed(forbidden).error.code, "COMMERCE_ROLE_FORBIDDEN");
+    assert.equal(orderReads, 0, "forbidden role must not read order data");
+  }
+
   const post = res();
   await orderStatusHandle(req(authHeaders, "POST", "/api/app/commerce-order-status?orderId=" + ORDER_A),
     post, { env, fetchImpl: authFetch("cashier") });
