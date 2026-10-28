@@ -386,6 +386,91 @@ test("POS order confirmation requires original Tenant, Store, idempotency intent
   }
 });
 
+test("PostgreSQL lowercase UUID readbacks reconcile uppercase POS and payment intent", async () => {
+  // The built-in fixtures contain only digits; use UUIDs with letters to
+  // exercise SQL uuid's lowercase output after a client supplied uppercase.
+  const store = "abcdef12-3456-4abc-8def-abcdef123456";
+  const item = "abcdef14-3456-4abc-8def-abcdef123456";
+  const order = "abcdef13-3456-4abc-8def-abcdef123456";
+  const upper = value => value.toUpperCase();
+  let mutations = 0;
+  let orderBody;
+  const intent = {
+    storeId: upper(store), clientOrderKey: "uppercase-uuid-cashier-intent",
+    channel: "counter", items: [{ menuItemId: upper(item), quantity: "1.000" }]
+  };
+
+  const created = res();
+  await orderHandle(req(authHeaders, "POST", "/api/app/commerce-order", intent),
+    created, { env, fetchImpl: authFetch("cashier", async (url, init) => {
+      assert.equal(url.pathname, "/rest/v1/rpc/commerce_create_order");
+      mutations++;
+      orderBody = JSON.parse(init.body);
+      return jsonResponse({
+        order: { id: order, tenantId: TENANT_A, storeId: store,
+          clientOrderKey: intent.clientOrderKey, channel: "counter",
+          orderNumber: "POS-CASE-01", status: "open", total: "35000.00" },
+        items: [{ menuItemId: item, quantity: "1.000" }]
+      });
+    }) });
+  assert.equal(created.statusCode, 201, "a successful order must not be reported as unknown");
+  assert.equal(orderBody.p_store_id, store);
+  assert.equal(orderBody.p_items[0].menuItemId, item);
+
+  let paymentBody;
+  const settled = res();
+  await paymentHandle(req(authHeaders, "POST", "/api/app/commerce-payment",
+    { orderId: upper(order), method: "cash", amount: 35000, reference: null }),
+  settled, { env, fetchImpl: authFetch("cashier", async (url, init) => {
+    assert.equal(url.pathname, "/rest/v1/rpc/commerce_capture_payment");
+    mutations++;
+    paymentBody = JSON.parse(init.body);
+    return jsonResponse({ orderId: order, status: "paid",
+      payment: { status: "captured", method: "cash", amount: "35000.00" } });
+  }) });
+  assert.equal(settled.statusCode, 201, "a committed payment must not produce an artificial 502");
+  assert.equal(paymentBody.p_order_id, order);
+
+  const status = res();
+  await orderStatusHandle(req(authHeaders, "GET",
+    "/api/app/commerce-order-status?orderId=" + upper(order)),
+  status, { env, fetchImpl: authFetch("cashier", async url => {
+    assert.equal(url.pathname, "/rest/v1/pos_orders");
+    assert.equal(url.searchParams.get("id"), "eq." + order);
+    return jsonResponse([{ id: order, store_id: store, status: "paid", total: 35000 }]);
+  }) });
+  assert.equal(status.statusCode, 200);
+  assert.equal(parsed(status).order.id, order);
+
+  const dashboard = res();
+  await dashboardHandle(req(authHeaders, "GET",
+    "/api/app/commerce-dashboard?storeId=" + upper(store) + "&businessDate=2026-10-25"),
+  dashboard, { env, fetchImpl: authFetch("cashier", async (url, init) => {
+    assert.equal(JSON.parse(init.body).p_store_id, store);
+    return jsonResponse({ source: "cafeos_pos", tenantId: TENANT_A, storeId: store,
+      businessDate: "2026-10-25", orderCount: 1, openOrderCount: 0,
+      salesTotal: 35000, paymentTotal: 35000, aov: 35000,
+      paymentMix: { cash: 35000 }, closed: false });
+  }) });
+  assert.equal(dashboard.statusCode, 200);
+
+  const close = res();
+  await dailyCloseHandle(req(authHeaders, "POST", "/api/app/commerce-daily-close",
+    { storeId: upper(store), businessDate: "2026-10-25" }),
+  close, { env, fetchImpl: authFetch("manager", async (url, init) => {
+    assert.equal(JSON.parse(init.body).p_store_id, store);
+    mutations++;
+    return jsonResponse({
+      id: "19000000-0000-4000-8000-000000000001", tenantId: TENANT_A, storeId: store,
+      businessDate: "2026-10-25", orderCount: 1,
+      salesTotal: 35000, paymentTotal: 35000,
+      cashTotal: 35000, nonCashTotal: 0, idempotent: false
+    });
+  }) });
+  assert.equal(close.statusCode, 201);
+  assert.equal(mutations, 3, "no unintended RPC retry after canonicalizing UUIDs");
+});
+
 test("POS rejects quantity coercion and excess scale before creating a trusted order", async () => {
   const invalidQuantities = [
     null, undefined, true, false, [], [1], {}, { value: 1 },
