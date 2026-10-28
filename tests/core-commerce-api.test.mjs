@@ -626,7 +626,7 @@ test("PostgreSQL lowercase UUID readbacks reconcile uppercase POS and payment in
     return jsonResponse({ source: "cafeos_pos", tenantId: TENANT_A, storeId: store,
       businessDate: "2026-10-25", orderCount: 1, openOrderCount: 0,
       salesTotal: 35000, paymentTotal: 35000, aov: 35000,
-      paymentMix: { cash: 35000 }, closed: false });
+      paymentMix: { cash: 35000 }, closed: false, closeId: null, closedAt: null });
   }) });
   assert.equal(dashboard.statusCode, 200);
 
