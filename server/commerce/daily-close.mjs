@@ -22,7 +22,7 @@ import {
 
 const ALLOWED_FIELDS = new Set(["storeId", "businessDate"]);
 
-function validClose(payload, tenantId, storeId, requestedDate) {
+function validClose(payload, tenantId, storeId, requestedDate, actorUserId) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)
       || typeof payload.id !== "string" || !UUID_RE.test(payload.id)
       || payload.tenantId !== tenantId || payload.storeId !== storeId
@@ -32,7 +32,10 @@ function validClose(payload, tenantId, storeId, requestedDate) {
       || typeof payload.closedByUserId !== "string"
       || !UUID_RE.test(payload.closedByUserId)
       || !validCommerceTimestamp(payload.closedAt)
-      || typeof payload.idempotent !== "boolean") return false;
+      || typeof payload.idempotent !== "boolean"
+      // A first-time SQL close persists auth.uid() as its audit actor.
+      // A repeated close legitimately returns the ORIGINAL actor instead.
+      || (!payload.idempotent && payload.closedByUserId !== actorUserId)) return false;
   const sales = commerceReturnedCents(payload.salesTotal);
   const payments = commerceReturnedCents(payload.paymentTotal);
   const cash = commerceReturnedCents(payload.cashTotal);
@@ -65,7 +68,7 @@ export async function handle(req, res, deps = {}) {
     });
     // A close is a persistent accounting receipt, not just a successful RPC.
     // Never show "CLOSED" for a foreign Tenant/date or unbalanced totals.
-    if (!validClose(payload, ctx.tenant.id, storeId, businessDate)) {
+    if (!validClose(payload, ctx.tenant.id, storeId, businessDate, ctx.user.id)) {
       throw new AppHttpError(502, "SUPABASE_UPSTREAM",
         "Commerce close returned inconsistent financial or tenant data");
     }

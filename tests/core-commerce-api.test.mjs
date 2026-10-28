@@ -979,6 +979,8 @@ test("Daily Close refuses cross-Tenant receipts, wrong day and unbalanced accoun
       cashTotal: "0.00", nonCashTotal: "0.00" },
     { ...close, closedByUserId: null },
     { ...close, closedByUserId: "not-a-uuid" },
+    { ...close, closedByUserId: "20000000-0000-4000-8000-000000000002",
+      idempotent: false },
     { ...close, closedAt: null },
     { ...close, closedAt: "invalid" },
     { ...close, closedAt: "2026-02-30T20:00:00Z" },
@@ -1009,6 +1011,8 @@ test("Daily Close refuses cross-Tenant receipts, wrong day and unbalanced accoun
   for (const payload of [
     close,
     { ...close, idempotent: true },
+    { ...close, closedByUserId: "20000000-0000-4000-8000-000000000002",
+      idempotent: true },
     { ...close, orderCount: 0, salesTotal: "0.00", paymentTotal: "0.00",
       cashTotal: "0.00", nonCashTotal: "0.00", idempotent: true }
   ]) {
