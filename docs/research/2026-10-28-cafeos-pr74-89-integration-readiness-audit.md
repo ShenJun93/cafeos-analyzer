@@ -3,7 +3,7 @@
 **Audit date:** 2026-10-28 (Asia/Ho_Chi_Minh)  
 **Repository:** `ShenJun93/cafeos-analyzer`  
 **Observed review head:** PR #89 at `04b0b5cddf110465d0cf91720f4815e5e917772a`  
-**Scope:** read-only GitHub PR/code/CI review; existing dated repository staging receipts. **No fresh staging query was performed in this audit.**  
+**Scope:** direct GitHub PR/code/CI review, plus a new **read-only Supabase staging refresh on 2026-10-28** using the project's Supabase connector. No SQL DDL/DML, migration repair, backup/export, Auth mutation, production data or staging merchant rows were changed.  
 **Decision:** **NO-GO for merchant release or PR merge.** Stop growing isolated provenance experiments until the operator's Phase 1 flow is genuinely released/accepted.
 
 ## Product authority / success criteria
@@ -48,12 +48,30 @@ No cross-POS monetary total or automatic deduplication is authorized. The above 
 | E-01 | 16 PRs #74–#89 OPEN/DRAFT, unchanged head/base chain | Live GitHub PR metadata checked this audit | High at audit time; refresh before action |
 | E-02 | Core Commerce code has routes, UI, DB migrations and deterministic tests | PR #74/#75 changed-file inventory; source `public/app.html`, `api/app/workflow.mjs`, `server/commerce/*` | High for code existence, **not staged execution success** |
 | E-03 | PR #89 Node 406/406 PASS and disposable PostgreSQL workflow PASS | GitHub Actions CI #40661837013 and PostgreSQL #40661837020 (commit `04b0b5c…`) | High for exact synthetic/CI result, **not live Supabase** |
-| E-04 | The reviewed staging had 7 legacy migration receipts; the current PR #89 tree has **11 candidate Git migrations** (#75 adds unpaid-void SQL beyond the 10 in the earlier #74 report). Future-day-close and price-snapshot guards were absent at the dated live checkpoint | Dated live staging read-only review: `docs/research/2026-10-28-cafeos-staging-readonly-gate-refresh.md` | High for that checkpoint only; **not re-queried today for this audit** |
-| E-05 | Staging security adviser still warned on 3 privileged commerce RPCs and leaked-password protection | Same dated staging read-only review | Historical read-only observation, independent signoff NOT DONE |
+| E-04 | **Fresh 2026-10-28 staging read confirms exactly 7 old migration receipts, 0 canonical timestamp matches, and no future-close or price-snapshot guard.** PR #90 branch has **11 Git candidate migrations**, including #75 void | Supabase `list_migrations`, direct read-only catalog SQL and the exact committed pre/post-guard SELECT gates | High for current observation, not permission to repair or migrate |
+| E-05 | **Fresh Security Advisor:** 3 signed-in `SECURITY DEFINER` commerce RPC warnings and `auth_leaked_password_protection` warning; 6/6 commerce tables have RLS | Supabase Security Advisor and read-only catalog check on 2026-10-28 | Verified current findings; independent security signoff NOT DONE |
 | E-06 | Off-host age recovery requires separate-device key custody, plus full compatible backup and restore | `docs/research/2026-10-28-cafeos-offhost-age-acceptance-runbook.md` | Owner action NOT PROVEN; synthetic drill cannot substitute |
 | E-07 | No verified external POS source-account lifecycle, transaction mapping or finance authority | `docs/superpowers/specs/2026-10-28-cafeos-transaction-identity-evidence-contract-v1.md`; PR #81 vendor evidence | Source gap, not a claim of global vendor impossibility |
 | E-08 | HQ list at PR #89 requests 26 Store rows without exact PostgREST count | `server/commerce/hq-source-coverage.mjs` at `04b0b5c…` | Verified application correctness risk: a lower upstream row cap could hide Store rows |
 | E-09 | A bounded exact-count option already exists in backend auth helper | `api/_app-auth.mjs` / PR #82 | Reusable without schema migration or service key |
+
+## Fresh staging release-gate snapshot — 2026-10-28 (read-only)
+
+**Target:** Supabase project `cafeos-staging` (`wjatnyvdygvblirggdcm`), verified by live project inventory as `ACTIVE_HEALTHY`. This audit did **not** inspect or copy merchant data, passwords, JWTs, service role keys or provider account identifiers.
+
+| Gate | Exact observed read-only value | Decision |
+| --- | --- | --- |
+| Live migration history | `7` receipt versions: `20260921100732`, `20260921103432`, `20260921105352`, `20260921133428`, `20260921141814`, `20260921151006`, `20261025103648` | **BLOCKED**; 7 historical version names still differ from 11 canonical Git candidate migrations |
+| `scripts/sql/cafeos-staging-post-repair-readonly-gate.sql` (Git blob `3fecd617e89850e7ea958cc45b0ca6fa11ca61d0`) | `ledger_total=7`, `canonical_present=0`, `legacy_present=7`, `guards_marked_applied=0`, `future_guard_live=false`, `price_guard_live=false`, `commerce_rls_tables=6`, `guarded_rpc_grants=3`, `untrusted_schema_creates_blocked=true`, `audit_phase=PRE_REPAIR_NO_GO` | **NO-GO**. Expected refusal for unreconciled history |
+| `scripts/sql/cafeos-staging-post-guards-readonly-gate.sql` (Git blob `ad4fdd45a25b733f8160dfbcb9df1dd6c6044399`) | `total=7`, `canonical_present=0`, `legacy_present=7`, `rls_tables=6`, `guarded_rpc_grants=3`, `future_close_guard_live=false`, `price_snapshot_guard_live=false`, `bad_order_subtotals=0`, `bad_payment_states=0`, `bad_daily_closes=0`, `audit_phase=POST_GUARDS_NOT_READY_REVIEW` | **NO-GO**. Zero-invalid-row counts do **not** prove an exercised transaction; staged commerce tables report zero estimated rows |
+| Direct catalog lookup | `public.pos_order_voids` absent; `public.commerce_void_order(uuid,uuid,text)` absent; 6 Commerce RLS flags enabled; 3 core RPCs still `SECURITY DEFINER` | **VOID NOT DEPLOYED**. Real operator mistake recovery cannot be accepted |
+| Supabase Security Advisor | Exactly three `authenticated_security_definer_function_executable` findings for create order, capture payment, and close day; `auth_leaked_password_protection` warning still present | **SECURITY REVIEW OPEN**. Intentional definer design still needs independent signed-JWT/privilege audit |
+
+**Confidence/limits:** These are direct, contemporaneous read-only results. The two SQL gates use the **10-version intermediate post-guard milestone** intentionally, whereas the current Git head has **11 candidate migrations** after #75 adds unpaid-void; do not silently rewrite the intermediate classifier or call 11 present on staging. No independent full staging backup or real signed-JWT E2E was performed, and no owner off-host `age` custody was attested.
+
+**Next authorized work order (not authorization to execute):** independent off-host recovery trust anchors → staging-compatible encrypted full export and isolated restore with migration receipt verification → explicitly approved history-only ledger reconciliation → separately approved future-close and price-snapshot guard deployment → approved audited unpaid-void schema/RPC → signed-JWT cashier/manager E2E, vulnerability/security review, Windows operator acceptance and merchant release signoff. Any failed gate is STOP; do not use `db push` or history repair to get past it.
+
+**Operator handoff:** Only the owner or independently authorized recovery operator can establish separate-device key custody and complete staging backup/restore verification; ChatGPT/GitHub CI cannot prove a second physical device or store private keys. Owner procedure: `docs/research/2026-10-28-cafeos-offhost-age-acceptance-runbook.md`; ledger proposal: `docs/research/2026-10-25-cafeos-staging-ledger-reconciliation-runbook.md`; full Supabase-compatible backup conditions: `docs/research/2026-10-26-cafeos-full-staging-backup-execution-gates.md`.
 
 ## Operational correctness finding and immediate bounded fix
 
