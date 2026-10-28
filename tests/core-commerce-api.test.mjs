@@ -217,7 +217,7 @@ test("Menu manager writes reject implicit coercion of category, SKU, names and r
     fetchImpl: authFetch("manager", async (url, init) => {
       if (init.method === "POST" && /^\/rest\/v1\/menu_(items|categories)$/.test(url.pathname)) {
         insertCalls++;
-        return jsonResponse([{ id: ITEM_A }], 201);
+        return jsonResponse([{ id: ITEM_A, ...JSON.parse(init.body) }], 201);
       }
       return jsonResponse({}, 500);
     })
@@ -261,6 +261,83 @@ test("Menu manager writes reject implicit coercion of category, SKU, names and r
     assert.equal(response.statusCode, 201, "must preserve well-typed Menu record " + JSON.stringify(body));
   }
   assert.equal(insertCalls, 4);
+});
+
+test("Menu POST confirms the exact committed Tenant, fields and cents without retry", async () => {
+  const categoryIntent = { kind: "category", name: "Tea", sortOrder: -2 };
+  const categoryCommit = {
+    id: CATEGORY_A, tenant_id: TENANT_A, name: "Tea", sort_order: -2, active: true
+  };
+  const itemIntent = {
+    kind: "item", name: "Latte", categoryId: CATEGORY_A.toUpperCase(),
+    sku: "LATTE-01", price: "20000.25"
+  };
+  const itemCommit = {
+    id: ITEM_A, tenant_id: TENANT_A, name: "Latte",
+    category_id: CATEGORY_A, sku: "LATTE-01", price: "20000.25", active: true
+  };
+  async function send(body, responseRows, expectedStatus, expectedCode = null) {
+    let writes = 0;
+    const response = res();
+    await menuHandle(req(authHeaders, "POST", "/api/app/commerce-menu", body), response, {
+      env, fetchImpl: authFetch("manager", async (url, init) => {
+        assert.match(url.pathname, /^\\/rest\\/v1\\/menu_(categories|items)$/);
+        assert.equal(init.method, "POST");
+        assert.equal(init.headers.Prefer, "return=representation");
+        assert.match(url.searchParams.get("select"), /tenant_id/);
+        const payload = JSON.parse(init.body);
+        assert.equal(payload.tenant_id, TENANT_A);
+        if (body.kind === "category") {
+          assert.equal(payload.name, "Tea");
+          assert.equal(payload.sort_order, -2);
+        } else {
+          assert.equal(payload.price, 20000.25);
+          assert.equal(payload.category_id, CATEGORY_A.toUpperCase());
+        }
+        writes++;
+        return jsonResponse(responseRows, 201);
+      })
+    });
+    assert.equal(writes, 1, "each POST is a single upstream write, never a retry");
+    assert.equal(response.statusCode, expectedStatus);
+    if (expectedCode) assert.equal(parsed(response).error.code, expectedCode);
+    return parsed(response);
+  }
+  const categoryPositive = await send(categoryIntent, [categoryCommit], 201);
+  assert.equal(categoryPositive.category.tenant_id, TENANT_A);
+  const itemPositive = await send(itemIntent, [itemCommit], 201);
+  assert.equal(itemPositive.item.price, "20000.25");
+  await send({ ...itemIntent, categoryId: null },
+    [{ ...itemCommit, category_id: null, sku: "LATTE-01", price: 20000.25 }], 201);
+  await send({ ...itemIntent, categoryId: null, sku: null, price: 0 },
+    [{ ...itemCommit, category_id: null, sku: null, price: "0.00" }], 201);
+
+  const fail = "COMMERCE_MENU_WRITE_UNCONFIRMED";
+  for (const rows of [
+    [], [categoryCommit, categoryCommit], null, {},
+    [{ ...categoryCommit, id: "wrong-id" }],
+    [{ ...categoryCommit, tenant_id: STORE_A }],
+    [{ ...categoryCommit, tenant_id: undefined }],
+    [{ ...categoryCommit, name: "Unknown" }],
+    [{ ...categoryCommit, sort_order: 1 }],
+    [{ ...categoryCommit, active: false }],
+    [{ ...categoryCommit, active: undefined }]
+  ]) await send(categoryIntent, rows, 502, fail);
+
+  for (const rows of [
+    [], [itemCommit, itemCommit], null, {},
+    [{ ...itemCommit, id: null }],
+    [{ ...itemCommit, tenant_id: STORE_A }],
+    [{ ...itemCommit, tenant_id: undefined }],
+    [{ ...itemCommit, name: "Not Latte" }],
+    [{ ...itemCommit, sku: "DIFFERENT" }],
+    [{ ...itemCommit, category_id: null }],
+    [{ ...itemCommit, category_id: undefined }],
+    [{ ...itemCommit, price: "20000.24" }],
+    [{ ...itemCommit, price: "20000.250" }],
+    [{ ...itemCommit, price: "NaN" }],
+    [{ ...itemCommit, active: false }]
+  ]) await send(itemIntent, rows, 502, fail);
 });
 
 test("order handler accepts only bounded intent fields and delegates trusted totals to fixed RPC", async () => {
