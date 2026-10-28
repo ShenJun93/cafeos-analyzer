@@ -7,6 +7,7 @@ import {
   supabaseJson
 } from "../../api/_app-auth.mjs";
 import {
+  UUID_RE,
   commerceUpstreamError,
   commerceReturnedCents,
   commerceReturnedCount,
@@ -22,6 +23,16 @@ function validBusinessDate(value) {
     && new Date(value + "T00:00:00Z").toISOString().slice(0, 10) === value;
 }
 
+// SQL returns both immutable Daily Close reference fields alongside the
+// boolean close state. A 2xx with contradictory or absent close evidence
+// must never be displayed as a trustworthy manager dashboard.
+function validCloseTimestamp(value) {
+  if (typeof value !== "string"
+      || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[.]\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+      || !Number.isFinite(Date.parse(value))) return false;
+  return validBusinessDate(value.slice(0, 10));
+}
+
 function validDashboard(payload, tenantId, storeId, businessDate) {
   if (!payload || Array.isArray(payload) || typeof payload !== "object"
       || payload.tenantId !== tenantId || payload.storeId !== storeId
@@ -31,6 +42,14 @@ function validDashboard(payload, tenantId, storeId, businessDate) {
       || !commerceReturnedCount(payload.orderCount)
       || !commerceReturnedCount(payload.openOrderCount)
       || typeof payload.closed !== "boolean") return false;
+
+  if (payload.closed) {
+    if (payload.openOrderCount !== 0
+        || typeof payload.closeId !== "string" || !UUID_RE.test(payload.closeId)
+        || !validCloseTimestamp(payload.closedAt)) return false;
+  } else if (payload.closeId !== null || payload.closedAt !== null) {
+    return false;
+  }
 
   const sales = commerceReturnedCents(payload.salesTotal);
   const payments = commerceReturnedCents(payload.paymentTotal);

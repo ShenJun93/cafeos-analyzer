@@ -163,7 +163,9 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
         openOrderCount: Number(order?.status === "open"),
         aov: paid ? order.total : null,
         paymentTotal: paid ? payment?.amount ?? 0 : 0,
-        closed: Boolean(closed), paymentMix: payment ? { [payment.method]: payment.amount } : {}
+        closed: Boolean(closed), closeId: closed?.id ?? null,
+        closedAt: closed?.closedAt ?? null,
+        paymentMix: payment ? { [payment.method]: payment.amount } : {}
       });
     }
     if (path === "/rest/v1/rpc/commerce_close_day") {

@@ -808,7 +808,7 @@ test("payment, dashboard, and close handlers call only the fixed commerce RPCs",
       return jsonResponse({ orderId: ORDER_A, status: "paid", paidAt: PAYMENT_PAID_AT, payment: { id: PAYMENT_A, method: "cash", status: "captured", amount: 100000, reference: null } });
     }
     if (u.pathname === "/rest/v1/rpc/commerce_daily_dashboard") {
-      return jsonResponse({ tenantId: TENANT_A, storeId: STORE_A, businessDate: "2026-10-25", source: "cafeos_pos", orderCount: 1, openOrderCount: 0, salesTotal: "100000.00", paymentTotal: "100000.00", paymentMix: { cash: "100000.00" }, aov: "100000.00", closed: false });
+      return jsonResponse({ tenantId: TENANT_A, storeId: STORE_A, businessDate: "2026-10-25", source: "cafeos_pos", orderCount: 1, openOrderCount: 0, salesTotal: "100000.00", paymentTotal: "100000.00", paymentMix: { cash: "100000.00" }, aov: "100000.00", closed: false, closeId: null, closedAt: null });
     }
     if (u.pathname === "/rest/v1/rpc/commerce_close_day") {
       return jsonResponse({ id: "19000000-0000-4000-8000-000000000001", tenantId: TENANT_A, storeId: STORE_A, businessDate: "2026-10-25", orderCount: 1, salesTotal: "100000.00", paymentTotal: "100000.00", cashTotal: "100000.00", nonCashTotal: "0.00", closedByUserId: USER_A, closedAt: "2026-10-25T20:00:00Z", idempotent: false });
@@ -863,7 +863,7 @@ test("Dashboard rejects wrong Tenant/date, missing close state, and unreconciled
     source: "cafeos_pos", tenantId: TENANT_A, storeId: STORE_A,
     businessDate: "2026-10-25", orderCount: 2, openOrderCount: 0,
     salesTotal: "35000.29", paymentTotal: "35000.29",
-    aov: "17500.145", closed: false,
+    aov: "17500.145", closed: false, closeId: null, closedAt: null,
     paymentMix: { cash: "30000.00", wallet: "5000.29" }
   };
   const invalid = [
@@ -874,6 +874,15 @@ test("Dashboard rejects wrong Tenant/date, missing close state, and unreconciled
     { ...dashboard, orderCount: "2" },
     { ...dashboard, openOrderCount: -1 },
     { ...dashboard, closed: null },
+    { ...dashboard, closeId: undefined },
+    { ...dashboard, closedAt: undefined },
+    { ...dashboard, closeId: "19000000-0000-4000-8000-000000000001" },
+    { ...dashboard, closedAt: "2026-10-25T20:00:00Z" },
+    { ...dashboard, closed: true },
+    { ...dashboard, closed: true, closeId: "not-a-uuid", closedAt: "2026-10-25T20:00:00Z" },
+    { ...dashboard, closed: true, closeId: "19000000-0000-4000-8000-000000000001", closedAt: null },
+    { ...dashboard, closed: true, closeId: "19000000-0000-4000-8000-000000000001", closedAt: "2026-02-30T20:00:00Z" },
+    { ...dashboard, closed: true, closeId: "19000000-0000-4000-8000-000000000001", closedAt: "2026-10-25T20:00:00Z", openOrderCount: 1 },
     { ...dashboard, salesTotal: "35000.30" },
     { ...dashboard, paymentTotal: "35000.28" },
     { ...dashboard, paymentMix: { cash: "30000.00", wallet: "5000.28" } },
@@ -904,6 +913,27 @@ test("Dashboard rejects wrong Tenant/date, missing close state, and unreconciled
     "/api/app/commerce-dashboard?storeId=" + STORE_A + "&businessDate=2026-10-25"),
   healthy, { env, fetchImpl: authFetch("cashier", async () => jsonResponse(dashboard)) });
   assert.equal(healthy.statusCode, 200, "valid fractional AOV must remain displayable");
+
+  const actualClose = {
+    ...dashboard, closed: true,
+    closeId: "19000000-0000-4000-8000-000000000001",
+    closedAt: "2026-10-25T20:00:00+07:00"
+  };
+  const acceptedClosed = res();
+  await dashboardHandle(req(authHeaders, "GET",
+    "/api/app/commerce-dashboard?storeId=" + STORE_A + "&businessDate=2026-10-25"),
+  acceptedClosed, { env, fetchImpl: authFetch("cashier", async () => jsonResponse(actualClose)) });
+  assert.equal(acceptedClosed.statusCode, 200, "valid closed-day audit evidence remains displayable");
+
+  const emptyDay = {
+    ...actualClose, orderCount: 0, salesTotal: "0.00", paymentTotal: "0.00",
+    paymentMix: {}, aov: null
+  };
+  const acceptedEmpty = res();
+  await dashboardHandle(req(authHeaders, "GET",
+    "/api/app/commerce-dashboard?storeId=" + STORE_A + "&businessDate=2026-10-25"),
+  acceptedEmpty, { env, fetchImpl: authFetch("cashier", async () => jsonResponse(emptyDay)) });
+  assert.equal(acceptedEmpty.statusCode, 200, "legitimate zero-order Daily Close remains valid");
 });
 
 test("Daily Close refuses cross-Tenant receipts, wrong day and unbalanced accounting totals", async () => {
