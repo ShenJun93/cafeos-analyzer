@@ -21,6 +21,8 @@ const TENANT_A = "10000000-0000-4000-8000-000000000001";
 const USER_A = "a0000000-0000-4000-8000-000000000001";
 const STORE_A = "11000000-0000-4000-8000-000000000001";
 const ITEM_A = "15000000-0000-4000-8000-000000000001";
+const ITEM_B = "15000000-0000-4000-8000-000000000002";
+const CATEGORY_A = "17000000-0000-4000-8000-000000000001";
 const ORDER_A = "16000000-0000-4000-8000-000000000001";
 const env = {
   SUPABASE_URL: "https://example.supabase.co",
@@ -99,11 +101,13 @@ test("menu GET is tenant scoped and menu POST is manager bounded with strict bod
       fetchImpl: authFetch("cashier", async (u) => {
         if (u.pathname === "/rest/v1/menu_categories") {
           assert.equal(u.searchParams.get("tenant_id"), "eq." + TENANT_A);
-          return jsonResponse([{ id: "cat-1", name: "Coffee", sort_order: 0, active: true }]);
+          assert.match(u.searchParams.get("select"), /tenant_id/);
+          return jsonResponse([{ id: CATEGORY_A, tenant_id: TENANT_A, name: "Coffee", sort_order: 0, active: true }]);
         }
         if (u.pathname === "/rest/v1/menu_items") {
           assert.equal(u.searchParams.get("tenant_id"), "eq." + TENANT_A);
-          return jsonResponse([{ id: ITEM_A, category_id: "cat-1", name: "Latte", price: 50000, active: true }]);
+          assert.match(u.searchParams.get("select"), /tenant_id/);
+          return jsonResponse([{ id: ITEM_A, tenant_id: TENANT_A, category_id: CATEGORY_A, name: "Latte", price: 50000, active: true }]);
         }
         return jsonResponse({}, 500);
       })
@@ -132,8 +136,8 @@ test("menu GET is tenant scoped and menu POST is manager bounded with strict bod
 
 
 test("POS Menu read fails closed on malformed, financial-invalid and truncated catalog data", async () => {
-  const category = { id: "cat-1", name: "Coffee", sort_order: 0, active: true };
-  const item = { id: ITEM_A, category_id: "cat-1", name: "Latte",
+  const category = { id: CATEGORY_A, tenant_id: TENANT_A, name: "Coffee", sort_order: 0, active: true };
+  const item = { id: ITEM_A, tenant_id: TENANT_A, category_id: CATEGORY_A, name: "Latte",
     price: "35000.00", active: true };
   const failures = [
     { categories: { categories: [category] }, items: [item],
@@ -147,6 +151,24 @@ test("POS Menu read fails closed on malformed, financial-invalid and truncated c
     { categories: [category], items: [{ ...item, price: "0.001" }],
       status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
     { categories: [category], items: [{ ...item, price: true }],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    { categories: [{ ...category, tenant_id: STORE_A }], items: [item],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    { categories: [{ ...category, tenant_id: undefined }], items: [item],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    { categories: [category, category], items: [item],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    { categories: [{ ...category, id: "not-a-uuid" }], items: [item],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    { categories: [category], items: [{ ...item, tenant_id: STORE_A }],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    { categories: [category], items: [{ ...item, tenant_id: undefined }],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    { categories: [category], items: [{ ...item, id: "wrong-id" }],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    { categories: [category], items: [item, item],
+      status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
+    { categories: [category], items: [{ ...item, category_id: "not-a-uuid" }],
       status: 502, code: "COMMERCE_MENU_UPSTREAM_INVALID" },
     { categories: Array.from({ length: 200 }, () => category), items: [item],
       status: 503, code: "COMMERCE_MENU_CATALOG_LIMIT" },
@@ -181,7 +203,7 @@ test("POS Menu read fails closed on malformed, financial-invalid and truncated c
   await menuHandle(req(authHeaders, "GET", "/api/app/commerce-menu"), healthy, {
     env, fetchImpl: authFetch("cashier", async url => jsonResponse(
       url.pathname === "/rest/v1/menu_categories" ? [category] : [
-        { ...item, price: "0.29" }, { ...item, price: 0 }
+        { ...item, price: "0.29" }, { ...item, id: ITEM_B, price: 0 }
       ]))
   });
   assert.equal(healthy.statusCode, 200, "valid exact-decimal and zero-price Menu remains readable");
