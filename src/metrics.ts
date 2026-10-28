@@ -2,7 +2,7 @@ import type { CanonicalLineItem, CoreMetrics } from "./types.js";
 
 export function sourceScopedOrderIdentity(item: CanonicalLineItem): string {
   const sourceNamespace = String(item.sourceNamespace ?? "legacy").trim() || "legacy";
-  return `${sourceNamespace}\u001f${item.transactionId}`;
+  return JSON.stringify([sourceNamespace, item.transactionId]);
 }
 
 export function computeCoreMetrics(items: CanonicalLineItem[]): CoreMetrics {

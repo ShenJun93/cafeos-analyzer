@@ -3,7 +3,7 @@ export function computeDataHealth(items, invalidRows) {
     const seen = new Set();
     let duplicates = 0;
     for (const x of items) {
-        const key = `${sourceScopedOrderIdentity(x)}|${x.product}|${x.quantity}|${x.netAmount}`;
+        const key = JSON.stringify([sourceScopedOrderIdentity(x), x.product, x.quantity, x.netAmount]);
         if (seen.has(key))
             duplicates++;
         else
