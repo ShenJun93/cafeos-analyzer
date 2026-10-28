@@ -19,7 +19,7 @@ function reply(data, range) {
     status: 200,
     headers: {
       "content-type": "application/json",
-      ...(range === undefined ? {} : { "content-range": range })
+      ...(range == null ? {} : { "content-range": range })
     }
   });
 }
@@ -99,14 +99,14 @@ test("Menu refuses short upstream prefixes and unverifiable counts before publis
   const cases = [
     ["truncated categories", { categoryRange: "0-0/2" }],
     ["truncated items", { itemRange: "0-0/2" }],
-    ["missing categories count", { categoryRange: undefined }],
-    ["missing items count", { itemRange: undefined }],
+    ["missing categories count", { categoryRange: null }],
+    ["missing items count", { itemRange: null }],
     ["unknown categories count", { categoryRange: "0-0/*" }],
     ["offset categories", { categoryRange: "1-1/1" }],
     ["wrong item endpoint count", { itemRange: "0-1/1" }],
     ["wrong total", { itemRange: "0-0/0" }],
     ["empty with nonzero total", { itemRows: [], itemRange: "*/1" }],
-    ["missing empty count", { itemRows: [], itemRange: undefined }],
+    ["missing empty count", { itemRows: [], itemRange: null }],
     ["nonarray category data", { categoryRows: {} }],
     ["nonarray item data", { itemRows: {} }]
   ];
