@@ -1480,6 +1480,11 @@ test("paid receipt refuses role misuse, cross-store, unpaid, missing and partial
       502, "COMMERCE_RECEIPT_INCOMPLETE"],
     [[order], lines, [{ ...payments[0], paid_at: "2026-10-27T09:30:01Z" }],
       502, "COMMERCE_RECEIPT_INCOMPLETE"],
+    [[{ ...order, channel: "invalid" }], lines, payments, 502, "COMMERCE_RECEIPT_INCOMPLETE"],
+    [[order], [{ ...lines[0], id: 123 }], payments, 502, "COMMERCE_RECEIPT_INCOMPLETE"],
+    [[order], [{ ...lines[0], item_name: ["Latte"] }], payments, 502, "COMMERCE_RECEIPT_INCOMPLETE"],
+    [[order], lines, [{ ...payments[0], method: "unknown" }],
+      502, "COMMERCE_RECEIPT_INCOMPLETE"],
     [[order], lines, [{ ...payments[0], reference: true }],
       502, "COMMERCE_RECEIPT_INCOMPLETE"],
     [[order], lines, [{ ...payments[0], reference: "x".repeat(501) }],
@@ -1553,6 +1558,14 @@ test("paid receipt reconciles items, discounts, tax, and captured payment in exa
   assert.equal(fractional.statusCode, 200,
     "valid PostgreSQL numeric(18,2) rounding remains printable");
   assert.equal(parsed(fractional).receipt.items.length, 3);
+
+  // A repeated source line can pass all arithmetic when the upstream
+  // totals are also duplicated. Reject that as an impossible SQL identity.
+  const repeatedLine = await probe({
+    ...base, subtotal: "140000.00", total: "140000.00"
+  }, [item, { ...item }], "140000.00");
+  assert.equal(repeatedLine.statusCode, 502);
+  assert.equal(parsed(repeatedLine).error.code, "COMMERCE_RECEIPT_INCOMPLETE");
 
   for (const [order, items, amount] of [
     [{ ...base, total: "69999.99" }, [item], "69999.99"],

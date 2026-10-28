@@ -4,6 +4,9 @@ import {
 } from "../../api/_app-auth.mjs";
 import { requiredUuid, validCommerceBusinessDate, validCommerceTimestamp } from "./_shared.mjs";
 
+const PAYMENT_METHODS = new Set(["cash", "card", "bank_transfer", "wallet", "other"]);
+const ORDER_CHANNELS = new Set(["counter", "takeaway", "pickup", "delivery"]);
+
 // PostgREST may encode SQL NUMERIC as a JSON number or decimal string.
 // Compare exact integer cents, never IEEE-754 products or rounded displays.
 // Values beyond safe JSON precision fail closed instead of misprinting.
@@ -25,7 +28,7 @@ function receiptQuantityMilli(value) {
   if (!match) return null;
   const milli = BigInt(match[1]) * 1000n
     + BigInt((match[2] ?? "").padEnd(3, "0"));
-  return milli > 0n ? milli : null;
+  return milli > 0n && milli <= 1000000n ? milli : null;
 }
 
 // Read-only paid receipt from immutable server-owned order-item price snapshots.
@@ -94,12 +97,14 @@ export async function handle(req, res, deps = {}) {
     // Fail closed: never print partial receipts or rely on the browser's cart.
     if (!Array.isArray(lines) || lines.length === 0 || lines.length > 100
         || lines.some(line => line.tenant_id !== ctx.tenant.id
-          || line.order_id !== orderId || !line.id || !line.item_name
+          || line.order_id !== orderId
+          || typeof line.id !== "string" || !line.id.trim()
+          || typeof line.item_name !== "string" || !line.item_name.trim()
           || line.unit_price == null || line.quantity == null || line.line_total == null)
         || !Array.isArray(payments) || payments.length !== 1
         || payments[0].tenant_id !== ctx.tenant.id
         || payments[0].order_id !== orderId || payments[0].status !== "captured"
-        || payments[0].amount == null || !payments[0].method
+        || payments[0].amount == null || !PAYMENT_METHODS.has(payments[0].method)
         || !Object.hasOwn(payments[0], "reference")
         || (payments[0].reference !== null
             && (typeof payments[0].reference !== "string"
@@ -107,8 +112,10 @@ export async function handle(req, res, deps = {}) {
         || !payments[0].paid_at || payments[0].paid_at !== order.paid_at
         || !Array.isArray(stores) || stores.length !== 1
         || stores[0].tenant_id !== ctx.tenant.id
-        || stores[0].id !== storeId || !stores[0].name
-        || !order.order_number || order.total == null
+        || stores[0].id !== storeId
+        || typeof stores[0].name !== "string" || !stores[0].name.trim()
+        || typeof order.order_number !== "string" || !order.order_number.trim()
+        || !ORDER_CHANNELS.has(order.channel) || order.total == null
         || !validCommerceBusinessDate(order.business_date)
         || !validCommerceTimestamp(order.paid_at)) {
       throw new AppHttpError(502, "COMMERCE_RECEIPT_INCOMPLETE", "Server receipt is incomplete");
@@ -120,7 +127,15 @@ export async function handle(req, res, deps = {}) {
     const total = receiptCents(order.total);
     const paymentAmount = receiptCents(payments[0].amount);
     let itemsSubtotal = 0n;
+    const lineIds = new Set();
     for (const line of lines) {
+      // A source row is a distinct immutable snapshot, not a repeated page row.
+      // A duplicate id can double-count into a plausible balanced receipt.
+      if (lineIds.has(line.id)) {
+        throw new AppHttpError(502, "COMMERCE_RECEIPT_INCOMPLETE",
+          "Server receipt contains duplicate item snapshots");
+      }
+      lineIds.add(line.id);
       const lineAmount = receiptCents(line.line_total);
       const unitPrice = receiptCents(line.unit_price);
       const quantityMilli = receiptQuantityMilli(line.quantity);
