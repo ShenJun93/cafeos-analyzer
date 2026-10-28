@@ -526,7 +526,7 @@ test("PostgreSQL lowercase UUID readbacks reconcile uppercase POS and payment in
     mutations++;
     paymentBody = JSON.parse(init.body);
     return jsonResponse({ orderId: order, status: "paid",
-      payment: { status: "captured", method: "cash", amount: "35000.00" } });
+      payment: { status: "captured", method: "cash", amount: "35000.00", reference: null } });
   }) });
   assert.equal(settled.statusCode, 201, "a committed payment must not produce an artificial 502");
   assert.equal(paymentBody.p_order_id, order);
@@ -674,7 +674,7 @@ test("POS order identifiers and settlement references reject implicit string coe
       env, fetchImpl: authFetch("cashier", async (url, init) => {
         assert.equal(url.pathname, "/rest/v1/rpc/commerce_capture_payment");
         observed = JSON.parse(init.body).p_reference;
-        return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { method: "bank_transfer", status: "captured", amount: 50000 } });
+        return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { method: "bank_transfer", status: "captured", amount: 50000, reference: observed } });
       })
     });
     assert.equal(response.statusCode, 201);
@@ -723,7 +723,7 @@ test("payment, dashboard, and close handlers call only the fixed commerce RPCs",
   const fetchImpl = authFetch("manager", async (u, init) => {
     seen.push({ path: u.pathname, init });
     if (u.pathname === "/rest/v1/rpc/commerce_capture_payment") {
-      return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { method: "cash", status: "captured", amount: 100000 } });
+      return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { method: "cash", status: "captured", amount: 100000, reference: null } });
     }
     if (u.pathname === "/rest/v1/rpc/commerce_daily_dashboard") {
       return jsonResponse({ tenantId: TENANT_A, storeId: STORE_A, businessDate: "2026-10-25", source: "cafeos_pos", orderCount: 1, openOrderCount: 0, salesTotal: "100000.00", paymentTotal: "100000.00", paymentMix: { cash: "100000.00" }, aov: "100000.00", closed: false });
@@ -1143,7 +1143,7 @@ test("Payment amount rejects invalid scale/types but accepts common floating-dec
     }), response, { env, fetchImpl: authFetch("cashier", async (url, init) => {
       assert.equal(url.pathname, "/rest/v1/rpc/commerce_capture_payment");
       transmitted = JSON.parse(init.body).p_amount;
-      return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { method: "cash", status: "captured", amount: transmitted } });
+      return jsonResponse({ orderId: ORDER_A, status: "paid", payment: { method: "cash", status: "captured", amount: transmitted, reference: null } });
     }) });
     assert.equal(response.statusCode, 201, "Payment should accept: " + amount);
     assert.equal(transmitted, Number(amount));
@@ -1165,7 +1165,7 @@ test("Payment confirmation refuses mismatched capture evidence without retry or 
   };
   const accepted = {
     orderId: ORDER_A, status: "paid",
-    payment: { method: "cash", status: "captured", amount: "35000.29" }
+    payment: { method: "cash", status: "captured", amount: "35000.29", reference: "terminal-1" }
   };
   const invalid = [
     { ...accepted, orderId: STORE_A },
@@ -1174,6 +1174,11 @@ test("Payment confirmation refuses mismatched capture evidence without retry or 
     { ...accepted, payment: null },
     { ...accepted, payment: [] },
     { ...accepted, payment: { ...accepted.payment, method: "wallet" } },
+    { ...accepted, payment: { ...accepted.payment, reference: "another-terminal" } },
+    { ...accepted, payment: { ...accepted.payment, reference: null } },
+    { ...accepted, payment: { ...accepted.payment, reference: undefined } },
+    { ...accepted, payment: { method: "cash", status: "captured", amount: "35000.29" } },
+    { ...accepted, payment: { ...accepted.payment, reference: ["terminal-1"] } },
     { ...accepted, payment: { ...accepted.payment, status: "pending" } },
     { ...accepted, payment: { ...accepted.payment, amount: "35000.28" } },
     { ...accepted, payment: { ...accepted.payment, amount: "35000.290" } },
