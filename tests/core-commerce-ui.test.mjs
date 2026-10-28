@@ -313,6 +313,7 @@ test("lost payment response reconciles paid order and preserves an open order", 
     currentOrder = { id: "order-1", status: "open", total: 50000 };
     let statusResult = "paid";
     let statusChecks = 0;
+    let receiptReads = 0;
     let payments = 0;
     let dashboardRefreshes = 0;
     loadDashboard = async () => { dashboardRefreshes += 1; };
@@ -324,19 +325,28 @@ test("lost payment response reconciles paid order and preserves an open order", 
         statusChecks += 1;
         return { order: { id: "order-1", storeId: "store-1", status: statusResult, total: "50000.00" } };
       }
+      if (path.startsWith("/api/app/commerce-receipt?orderId=")) {
+        receiptReads++;
+        return { receipt: { orderId: "order-1", storeId: "store-1",
+          status: "paid", total: "50000.00",
+          payment: { method: "cash", amount: "50000.00" } } };
+      }
       throw new Error("unexpected route " + path);
     };
   `, context);
   await runInContext("capturePayment()", context);
   assert.equal(runInContext("currentOrder", context), null);
   assert.equal(runInContext("statusChecks", context), 1);
+  assert.equal(runInContext("receiptReads", context), 1);
   assert.equal(runInContext("dashboardRefreshes", context), 1);
-  assert.match(elem("status").textContent, /xác nhận payment thành công/i);
+  assert.match(elem("status").textContent, /phương thức và số tiền captured khớp/i);
 
   runInContext('currentOrder = { id: "order-1", status: "open", total: 50000 }; statusResult = "open";', context);
   await assert.rejects(runInContext("capturePayment()", context), /Chưa xác minh được payment/);
   assert.equal(runInContext("currentOrder.status", context), "open");
   assert.equal(runInContext("statusChecks", context), 2);
+  assert.equal(runInContext("receiptReads", context), 1,
+    "open order state must not trigger a paid receipt read");
   assert.equal(runInContext("dashboardRefreshes", context), 1);
 });
 
@@ -375,9 +385,14 @@ test("ambiguous POS payment recovery requires exact settled cents before clearin
     currentStoreId = "store-1";
     let paymentWrites = 0;
     let statusReads = 0;
+    let receiptReads = 0;
     let dashboardRefreshes = 0;
     let serverOrder = { id: "order-1", storeId: "store-1",
       status: "paid", total: "35000.29" };
+    let serverReceipt = {
+      orderId: "order-1", storeId: "store-1", status: "paid", total: "35000.29",
+      payment: { method: "cash", amount: "35000.29" }
+    };
     loadDashboard = async () => { dashboardRefreshes++; };
     appFetch = async (path) => {
       if (path === "/api/app/commerce-payment") {
@@ -385,6 +400,9 @@ test("ambiguous POS payment recovery requires exact settled cents before clearin
       }
       if (path.startsWith("/api/app/commerce-order-status?orderId=")) {
         statusReads++; return { order: serverOrder };
+      }
+      if (path.startsWith("/api/app/commerce-receipt?orderId=")) {
+        receiptReads++; return { receipt: serverReceipt };
       }
       throw new Error("unexpected request: " + path);
     };
@@ -419,7 +437,62 @@ test("ambiguous POS payment recovery requires exact settled cents before clearin
     assert.equal(runInContext("paymentWrites", ctx), before + 1);
   }
   assert.equal(runInContext("statusReads", ctx), 12);
+  assert.equal(runInContext("receiptReads", ctx), 2,
+    "only valid paid status and matching cents may advance to receipt verification");
   assert.equal(runInContext("dashboardRefreshes", ctx), 2);
+
+  // A same-total PAID order may have been captured with a different method
+  // by a concurrent cashier. Never infer that this attempted method succeeded.
+  const validReceipt = {
+    orderId: "order-1", storeId: "store-1", status: "paid",
+    total: "35000.29", payment: { method: "cash", amount: "35000.29" }
+  };
+  const invalidReceipts = [
+    { ...validReceipt, orderId: "another-order" },
+    { ...validReceipt, storeId: "another-store" },
+    { ...validReceipt, status: "open" },
+    { ...validReceipt, total: "35000.28" },
+    { ...validReceipt, payment: { method: "card", amount: "35000.29" } },
+    { ...validReceipt, payment: { method: "cash", amount: "35000.28" } },
+    { ...validReceipt, payment: null },
+    null
+  ];
+  for (const receipt of invalidReceipts) {
+    runInContext("currentOrder = { id: 'order-1', status: 'open', total: 35000.29 };", ctx);
+    ctx.syntheticReceipt = receipt;
+    runInContext("serverReceipt = syntheticReceipt", ctx);
+    const before = runInContext("paymentWrites", ctx);
+    const statusBefore = runInContext("statusReads", ctx);
+    const receiptsBefore = runInContext("receiptReads", ctx);
+    await assert.rejects(runInContext("capturePayment()", ctx), /Chưa xác minh được payment/);
+    assert.equal(runInContext("paymentWrites", ctx), before + 1);
+    assert.equal(runInContext("statusReads", ctx), statusBefore + 1);
+    assert.equal(runInContext("receiptReads", ctx), receiptsBefore + 1);
+    assert.equal(runInContext("currentOrder.status", ctx), "open",
+      "wrong method/amount on receipt must not clear checkout");
+    assert.equal(runInContext("dashboardRefreshes", ctx), 2);
+  }
+
+  // A failed receipt read likewise leaves the order unsettled rather than
+  // silently falling back to PAID order header alone.
+  runInContext("currentOrder = { id: 'order-1', status: 'open', total: 35000.29 };", ctx);
+  runInContext(`appFetch = async (path) => {
+    if (path === "/api/app/commerce-payment") {
+      paymentWrites++; throw new Error("POST response lost");
+    }
+    if (path.startsWith("/api/app/commerce-order-status?orderId=")) {
+      statusReads++; return { order: serverOrder };
+    }
+    if (path.startsWith("/api/app/commerce-receipt?orderId=")) {
+      receiptReads++; throw new Error("receipt read unavailable");
+    }
+    throw new Error("unexpected request: " + path);
+  };`, ctx);
+  await assert.rejects(runInContext("capturePayment()", ctx), /Chưa xác minh được payment/);
+  assert.equal(runInContext("currentOrder.status", ctx), "open");
+
+  // The same method, exact amount and receipt identity are required before
+  // clearing the checkout. No additional payment POST may be sent by recovery.
 
   // A malformed trusted order total should fail before any payment RPC.
   runInContext("currentOrder = { id: 'order-1', status: 'open', total: '35000.291' };", ctx);
