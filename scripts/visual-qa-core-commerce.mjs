@@ -26,7 +26,7 @@ const menu = {
     { id: "15000000-0000-4000-8000-000000000003", name: "Cold Brew", sku: "COLD", price: 45000, active: true }
   ]
 };
-const state = { lastOrder: null, paid: false, closed: false, requests: [], closeWrites: 0 };
+const state = { lastOrder: null, paid: false, closed: false, requests: [], closeWrites: 0, voidWrites: 0 };
 
 function jsonResponse(payload) {
   return JSON.stringify(payload);
@@ -112,7 +112,7 @@ async function installMockTransport(page) {
         assert.equal(req.method(), "POST");
         assert.deepEqual(Object.keys(body).sort(), ["channel", "clientOrderKey", "items", "storeId"].sort());
         state.lastOrder = {
-          id: "16000000-0000-4000-8000-000000000001",
+          id: state.paid ? "16000000-0000-4000-8000-000000000002" : "16000000-0000-4000-8000-000000000001",
           orderNumber: "POS-SYNTHETIC", clientOrderKey: body.clientOrderKey,
           total: 35000 * body.items[0].quantity, status: "open", storeId: STORE
         };
@@ -128,6 +128,24 @@ async function installMockTransport(page) {
         state.paid = true;
         payload = { orderId: state.lastOrder.id, status: "paid", payment: { amount: body.amount, status: "captured" } };
         status = 201;
+        break;
+      }
+      case "/api/app/commerce-void-order": {
+        assert.equal(req.method(), "POST");
+        assert.equal(manager, true);
+        const body = req.postDataJSON();
+        assert.equal(body.orderId, state.lastOrder.id);
+        assert.equal(body.storeId, STORE);
+        assert.equal(body.reason, "Khách đổi ý");
+        assert.equal(state.lastOrder.status, "open");
+        state.lastOrder.status = "voided";
+        state.voidWrites++;
+        payload = { void: {
+          orderId: body.orderId, storeId: STORE, businessDate: DATE,
+          status: "voided", reason: body.reason,
+          voidedByUserId: "synthetic-manager", voidedAt: DATE + "T11:30:00Z",
+          idempotent: false
+        } };
         break;
       }
       case "/api/app/commerce-open-orders":
@@ -264,6 +282,17 @@ async function runViewport(browser, width, height, base) {
     });
     assert.equal(await page.locator("#printPaidReceipt").isEnabled(), true);
     await snapshot(page, width, "receipt-reprint");
+    await page.locator('[data-view="posWorkspace"]').click();
+    await latte.click();
+    await page.locator("#submitOrder").click();
+    await page.locator("#paymentPanel").waitFor({ state: "visible" });
+    await page.locator("#voidReason").fill("Khách đổi ý");
+    page.once("dialog", dialog => dialog.accept());
+    await page.locator("#voidOrder").click();
+    await page.locator("#paymentPanel").waitFor({ state: "hidden" });
+    assert.equal(state.lastOrder.status, "voided");
+    assert.equal(state.voidWrites, 1);
+    await snapshot(page, width, "void-unpaid-order");
     await page.locator('[data-view="menuWorkspace"]').click();
     await snapshot(page, width, "menu");
     await page.locator('[data-view="dashboardWorkspace"]').click();
@@ -297,6 +326,7 @@ async function runViewport(browser, width, height, base) {
     await signIn(cashier, "cashier@synthetic.invalid", "synthetic-only");
     assert.equal(await cashier.locator("#menuWriteControls").evaluate(el => el.classList.contains("hidden")), true);
     assert.equal(await cashier.locator("#closeDay").isDisabled(), true);
+    assert.equal(await cashier.locator("#voidControls").isVisible(), false);
     assert.equal(await cashier.locator("#hqNav").isVisible(), false);
     assert.equal(await cashier.locator("#menuCatalog .menu-item-button").first().isEnabled(), true);
     await snapshot(cashier, width, "cashier");
@@ -321,7 +351,7 @@ let browser;
 try {
   browser = await chromium.launch({ headless: true });
   await runViewport(browser, 390, 844, base);
-  state.paid = false; state.closed = false; state.closeWrites = 0;
+  state.paid = false; state.closed = false; state.closeWrites = 0; state.voidWrites = 0;
   await runViewport(browser, 1200, 800, base);
   console.log("CAFEOS_VISUAL_QA_PASS: 390px and 1200px; synthetic transport only");
 } finally {

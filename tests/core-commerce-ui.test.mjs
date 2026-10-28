@@ -1668,7 +1668,7 @@ test("Daily Close cannot start while local POS or Menu operations are unsettled"
   assert.equal(node("closeDay").disabled, true, "two open orders must block closing day");
   assert.match(node("closePreview").textContent, /ĐÓNG NGÀY BỊ CHẶN/);
   assert.match(node("closePreview").textContent, /Khôi phục đơn chưa thanh toán/);
-  assert.match(node("closePreview").textContent, /chưa hỗ trợ hủy đơn/);
+  assert.match(node("closePreview").textContent, /Manager có thể hủy đơn chưa thanh toán kèm lý do/);
   assert.match(node("closePreview").textContent, /không ghi thanh toán giả/);
   await runInContext("closeBusinessDay()", ctx);
   assert.equal(runInContext("closeWrites", ctx), 0, "blocked close cannot write");

@@ -118,9 +118,9 @@ select lives_ok(
 
 
 select results_eq(
- $select order_count, sales_total, payment_total from public.daily_closes
-   where tenant_id='83000000-0000-4000-8000-000000000011'$,
- $values (1,35000::numeric,35000::numeric)$,
+ $$select order_count, sales_total, payment_total from public.daily_closes
+   where tenant_id='83000000-0000-4000-8000-000000000011'$$,
+ $$values (1,35000::numeric,35000::numeric)$$,
  'Daily Close excludes voided order from financial totals');
 select ok(
  not has_table_privilege('authenticated','public.pos_order_voids','INSERT')
