@@ -175,7 +175,8 @@ test("full CafeOS HTTP pipeline: tenant roles, menu, POS, retry, payment, close 
         paymentTotal: payment?.amount || 0,
         cashTotal: payment?.method === "cash" ? payment.amount : 0,
         nonCashTotal: payment && payment.method !== "cash" ? payment.amount : 0,
-        orderCount: Number(order?.status === "paid"), idempotent: false
+        orderCount: Number(order?.status === "paid"),
+        closedByUserId: MANAGER, closedAt: "2026-10-25T20:00:00Z", idempotent: false
       };
       return json(closed);
     }

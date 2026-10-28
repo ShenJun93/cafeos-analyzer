@@ -26,6 +26,12 @@ function validBusinessDate(value) {
     && new Date(value + "T00:00:00Z").toISOString().slice(0, 10) === value;
 }
 
+function validCloseTimestamp(value) {
+  return typeof value === "string"
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[.]\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    && Number.isFinite(Date.parse(value));
+}
+
 function validClose(payload, tenantId, storeId, requestedDate) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)
       || typeof payload.id !== "string" || !UUID_RE.test(payload.id)
@@ -33,6 +39,9 @@ function validClose(payload, tenantId, storeId, requestedDate) {
       || !validBusinessDate(payload.businessDate)
       || (requestedDate !== null && payload.businessDate !== requestedDate)
       || !commerceReturnedCount(payload.orderCount)
+      || typeof payload.closedByUserId !== "string"
+      || !UUID_RE.test(payload.closedByUserId)
+      || !validCloseTimestamp(payload.closedAt)
       || typeof payload.idempotent !== "boolean") return false;
   const sales = commerceReturnedCents(payload.salesTotal);
   const payments = commerceReturnedCents(payload.paymentTotal);
@@ -40,7 +49,7 @@ function validClose(payload, tenantId, storeId, requestedDate) {
   const nonCash = commerceReturnedCents(payload.nonCashTotal);
   return sales !== null && payments !== null && cash !== null
     && nonCash !== null && sales === payments && cash + nonCash === payments
-    && (payload.orderCount !== 0 || sales === 0n);
+    && (payload.orderCount === 0 ? sales === 0n : sales > 0n);
 }
 
 export async function handle(req, res, deps = {}) {

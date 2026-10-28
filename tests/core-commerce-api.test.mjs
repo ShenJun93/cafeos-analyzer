@@ -638,7 +638,7 @@ test("PostgreSQL lowercase UUID readbacks reconcile uppercase POS and payment in
       id: "19000000-0000-4000-8000-000000000001", tenantId: TENANT_A, storeId: store,
       businessDate: "2026-10-25", orderCount: 1,
       salesTotal: 35000, paymentTotal: 35000,
-      cashTotal: 35000, nonCashTotal: 0, idempotent: false
+      cashTotal: 35000, nonCashTotal: 0, closedByUserId: USER_A, closedAt: "2026-10-25T20:00:00Z", idempotent: false
     });
   }) });
   assert.equal(close.statusCode, 201);
@@ -809,7 +809,7 @@ test("payment, dashboard, and close handlers call only the fixed commerce RPCs",
       return jsonResponse({ tenantId: TENANT_A, storeId: STORE_A, businessDate: "2026-10-25", source: "cafeos_pos", orderCount: 1, openOrderCount: 0, salesTotal: "100000.00", paymentTotal: "100000.00", paymentMix: { cash: "100000.00" }, aov: "100000.00", closed: false });
     }
     if (u.pathname === "/rest/v1/rpc/commerce_close_day") {
-      return jsonResponse({ id: "19000000-0000-4000-8000-000000000001", tenantId: TENANT_A, storeId: STORE_A, businessDate: "2026-10-25", orderCount: 1, salesTotal: "100000.00", paymentTotal: "100000.00", cashTotal: "100000.00", nonCashTotal: "0.00", idempotent: false });
+      return jsonResponse({ id: "19000000-0000-4000-8000-000000000001", tenantId: TENANT_A, storeId: STORE_A, businessDate: "2026-10-25", orderCount: 1, salesTotal: "100000.00", paymentTotal: "100000.00", cashTotal: "100000.00", nonCashTotal: "0.00", closedByUserId: USER_A, closedAt: "2026-10-25T20:00:00Z", idempotent: false });
     }
     return jsonResponse({}, 500);
   });
@@ -910,7 +910,7 @@ test("Daily Close refuses cross-Tenant receipts, wrong day and unbalanced accoun
     tenantId: TENANT_A, storeId: STORE_A, businessDate: "2026-10-25",
     orderCount: 2, salesTotal: "35000.29", paymentTotal: "35000.29",
     cashTotal: "30000.00", nonCashTotal: "5000.29",
-    idempotent: false
+    closedByUserId: USER_A, closedAt: "2026-10-25T20:00:00Z", idempotent: false
   };
   const invalid = [
     { ...close, tenantId: "20000000-0000-4000-8000-000000000002" },
@@ -919,6 +919,13 @@ test("Daily Close refuses cross-Tenant receipts, wrong day and unbalanced accoun
     { ...close, businessDate: "2026-02-30" },
     { ...close, id: "not-a-uuid" },
     { ...close, orderCount: -1 },
+    { ...close, orderCount: 0 },
+    { ...close, orderCount: 1, salesTotal: "0.00", paymentTotal: "0.00",
+      cashTotal: "0.00", nonCashTotal: "0.00" },
+    { ...close, closedByUserId: null },
+    { ...close, closedByUserId: "not-a-uuid" },
+    { ...close, closedAt: null },
+    { ...close, closedAt: "invalid" },
     { ...close, salesTotal: "35000.30" },
     { ...close, paymentTotal: "35000.28" },
     { ...close, cashTotal: "30000.01" },
