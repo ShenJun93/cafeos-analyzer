@@ -52,7 +52,9 @@ function requestedWorkflowRoute(req) {
 
 export async function dispatchWorkflow(req, res, deps = {}, routes = WORKFLOW_ROUTES) {
   const route = requestedWorkflowRoute(req);
-  const handler = routes[route];
+  // Only declared endpoints may run. Object.prototype has callable members
+  // (e.g. constructor/toString) that are not application routes and must 404.
+  const handler = Object.hasOwn(routes, route) ? routes[route] : undefined;
   if (typeof handler !== 'function') {
     return appJson(res, 404, {
       error: {
