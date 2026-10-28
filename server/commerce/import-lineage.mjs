@@ -71,7 +71,7 @@ export function exactLineagePage(rows, contentRange) {
   if (rows.length > MAX_ROWS) throw limit();
   if (typeof contentRange !== "string") throw invalid();
   if (contentRange === "*/0" && rows.length === 0) return 0;
-  const match = /^(\\d+)-(\\d+)\/(\\d+)$/.exec(contentRange);
+  const match = /^(\d+)-(\d+)\/(\d+)$/.exec(contentRange);
   if (!match) throw invalid();
   const [start, end, total] = match.slice(1).map(Number);
   if (![start, end, total].every(Number.isSafeInteger)) throw invalid();
