@@ -873,6 +873,20 @@ async function submitOrder() {
   }
 }
 
+// PostgREST NUMERIC may be serialized as a decimal string or JSON number.
+// An ambiguous payment may only be reconciled when the server's paid order
+// total matches the original amount attempted, exactly to the cent.
+// Do not use Number() equality or rounded currency formatting for evidence.
+function paymentCents(value) {
+  if ((typeof value !== "number" && typeof value !== "string")
+      || (typeof value === "number" && !Number.isFinite(value))) return null;
+  const match = /^(0|[1-9][0-9]*)(?:[.]([0-9]{1,2}))?$/.exec(String(value));
+  if (!match) return null;
+  const cents = BigInt(match[1]) * 100n
+    + BigInt((match[2] ?? "").padEnd(2, "0"));
+  return cents > 0n && cents <= 100000000000000n ? cents : null;
+}
+
 async function capturePayment() {
   if (!canWriteCommerce() || !currentOrder || currentOrder.status !== "open" || paymentSubmitInFlight) return;
   paymentSubmitInFlight = true;
@@ -881,6 +895,11 @@ async function capturePayment() {
   setStatus("Đang ghi payment record…");
   try {
     const attemptedOrderId = currentOrder.id;
+    const attemptedTotal = currentOrder.total;
+    const attemptedCents = paymentCents(attemptedTotal);
+    if (attemptedCents === null) {
+      throw new Error("Server total không hợp lệ; không gửi Payment.");
+    }
     let recovered = false;
     try {
       await appFetch("/api/app/commerce-payment", {
@@ -888,7 +907,7 @@ async function capturePayment() {
         body: {
           orderId: attemptedOrderId,
           method: el("paymentMethod").value,
-          amount: Number(currentOrder.total),
+          amount: Number(attemptedTotal),
           reference: el("paymentReference").value.trim() || null
         }
       });
@@ -900,7 +919,8 @@ async function capturePayment() {
         );
         recovered = status.order?.id === attemptedOrderId
           && status.order?.storeId === currentStoreId
-          && status.order?.status === "paid";
+          && status.order?.status === "paid"
+          && paymentCents(status.order.total) === attemptedCents;
       } catch {
         // Unknown outcome: preserve this order for further reconciliation.
       }
