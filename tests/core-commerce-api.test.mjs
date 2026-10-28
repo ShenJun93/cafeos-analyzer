@@ -317,7 +317,12 @@ test("POS order confirmation requires original Tenant, Store, idempotency intent
     { ...valid, order: { ...valid.order, total: 0 } },
     { ...valid, order: { ...valid.order, total: "NaN" } },
     { ...valid, items: [] },
-    { ...valid, items: null }
+    { ...valid, items: null },
+    { ...valid, items: [{ menuItemId: STORE_A, quantity: 1 }] },
+    { ...valid, items: [{ menuItemId: ITEM_A, quantity: 2 }] },
+    { ...valid, items: [{ menuItemId: ITEM_A, quantity: "1.0000" }] },
+    { ...valid, items: [{ menuItemId: ITEM_A, quantity: [1] }] },
+    { ...valid, items: [null] }
   ];
   for (const responsePayload of invalid) {
     let writes = 0;
@@ -338,6 +343,47 @@ test("POS order confirmation requires original Tenant, Store, idempotency intent
     healthy, { env, fetchImpl: authFetch("cashier", async () => jsonResponse(valid)) });
   assert.equal(healthy.statusCode, 201);
   assert.equal(parsed(healthy).order.clientOrderKey, intent.clientOrderKey);
+
+  // SQL may reorder returned rows and PostgREST may serialize quantity as a
+  // string. Correlate a multiset of ID+exact milli-quantity, including repeated
+  // menu IDs, rather than assuming item order matches the request array.
+  const twoLines = {
+    ...intent,
+    clientOrderKey: "intent-multi-line-02",
+    items: [
+      { menuItemId: ITEM_A, quantity: 0.125 },
+      { menuItemId: ITEM_A, quantity: 2.5 }
+    ]
+  };
+  const reordered = {
+    order: { ...valid.order, clientOrderKey: twoLines.clientOrderKey },
+    items: [
+      { menuItemId: ITEM_A, quantity: "2.500" },
+      { menuItemId: ITEM_A, quantity: "0.125" }
+    ]
+  };
+  const validReordered = res();
+  await orderHandle(req(authHeaders, "POST", "/api/app/commerce-order", twoLines),
+    validReordered, {
+      env, fetchImpl: authFetch("cashier", async () => jsonResponse(reordered))
+    });
+  assert.equal(validReordered.statusCode, 201);
+  for (const malformed of [
+    { ...reordered, items: [
+      { menuItemId: ITEM_A, quantity: 2.5 },
+      { menuItemId: ITEM_A, quantity: 2.5 }
+    ] },
+    { ...reordered, items: [
+      { menuItemId: ITEM_A, quantity: 2.5 },
+      { menuItemId: STORE_A, quantity: 0.125 }
+    ] }
+  ]) {
+    const response = res();
+    await orderHandle(req(authHeaders, "POST", "/api/app/commerce-order", twoLines),
+      response, { env, fetchImpl: authFetch("cashier", async () => jsonResponse(malformed)) });
+    assert.equal(response.statusCode, 502,
+      "same-length response must not swap a line or duplicate an unrequested quantity");
+  }
 });
 
 test("POS rejects quantity coercion and excess scale before creating a trusted order", async () => {
@@ -381,7 +427,7 @@ test("POS rejects quantity coercion and excess scale before creating a trusted o
       env, fetchImpl: authFetch("cashier", async (url, init) => {
         assert.equal(url.pathname, "/rest/v1/rpc/commerce_create_order");
         captured = JSON.parse(init.body).p_items[0].quantity;
-        return jsonResponse({ order: { id: ORDER_A, tenantId: TENANT_A, storeId: STORE_A, clientOrderKey: "valid-quantity", channel: "counter", orderNumber: "C-001", status: "open", total: 50000 }, items: [{ menuItemId: ITEM_A, quantity: 1 }] });
+        return jsonResponse({ order: { id: ORDER_A, tenantId: TENANT_A, storeId: STORE_A, clientOrderKey: "valid-quantity", channel: "counter", orderNumber: "C-001", status: "open", total: 50000 }, items: [{ menuItemId: ITEM_A, quantity: expected }] });
       })
     });
     assert.equal(response.statusCode, 201, "must accept quantity " + String(quantity));
