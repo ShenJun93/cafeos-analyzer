@@ -896,6 +896,7 @@ async function capturePayment() {
   try {
     const attemptedOrderId = currentOrder.id;
     const attemptedTotal = currentOrder.total;
+    const attemptedMethod = el("paymentMethod").value;
     const attemptedCents = paymentCents(attemptedTotal);
     if (attemptedCents === null) {
       throw new Error("Server total không hợp lệ; không gửi Payment.");
@@ -906,7 +907,7 @@ async function capturePayment() {
         method: "POST",
         body: {
           orderId: attemptedOrderId,
-          method: el("paymentMethod").value,
+          method: attemptedMethod,
           amount: Number(attemptedTotal),
           reference: el("paymentReference").value.trim() || null
         }
@@ -917,10 +918,27 @@ async function capturePayment() {
         const status = await appFetch(
           "/api/app/commerce-order-status?orderId=" + encodeURIComponent(attemptedOrderId)
         );
-        recovered = status.order?.id === attemptedOrderId
+        const paidStateMatches = status.order?.id === attemptedOrderId
           && status.order?.storeId === currentStoreId
           && status.order?.status === "paid"
           && paymentCents(status.order.total) === attemptedCents;
+        if (paidStateMatches) {
+          // Another cashier could have captured the same order with a
+          // different method. A paid order header does NOT prove that this
+          // attempted payment was recorded. Require the independent,
+          // server-reconciled captured-payment receipt before clearing POS.
+          const result = await appFetch(
+            "/api/app/commerce-receipt?orderId=" + encodeURIComponent(attemptedOrderId)
+            + "&storeId=" + encodeURIComponent(currentStoreId)
+          );
+          const receipt = result?.receipt;
+          recovered = receipt?.orderId === attemptedOrderId
+            && receipt?.storeId === currentStoreId
+            && receipt?.status === "paid"
+            && receipt?.payment?.method === attemptedMethod
+            && paymentCents(receipt?.payment?.amount) === attemptedCents
+            && paymentCents(receipt?.total) === attemptedCents;
+        }
       } catch {
         // Unknown outcome: preserve this order for further reconciliation.
       }
@@ -938,7 +956,7 @@ async function capturePayment() {
     void loadPaidReceipt(attemptedOrderId);
     await refreshDashboardAfterSale(
       recovered
-        ? "Đã xác nhận payment thành công từ trạng thái server sau lỗi phản hồi."
+        ? "Server xác nhận đơn đã thu đủ, phương thức và số tiền captured khớp sau lỗi phản hồi."
         : "Payment record đã captured. Order đã paid."
     );
   } finally {
