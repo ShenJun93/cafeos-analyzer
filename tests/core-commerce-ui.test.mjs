@@ -329,7 +329,7 @@ test("lost payment response reconciles paid order and preserves an open order", 
         receiptReads++;
         return { receipt: { orderId: "order-1", storeId: "store-1",
           status: "paid", total: "50000.00",
-          payment: { method: "cash", amount: "50000.00" } } };
+          payment: { method: "cash", amount: "50000.00", reference: null } } };
       }
       throw new Error("unexpected route " + path);
     };
@@ -394,11 +394,13 @@ test("ambiguous POS payment recovery requires exact settled cents before clearin
       status: "paid", total: "35000.29" };
     let serverReceipt = {
       orderId: "order-1", storeId: "store-1", status: "paid", total: "35000.29",
-      payment: { method: "cash", amount: "35000.29" }
+      payment: { method: "cash", amount: "35000.29", reference: null }
     };
+    let lastPaymentReference = "not sent";
     loadDashboard = async () => { dashboardRefreshes++; };
-    appFetch = async (path) => {
+    appFetch = async (path, options) => {
       if (path === "/api/app/commerce-payment") {
+        lastPaymentReference = options?.body?.reference;
         paymentWrites++; throw new Error("POST response lost");
       }
       if (path.startsWith("/api/app/commerce-order-status?orderId=")) {
@@ -448,7 +450,7 @@ test("ambiguous POS payment recovery requires exact settled cents before clearin
   // by a concurrent cashier. Never infer that this attempted method succeeded.
   const validReceipt = {
     orderId: "order-1", storeId: "store-1", status: "paid",
-    total: "35000.29", payment: { method: "cash", amount: "35000.29" }
+    total: "35000.29", payment: { method: "cash", amount: "35000.29", reference: null }
   };
   const invalidReceipts = [
     { ...validReceipt, orderId: "another-order" },
@@ -457,6 +459,8 @@ test("ambiguous POS payment recovery requires exact settled cents before clearin
     { ...validReceipt, total: "35000.28" },
     { ...validReceipt, payment: { method: "card", amount: "35000.29" } },
     { ...validReceipt, payment: { method: "cash", amount: "35000.28" } },
+    { ...validReceipt, payment: { method: "cash", amount: "35000.29", reference: "other" } },
+    { ...validReceipt, payment: { method: "cash", amount: "35000.29" } },
     { ...validReceipt, payment: null },
     null
   ];
@@ -475,6 +479,32 @@ test("ambiguous POS payment recovery requires exact settled cents before clearin
       "wrong method/amount on receipt must not clear checkout");
     assert.equal(runInContext("dashboardRefreshes", ctx), 2);
   }
+
+  // A cashier-provided bank/terminal reference must be snapshotted once
+  // and matched with the actual captured reference, not just method/amount.
+  element("paymentReference").value = "  txn-42  ";
+  runInContext("currentOrder = { id: 'order-1', status: 'open', total: 35000.29 };", ctx);
+  ctx.syntheticReceipt = {
+    ...validReceipt,
+    payment: { method: "cash", amount: "35000.29", reference: "txn-42" }
+  };
+  runInContext("serverReceipt = syntheticReceipt", ctx);
+  await runInContext("capturePayment()", ctx);
+  assert.equal(runInContext("currentOrder", ctx), null);
+  assert.equal(runInContext("lastPaymentReference", ctx), "txn-42");
+  assert.equal(runInContext("dashboardRefreshes", ctx), 3);
+
+  // A different captured reference (same order/method/amount) cannot prove
+  // the selected payment reference was captured: preserve the checkout.
+  runInContext("currentOrder = { id: 'order-1', status: 'open', total: 35000.29 };", ctx);
+  element("paymentReference").value = "txn-43";
+  const beforeWrongRef = runInContext("paymentWrites", ctx);
+  await assert.rejects(runInContext("capturePayment()", ctx), /Chưa xác minh được payment/);
+  assert.equal(runInContext("lastPaymentReference", ctx), "txn-43");
+  assert.equal(runInContext("paymentWrites", ctx), beforeWrongRef + 1);
+  assert.equal(runInContext("currentOrder.status", ctx), "open");
+  assert.equal(runInContext("dashboardRefreshes", ctx), 3);
+  element("paymentReference").value = "";
 
   // A failed receipt read likewise leaves the order unsettled rather than
   // silently falling back to PAID order header alone.
