@@ -73,7 +73,7 @@ export async function handle(req, res, deps = {}) {
       limit: "101"
     });
     const paymentParams = new URLSearchParams({
-      select: "order_id,method,amount,status,paid_at",
+      select: "order_id,method,amount,status,paid_at,reference",
       tenant_id: "eq." + ctx.tenant.id,
       order_id: "eq." + orderId,
       status: "eq.captured",
@@ -97,6 +97,10 @@ export async function handle(req, res, deps = {}) {
         || !Array.isArray(payments) || payments.length !== 1
         || payments[0].order_id !== orderId || payments[0].status !== "captured"
         || payments[0].amount == null || !payments[0].method
+        || !Object.hasOwn(payments[0], "reference")
+        || (payments[0].reference !== null
+            && (typeof payments[0].reference !== "string"
+                || payments[0].reference.length > 500))
         || !payments[0].paid_at || payments[0].paid_at !== order.paid_at
         || !Array.isArray(stores) || stores.length !== 1
         || stores[0].id !== storeId || !stores[0].name
@@ -155,6 +159,7 @@ export async function handle(req, res, deps = {}) {
         payment: {
           method: payments[0].method,
           amount: payments[0].amount,
+          reference: payments[0].reference,
           paidAt: payments[0].paid_at
         }
       }
