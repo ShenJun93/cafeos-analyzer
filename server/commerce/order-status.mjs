@@ -17,7 +17,7 @@ export async function handle(req, res, deps = {}) {
     const url = new URL(req.url ?? "/", "https://cafeos.local");
     const orderId = requiredUuid(url.searchParams.get("orderId"), "COMMERCE_ORDER_INVALID", "Invalid Order");
     const params = new URLSearchParams({
-      select: "id,store_id,status,total",
+      select: "id,tenant_id,store_id,status,total",
       tenant_id: "eq." + ctx.tenant.id,
       id: "eq." + orderId,
       limit: "1"
@@ -30,7 +30,8 @@ export async function handle(req, res, deps = {}) {
     }
     const row = rows[0];
     if (!row) throw new AppHttpError(404, "COMMERCE_ORDER_NOT_FOUND", "Order not found in tenant");
-    if (row.id !== orderId || typeof row.store_id !== "string"
+    if (row.id !== orderId || row.tenant_id !== ctx.tenant.id
+        || typeof row.store_id !== "string"
         || !UUID_RE.test(row.store_id)
         || !["open", "paid", "voided"].includes(row.status)
         || !validSettlementTotal(row.total)) {
