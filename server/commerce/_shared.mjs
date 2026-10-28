@@ -9,14 +9,21 @@ export function strictFields(body, allowed) {
 }
 
 export function requiredUuid(value, code, message) {
-  const normalized = String(value ?? "").trim();
+  // A one-element JSON array stringifies to its member. Never let an array or
+  // object silently become a valid Store or Order id in a money-moving RPC.
+  if (typeof value !== "string") throw new AppHttpError(400, code, message);
+  const normalized = value.trim();
   if (!UUID_RE.test(normalized)) throw new AppHttpError(400, code, message);
   return normalized;
 }
 
 export function optionalBusinessDate(value) {
   if (value === undefined || value === null || value === "") return null;
-  const raw = String(value).trim();
+  // Query parameters arrive as strings; JSON body fields must be strings too.
+  if (typeof value !== "string") {
+    throw new AppHttpError(400, "BUSINESS_DATE_INVALID", "Invalid business date");
+  }
+  const raw = value.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
     throw new AppHttpError(400, "BUSINESS_DATE_INVALID", "Invalid business date");
   }
