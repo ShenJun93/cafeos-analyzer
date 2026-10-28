@@ -69,7 +69,9 @@ export async function handle(req, res, deps = {}) {
     if (!clientOrderKey || clientOrderKey.length > 128) {
       throw new AppHttpError(400, "COMMERCE_CLIENT_ORDER_KEY_INVALID", "Client order key is invalid");
     }
-    const channel = String(body.channel ?? "").trim();
+    // A JSON array such as ["counter"] must not become a valid channel by
+    // String() coercion before the trusted Create Order RPC.
+    const channel = typeof body.channel === "string" ? body.channel.trim() : "";
     if (!CHANNELS.has(channel)) {
       throw new AppHttpError(400, "COMMERCE_CHANNEL_INVALID", "Order channel is invalid");
     }
