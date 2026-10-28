@@ -52,7 +52,9 @@ function normalizeItems(value) {
     if (!UUID_RE.test(menuItemId) || !Number.isFinite(quantity) || quantity <= 0 || quantity > 1000) {
       throw new AppHttpError(400, "COMMERCE_ITEMS_INVALID", "Order items are invalid");
     }
-    return { menuItemId, quantity };
+    // The database UUID cast returns lowercase; preserve one canonical form
+    // for idempotency fingerprints and line-by-line response reconciliation.
+    return { menuItemId: menuItemId.toLowerCase(), quantity };
   });
 }
 
