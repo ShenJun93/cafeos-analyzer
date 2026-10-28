@@ -227,6 +227,19 @@
         </div>
       </header>
       <div id="controlBrief" class="control-brief"></div>
+      <section class="source-bridge-section">
+        <div class="section-label">Phase 1.1 · source-separated operating evidence</div>
+        <h3>Đối chiếu nguồn dữ liệu theo Store</h3>
+        <p class="muted">Chỉ xem cùng Store/ngày. Doanh thu CafeOS POS và nguồn import có thể trùng giao dịch; chưa cộng tổng hoặc xác nhận đã loại trùng.</p>
+        <div class="source-bridge-filters">
+          <label class="field-group">Business date
+            <input id="sourceBridgeDate" type="date">
+          </label>
+          <button id="sourceBridgeRefresh" type="button" disabled>Xem hai nguồn</button>
+        </div>
+        <p id="sourceBridgeStatus" class="muted" aria-live="polite">Chọn ngày và Store để đọc đối chiếu nguồn.</p>
+        <div id="sourceBridgeCards" class="source-bridge-cards"></div>
+      </section>
     </section>
   </section>
 </main>
@@ -257,6 +270,8 @@ let viewEpoch = 0;
 let dashboardReadSerial = 0;
 let menuReadSerial = 0;
 let controlReadSerial = 0;
+let sourceBridgeSerial = 0;
+let sourceBridgeInFlight = false;
 let hqReadSerial = 0;
 let hqLoadInFlight = false;
 let menuState = { categories: [], items: [] };
@@ -380,6 +395,7 @@ function renderRoleControls() {
   el("voidHistorySection").classList.toggle("hidden", !manager);
   el("hqNav").classList.toggle("hidden", !manager);
   el("hqRefresh").disabled = !manager || hqLoadInFlight;
+  el("sourceBridgeRefresh").disabled = !sessionToken || !currentStoreId || sourceBridgeInFlight;
   el("closeDay").disabled = !manager || !currentDashboard || menuWriteInFlight
     || closeSubmitInFlight || hasUnfinishedCheckout()
     || Boolean(currentDashboard.closed) || Number(currentDashboard.openOrderCount) > 0;
@@ -399,6 +415,15 @@ function invalidateHQ() {
   el("hqMetrics").replaceChildren();
   el("hqStores").replaceChildren();
   el("hqRefresh").disabled = !canManageCommerce();
+}
+
+function invalidateSourceBridge() {
+  ++sourceBridgeSerial;
+  sourceBridgeInFlight = false;
+  el("sourceBridgeDate").value = "";
+  el("sourceBridgeCards").replaceChildren();
+  el("sourceBridgeStatus").textContent = "Chọn ngày và Store để đọc đối chiếu nguồn.";
+  el("sourceBridgeRefresh").disabled = !sessionToken || !currentStoreId;
 }
 
 function preventUnsafeContextReset() {
@@ -451,6 +476,7 @@ function clearSessionState() {
   invalidatePaidOrderReads();
   invalidateVoidHistory();
   invalidateHQ();
+  invalidateSourceBridge();
   clearPaidReceipt();
   for (const id of ["menuCatalog", "menuAdminList", "commerceMetrics", "paymentMix", "controlBrief"]) {
     el(id).replaceChildren();
@@ -516,6 +542,7 @@ async function loadTenant() {
   invalidatePaidOrderReads();
   invalidateVoidHistory();
   invalidateHQ();
+  invalidateSourceBridge();
   menuState = { categories: [], items: [] };
   el("menuCatalog").replaceChildren();
   el("menuAdminList").replaceChildren();
@@ -562,6 +589,7 @@ async function refreshStore() {
   invalidatePaidOrderReads();
   invalidateVoidHistory();
   invalidateHQ();
+  invalidateSourceBridge();
   // Control Tower reports on imported facts and must not block first-party sales.
   // Menu and daily dashboard remain required; their failures still fail closed.
   let controlTowerReady;
@@ -1514,6 +1542,8 @@ async function loadDashboard() {
       || requestedToken !== sessionToken) return;
   currentDashboard = payload.dashboard;
   if (!el("hqBusinessDate").value) el("hqBusinessDate").value = currentDashboard.businessDate;
+  if (!el("sourceBridgeDate").value) el("sourceBridgeDate").value = currentDashboard.businessDate;
+  el("sourceBridgeRefresh").disabled = !sessionToken || !currentStoreId || sourceBridgeInFlight;
 
   const metrics = el("commerceMetrics");
   metrics.replaceChildren(
@@ -1709,6 +1739,88 @@ async function loadOptionalControlTower() {
   }
 }
 
+function sourceMetric(label, value) {
+  return metric(label, value == null ? "—" : String(value));
+}
+
+async function loadSourceBridge() {
+  if (!sessionToken || !currentStoreId || sourceBridgeInFlight) return;
+  const date = el("sourceBridgeDate").value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Chọn business date hợp lệ.");
+  const serial = ++sourceBridgeSerial, epoch = viewEpoch;
+  const tenant = currentTenantId, store = currentStoreId, token = sessionToken;
+  const stillCurrent = () => serial === sourceBridgeSerial && epoch === viewEpoch
+    && tenant === currentTenantId && store === currentStoreId
+    && token === sessionToken && date === el("sourceBridgeDate").value;
+  sourceBridgeInFlight = true;
+  el("sourceBridgeRefresh").disabled = true;
+  const cards = el("sourceBridgeCards");
+  cards.replaceChildren();
+  el("sourceBridgeStatus").textContent = "Đang kiểm chứng độc lập hai nguồn theo " + date + "…";
+  try {
+    const payload = await appFetch("/api/app/commerce-source-bridge?storeId="
+      + encodeURIComponent(store) + "&businessDate=" + encodeURIComponent(date));
+    if (!stillCurrent()) return;
+    const native = payload?.sources?.cafeosPos;
+    const ext = payload?.sources?.imports;
+    if (payload?.store?.id !== store || payload?.businessDate !== date
+      || payload?.sourceBoundary?.status !== "separate_not_deduplicated"
+      || native?.source !== "cafeos_pos" || ext?.source !== "imported_line_items"
+      || typeof native.orderCount !== "number" || typeof ext.hasData !== "boolean") {
+      throw new Error("Source bridge trả về bằng chứng nguồn hoặc ngày không khớp.");
+    }
+
+    function card(title, source, caption, values) {
+      const section = document.createElement("section");
+      section.className = "source-bridge-card";
+      const label = document.createElement("div");
+      label.className = "section-label";
+      label.textContent = source;
+      const heading = document.createElement("h4");
+      heading.textContent = title;
+      const sub = document.createElement("p");
+      sub.className = "muted";
+      sub.textContent = caption;
+      const metrics = document.createElement("div");
+      metrics.className = "commerce-metrics";
+      metrics.append(...values);
+      section.append(label, heading, sub, metrics);
+      return section;
+    }
+    cards.replaceChildren(
+      card("CafeOS-native POS", "cafeos_pos",
+        native.closed ? "Đã đóng ngày" : "Chưa đóng ngày",
+        [
+          sourceMetric("Sales (POS)", native.salesTotal),
+          sourceMetric("Paid orders", native.orderCount),
+          sourceMetric("Open orders", native.openOrderCount)
+        ]),
+      card("Nguồn import / tích hợp", "imported_line_items",
+        ext.hasData
+          ? "Có dữ liệu import trên ngày được chọn; độ phủ baseline: " + ext.baselineStatus
+          : "Không có dữ liệu import xác nhận cho ngày này (không quy thành doanh thu 0).",
+        [
+          sourceMetric("Net sales (import)", ext.hasData ? ext.netSales : null),
+          sourceMetric("Orders (import)", ext.hasData ? ext.orderCount : null),
+          sourceMetric("AOV (import)", ext.hasData ? ext.aov : null)
+        ])
+    );
+    el("sourceBridgeStatus").textContent = "Cùng Store: " + payload.store.name
+      + " · ngày " + date + ". Hai nguồn riêng biệt, KHÔNG cộng tổng hoặc kết luận trùng/khác khi chưa đối soát lineage.";
+  } catch (error) {
+    if (stillCurrent()) {
+      cards.replaceChildren();
+      el("sourceBridgeStatus").textContent = "Một nguồn không được xác minh; không hiển thị kết quả đối chiếu một phần.";
+      throw error;
+    }
+  } finally {
+    if (serial === sourceBridgeSerial) {
+      sourceBridgeInFlight = false;
+      el("sourceBridgeRefresh").disabled = !sessionToken || !currentStoreId;
+    }
+  }
+}
+
 async function loadControlTower() {
   const requestedSerial = ++controlReadSerial;
   const requestedEpoch = viewEpoch;
@@ -1776,6 +1888,13 @@ el("printPaidReceipt").addEventListener("click", printPaidReceipt);
 el("recoverOpenOrders").addEventListener("click", () => guarded(() => loadOpenOrdersForRecovery()));
 el("browsePaidOrders").addEventListener("click", () => guarded(() => browsePaidOrders()));
 el("hqRefresh").addEventListener("click", () => guarded(loadHQOverview));
+el("sourceBridgeRefresh").addEventListener("click", () => guarded(loadSourceBridge));
+el("sourceBridgeDate").addEventListener("change", () => {
+  ++sourceBridgeSerial;
+  sourceBridgeInFlight = false;
+  el("sourceBridgeCards").replaceChildren();
+  el("sourceBridgeStatus").textContent = "Ngày đổi; nhấn Xem hai nguồn để xác minh lại.";
+});
 el("hqBusinessDate").addEventListener("change", () => {
   ++hqReadSerial;
   hqLoadInFlight = false;

@@ -152,6 +152,27 @@ async function installMockTransport(page) {
         }
         break;
       }
+      case "/api/app/commerce-source-bridge": {
+        assert.equal(req.method(), "GET");
+        assert.equal(url.searchParams.get("storeId"), STORE);
+        assert.equal(url.searchParams.get("businessDate"), DATE);
+        payload = {
+          tenant: { id: TENANT },
+          store: { id: STORE, name: "Synthetic Flagship" },
+          businessDate: DATE,
+          sourceBoundary: {status:"separate_not_deduplicated",
+            reason:"Import and POS may overlap; never sum"},
+          sources: {
+            cafeosPos: { source:"cafeos_pos",hasData:true,
+              salesTotal:"70000.00",orderCount:1,openOrderCount:0,aov:"70000.00",closed:state.closed },
+            imports: { source:"imported_line_items",hasData:true,
+              asOfBusinessDate:DATE,netSales:"34000.00",orderCount:1,aov:"34000.00",
+              baselineStatus:"insufficient_history",
+              latestObservedTransactionAt:DATE+"T07:00:00Z"}
+          }
+        };
+        break;
+      }
       case "/api/app/commerce-void-history": {
         assert.equal(manager, true);
         assert.equal(req.method(), "GET");
@@ -348,6 +369,13 @@ async function runViewport(browser, width, height, base) {
     await snapshot(page, width, "closed");
     await page.locator('[data-view="controlWorkspace"]').click();
     await snapshot(page, width, "control-tower");
+    await page.locator("#sourceBridgeRefresh").click();
+    await page.locator("#sourceBridgeCards .source-bridge-card").first().waitFor({state:"visible"});
+    assert.equal(await page.locator("#sourceBridgeCards .source-bridge-card").count(),2);
+    assert.match(await page.locator("#sourceBridgeCards").innerText(),/CafeOS-native POS/);
+    assert.match(await page.locator("#sourceBridgeCards").innerText(),/Nguồn import/);
+    assert.match(await page.locator("#sourceBridgeStatus").innerText(),/KHÔNG cộng tổng/);
+    await snapshot(page, width, "source-separated-bridge");
     assert.deepEqual(errors, [], "browser JS console errors");
     console.log("BROWSER_VISUAL_PASS manager " + width + "x" + height);
   } finally {

@@ -52,6 +52,10 @@
       "destination": "/api/app/workflow?route=commerce-hq"
     },
     {
+      "source": "/api/app/commerce-source-bridge",
+      "destination": "/api/app/workflow?route=commerce-source-bridge"
+    },
+    {
       "source": "/api/app/commerce-daily-close",
       "destination": "/api/app/workflow?route=commerce-daily-close"
     },
