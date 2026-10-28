@@ -73,6 +73,14 @@ No cross-POS monetary total or automatic deduplication is authorized. The above 
 
 **Operator handoff:** Only the owner or independently authorized recovery operator can establish separate-device key custody and complete staging backup/restore verification; ChatGPT/GitHub CI cannot prove a second physical device or store private keys. Owner procedure: `docs/research/2026-10-28-cafeos-offhost-age-acceptance-runbook.md`; ledger proposal: `docs/research/2026-10-25-cafeos-staging-ledger-reconciliation-runbook.md`; full Supabase-compatible backup conditions: `docs/research/2026-10-26-cafeos-full-staging-backup-execution-gates.md`.
 
+## Current security catalogue review (read-only, 2026-10-28)
+
+The live staging privileges/function bodies were independently rechecked without executing a commerce RPC or reading Store/Order rows. **All three `postgres`-owned `SECURITY DEFINER` RPCs** (`commerce_create_order`, `commerce_capture_payment`, `commerce_close_day`) have Tenant-role and `auth.uid()` self-checks, fixed `search_path`, no direct PUBLIC or `anon` EXECUTE, and `authenticated` EXECUTE as required for the present server-authorized workflow. The two `private.has_tenant_*` helpers check the caller against `public.tenant_members`. All 6 Commerce tables have RLS, with Member-only SELECT and Manager+ Menu INSERT policies. This shows existing controls, **not** a signed-JWT negative test or a safe production approval.
+
+**Executable SELECT-only evidence:** `scripts/sql/cafeos-staging-rpc-security-readonly-gate.sql` returned `PRELIMINARY_GUARDS_PRESENT_SECURITY_REVIEW_REQUIRED` with `untrusted_executable_count=0`, `explicit_role_guard_count=3`, `rls_tables=6`, `jwt_role_matrix_accepted=false` and `release_approved=false`. Full exact catalogue fingerprint, risks and reviewer checklist: `docs/security/2026-10-28-cafeos-live-staging-rpc-security-review.md`.
+
+The earlier 3 Supabase authenticated `SECURITY DEFINER` warnings and 1 leaked-password-protection warning remain **OPEN**. Do not disable the RPCs or waive their warnings without separately reviewed signed-JWT, cross-Tenant and operational acceptance. Do not use catalog-only checks as security signoff.
+
 ## Operational correctness finding and immediate bounded fix
 
 **HQ-COUNT-01:** PR #77's HQ Store directory requests `limit=26` and rejects if its array contains more than 25, but does **not** check whether an upstream PostgREST `max_rows` cap returned only a prefix. An HQ operator with 15 Stores could see 10 with the dashboard saying all Stores were checked if the server imposed a lower cap. **This is a scenario risk, not a verified live staging incident.**
