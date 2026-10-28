@@ -2,8 +2,18 @@ import { createHash } from "node:crypto";
 function sha256(value) {
     return createHash("sha256").update(value).digest("hex");
 }
+// Preserve existing import hashes for ordinary data; refuse identity fields
+// that could alias when the legacy U+001F-separated record key is serialized.
+const RECORD_SEPARATOR = "\u001f";
+function safeScopePart(value, label) {
+    if (typeof value !== "string" || !value || value.trim() !== value
+        || /[\u0000-\u001f\u007f]/.test(value)) {
+        throw new Error("Unsafe import " + label + ": control characters or empty scope");
+    }
+    return value;
+}
 function baseIdentity(item) {
-    return [
+    const fields = [
         item.transactionId,
         item.occurredAt,
         item.store,
@@ -11,7 +21,11 @@ function baseIdentity(item) {
         item.quantity.toString(),
         item.netAmount.toString(),
         item.customerKey ?? ""
-    ].join("\u001f");
+    ];
+    if (fields.some(value => value.includes(RECORD_SEPARATOR))) {
+        throw new Error("Unsafe import record identity: reserved separator in source field");
+    }
+    return fields.join(RECORD_SEPARATOR);
 }
 /**
  * Assigns stable record keys while preserving genuinely repeated identical rows.
@@ -28,10 +42,14 @@ export function keyCanonicalItems(items) {
     });
 }
 export function fingerprintImport(tenantId, sourceNamespace, keyedItems) {
+    safeScopePart(tenantId, "tenant");
+    safeScopePart(sourceNamespace, "source namespace");
     const keys = keyedItems.map(x => x.sourceRecordKey).sort();
     return sha256([tenantId, sourceNamespace, ...keys].join("\n"));
 }
 export function planImport(tenantId, sourceNamespace, items, existingRecordKeys = new Set()) {
+    safeScopePart(tenantId, "tenant");
+    safeScopePart(sourceNamespace, "source namespace");
     const keyedItems = keyCanonicalItems(items);
     const newItems = keyedItems.filter(x => !existingRecordKeys.has(x.sourceRecordKey));
     return {
@@ -44,7 +62,9 @@ export function planImport(tenantId, sourceNamespace, items, existingRecordKeys 
 export class InMemoryImportLedger {
     keysByTenantAndSource = new Map();
     ingest(tenantId, sourceNamespace, items) {
-        const namespace = `${tenantId}\u001f${sourceNamespace}`;
+        safeScopePart(tenantId, "tenant");
+        safeScopePart(sourceNamespace, "source namespace");
+        const namespace = JSON.stringify([tenantId, sourceNamespace]);
         const known = this.keysByTenantAndSource.get(namespace) ?? new Set();
         const plan = planImport(tenantId, sourceNamespace, items, known);
         for (const x of plan.newItems)
@@ -53,6 +73,8 @@ export class InMemoryImportLedger {
         return plan;
     }
     size(tenantId, sourceNamespace) {
-        return this.keysByTenantAndSource.get(`${tenantId}\u001f${sourceNamespace}`)?.size ?? 0;
+        safeScopePart(tenantId, "tenant");
+        safeScopePart(sourceNamespace, "source namespace");
+        return this.keysByTenantAndSource.get(JSON.stringify([tenantId, sourceNamespace]))?.size ?? 0;
     }
 }
