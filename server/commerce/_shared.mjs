@@ -77,12 +77,12 @@ export function commerceReturnedCents(value) {
 // Caller-supplied tenant/store filters are necessary but not sufficient proof.
 function validCommerceListTimestamp(value) {
   return typeof value === "string"
-    && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:[.]\\d{1,6})?(?:Z|[+-]\\d{2}:\\d{2})$/.test(value)
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[.]\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
     && Number.isFinite(Date.parse(value));
 }
 
 function validCommerceListDate(value) {
-  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(value + "T00:00:00.000Z");
   return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
 }
