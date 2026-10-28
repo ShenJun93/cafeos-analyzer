@@ -120,7 +120,7 @@ test("effective intervals use UTC boundaries and cannot silently revive expired 
 });
 
 test("evidence recorded after the cutoff cannot retroactively validate history", () => {
-  const futureRecord = { ...claims.base,
+  const futureRecord = { ...claims.base, revision: 2,
     recordedAt: "2026-11-01T00:00:00.000Z" };
   assert.equal(inspect([futureRecord]).status, "not_recorded");
   assert.equal(inspect([claims.base, futureRecord]).status, "review_required");
