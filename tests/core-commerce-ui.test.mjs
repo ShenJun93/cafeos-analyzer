@@ -322,7 +322,7 @@ test("lost payment response reconciles paid order and preserves an open order", 
       }
       if (path.startsWith("/api/app/commerce-order-status?orderId=")) {
         statusChecks += 1;
-        return { order: { id: "order-1", storeId: "store-1", status: statusResult } };
+        return { order: { id: "order-1", storeId: "store-1", status: statusResult, total: "50000.00" } };
       }
       throw new Error("unexpected route " + path);
     };
@@ -338,6 +338,95 @@ test("lost payment response reconciles paid order and preserves an open order", 
   assert.equal(runInContext("currentOrder.status", context), "open");
   assert.equal(runInContext("statusChecks", context), 2);
   assert.equal(runInContext("dashboardRefreshes", context), 1);
+});
+
+test("ambiguous POS payment recovery requires exact settled cents before clearing the order", async () => {
+  const { createContext, runInContext } = await import("node:vm");
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const script = html.split("<script>")[1]?.split("</script>")[0];
+  assert.ok(script);
+  const nodes = new Map();
+  function element(id) {
+    if (!nodes.has(id)) nodes.set(id, {
+      value: "", textContent: "", dataset: {}, disabled: false,
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener() {}, replaceChildren() {}, append() {}, reset() {}
+    });
+    return nodes.get(id);
+  }
+  const ctx = createContext({
+    document: {
+      getElementById: element, querySelectorAll: () => [],
+      createElement: () => element("created_" + nodes.size)
+    },
+    window: { confirm: () => false },
+    fetch: async () => ({
+      ok: true, status: 200,
+      json: async () => ({ supabaseUrl: "https://example.invalid", publishableKey: "sb_publishable_test" })
+    }),
+    URLSearchParams, Intl, crypto: { randomUUID: () => "payment-recovery-intent" }
+  });
+  runInContext(script, ctx);
+  element("paymentMethod").value = "cash";
+  runInContext(`
+    sessionToken = "synthetic-token";
+    currentTenantId = "tenant-1";
+    currentTenantRole = "cashier";
+    currentStoreId = "store-1";
+    let paymentWrites = 0;
+    let statusReads = 0;
+    let dashboardRefreshes = 0;
+    let serverOrder = { id: "order-1", storeId: "store-1",
+      status: "paid", total: "35000.29" };
+    loadDashboard = async () => { dashboardRefreshes++; };
+    appFetch = async (path) => {
+      if (path === "/api/app/commerce-payment") {
+        paymentWrites++; throw new Error("POST response lost");
+      }
+      if (path.startsWith("/api/app/commerce-order-status?orderId=")) {
+        statusReads++; return { order: serverOrder };
+      }
+      throw new Error("unexpected request: " + path);
+    };
+  `, ctx);
+
+  // Every one of these reads says "paid"; none proves that the paid amount
+  // matches the exact amount the cashier sent, so keep the open order.
+  for (const total of [
+    "35000.28", "35000.30", "35000.290", "NaN", null, 0,
+    true, [35000.29], -1, "1000000000000.01"
+  ]) {
+    runInContext("currentOrder = { id: 'order-1', status: 'open', total: 35000.29 };", ctx);
+    ctx.serverMoney = total;
+    runInContext("serverOrder = { id: 'order-1', storeId: 'store-1', status: 'paid', total: serverMoney };", ctx);
+    const before = runInContext("paymentWrites", ctx);
+    await assert.rejects(runInContext("capturePayment()", ctx), /Chưa xác minh được payment/);
+    assert.equal(runInContext("paymentWrites", ctx), before + 1,
+      "a failed reconciliation must not send another payment request");
+    assert.equal(runInContext("currentOrder.status", ctx), "open");
+    assert.equal(runInContext("currentOrder.total", ctx), 35000.29);
+    assert.equal(runInContext("dashboardRefreshes", ctx), 0);
+  }
+
+  for (const total of ["35000.29", 35000.29]) {
+    runInContext("currentOrder = { id: 'order-1', status: 'open', total: 35000.29 };", ctx);
+    ctx.serverMoney = total;
+    runInContext("serverOrder = { id: 'order-1', storeId: 'store-1', status: 'paid', total: serverMoney };", ctx);
+    const before = runInContext("paymentWrites", ctx);
+    await runInContext("capturePayment()", ctx);
+    assert.equal(runInContext("currentOrder", ctx), null,
+      "exact settled amount from tenant-scoped read may close the UI checkout");
+    assert.equal(runInContext("paymentWrites", ctx), before + 1);
+  }
+  assert.equal(runInContext("statusReads", ctx), 12);
+  assert.equal(runInContext("dashboardRefreshes", ctx), 2);
+
+  // A malformed trusted order total should fail before any payment RPC.
+  runInContext("currentOrder = { id: 'order-1', status: 'open', total: '35000.291' };", ctx);
+  const writesBefore = runInContext("paymentWrites", ctx);
+  await assert.rejects(runInContext("capturePayment()", ctx), /Server total không hợp lệ/);
+  assert.equal(runInContext("paymentWrites", ctx), writesBefore);
+  assert.equal(runInContext("currentOrder.status", ctx), "open");
 });
 
 test("local workflow router keeps orderId/storeId query params and denies anonymous reads", async () => {
