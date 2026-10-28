@@ -48,6 +48,7 @@ A single proposed/revoked/rejected event has:
 | Current or previous effective revocation | `revoked` |
 | Effective rejection | `rejected` |
 | One namespace mapped to multiple upstream account/branch/family tuples | `namespace_conflict` |
+| One namespace has multiple binding IDs, even with the same claimed upstream account | `binding_conflict` |
 | Any foreign Tenant, Store or namespace record | `scope_conflict` |
 | Replayed binding ID/revision | `revision_conflict` |
 | Observed binding history does not start at revision 1 or skips a revision | `history_gap` |
@@ -56,7 +57,7 @@ A single proposed/revoked/rejected event has:
 | Malformed requested Tenant/Store/date/namespace | `invalid_scope` |
 | Missing/oversized claim batch (maximum 100) | `evidence_limit` |
 
-Conflict detection considers every recorded claim within the knowledge cutoff, including expired identity assignments: a reused namespace is not cleared merely because an earlier claimed binding expired. Revocations/rejections remain sticky; a later proposal cannot silently reactivate a revoked binding.
+Conflict detection considers every recorded claim within the knowledge cutoff, including expired identity assignments: a reused namespace is not cleared merely because an earlier claimed binding expired. Revocations/rejections remain sticky; a later proposal cannot silently reactivate a revoked binding. A new binding UUID under the same Tenant/Store/namespace is also a `binding_conflict`, even when its provider/account/branch text equals an earlier claim: silent binding rotation or supersession is not permitted in this isolated reviewer.
 
 **History fail-closed rule (incremental review hardening):** within each binding ID, only revisions recorded at or before the requested knowledge cutoff are evaluated. The observed sequence must begin at revision 1, be gap-free and have strictly increasing UTC `recordedAt`. Missing/out-of-order events return `history_gap` or `chronology_conflict`, never `review_required`. Evidence completeness **is not established** merely by consecutive version numbers: without trusted independent event ledger/count coverage, the classification stays unverified. An isolated revision 2 is therefore a gap, not a standalone rejection.
 
