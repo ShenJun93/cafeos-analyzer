@@ -71,6 +71,39 @@ export function commerceReturnedCents(value) {
   return cents <= 100000000000000n ? cents : null;
 }
 
+// These read-only browse rows are presented to cashiers before recovering an
+// open order or reprinting a paid receipt. Validate the entire 21-row page,
+// including the lookahead row, rather than publishing a plausible 20-row prefix.
+// Caller-supplied tenant/store filters are necessary but not sufficient proof.
+function validCommerceListTimestamp(value) {
+  return typeof value === "string"
+    && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:[.]\\d{1,6})?(?:Z|[+-]\\d{2}:\\d{2})$/.test(value)
+    && Number.isFinite(Date.parse(value));
+}
+
+function validCommerceListDate(value) {
+  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+  const date = new Date(value + "T00:00:00.000Z");
+  return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
+}
+
+export function validCommerceOrderListRow(row, { tenantId, storeId, status }) {
+  if (!row || typeof row !== "object" || Array.isArray(row)
+      || typeof row.id !== "string" || !UUID_RE.test(row.id)
+      || row.tenant_id !== tenantId
+      || row.store_id !== storeId || row.status !== status
+      || typeof row.order_number !== "string"
+      || !row.order_number.trim() || row.order_number.length > 100) return false;
+  const cents = commerceReturnedCents(row.total);
+  if (cents === null || cents <= 0n) return false;
+  if (status === "open") {
+    return validCommerceListTimestamp(row.created_at)
+      && ["counter", "takeaway", "pickup", "delivery"].includes(row.channel);
+  }
+  return status === "paid" && validCommerceListTimestamp(row.paid_at)
+    && validCommerceListDate(row.business_date);
+}
+
 export function commerceReturnedCount(value) {
   return typeof value === "number" && Number.isSafeInteger(value)
     && value >= 0 && value <= 2147483647;
