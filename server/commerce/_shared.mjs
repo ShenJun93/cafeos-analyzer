@@ -75,16 +75,20 @@ export function commerceReturnedCents(value) {
 // open order or reprinting a paid receipt. Validate the entire 21-row page,
 // including the lookahead row, rather than publishing a plausible 20-row prefix.
 // Caller-supplied tenant/store filters are necessary but not sufficient proof.
-function validCommerceListTimestamp(value) {
-  return typeof value === "string"
-    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[.]\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
-    && Number.isFinite(Date.parse(value));
-}
-
-function validCommerceListDate(value) {
+// An ISO timestamp can pass Date.parse while naming a non-existent day:
+// JavaScript normalizes 2026-02-30 to March 2. These values are financial
+// receipt and order audit evidence, so always validate the calendar date first.
+export function validCommerceBusinessDate(value) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(value + "T00:00:00.000Z");
   return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
+}
+
+export function validCommerceTimestamp(value) {
+  if (typeof value !== "string") return false;
+  const match = /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:[.]\d{1,6})?(?:Z|[+-]\d{2}:[0-5]\d)$/.exec(value);
+  return match !== null && validCommerceBusinessDate(match[1])
+    && Number.isFinite(Date.parse(value));
 }
 
 export function validCommerceOrderListRow(row, { tenantId, storeId, status }) {
@@ -97,11 +101,11 @@ export function validCommerceOrderListRow(row, { tenantId, storeId, status }) {
   const cents = commerceReturnedCents(row.total);
   if (cents === null || cents <= 0n) return false;
   if (status === "open") {
-    return validCommerceListTimestamp(row.created_at)
+    return validCommerceTimestamp(row.created_at)
       && ["counter", "takeaway", "pickup", "delivery"].includes(row.channel);
   }
-  return status === "paid" && validCommerceListTimestamp(row.paid_at)
-    && validCommerceListDate(row.business_date);
+  return status === "paid" && validCommerceTimestamp(row.paid_at)
+    && validCommerceBusinessDate(row.business_date);
 }
 
 export function commerceReturnedCount(value) {

@@ -13,7 +13,8 @@ import {
   commerceUpstreamError,
   requiredUuid,
   strictFields,
-  parseCommerceMoney
+  parseCommerceMoney,
+  validCommerceTimestamp
 } from "./_shared.mjs";
 
 const ALLOWED_FIELDS = new Set(["orderId", "method", "amount", "reference"]);
@@ -37,16 +38,6 @@ function capturedCents(value) {
 // The SQL capture RPC persists a payment UUID and the exact paid timestamp
 // on the order. A 2xx without these audit fields is an ambiguous write, not
 // proof of a completed settlement; let the client reconcile via GET.
-function validCaptureTimestamp(value) {
-  if (typeof value !== "string"
-      || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[.]\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
-      || !Number.isFinite(Date.parse(value))) return false;
-  const date = value.slice(0, 10);
-  const midnight = new Date(date + "T00:00:00Z");
-  return !Number.isNaN(midnight.valueOf())
-    && midnight.toISOString().slice(0, 10) === date;
-}
-
 export async function handle(req, res, deps = {}) {
   if (!onlyPost(req, res)) return;
   try {
@@ -93,7 +84,7 @@ export async function handle(req, res, deps = {}) {
     // A malformed response may still follow a committed write; the browser
     // must reconcile the order state via its read-only status path, not retry.
     if (payload?.orderId !== orderId || payload.status !== "paid"
-        || !validCaptureTimestamp(payload.paidAt)
+        || !validCommerceTimestamp(payload.paidAt)
         || !payload.payment || Array.isArray(payload.payment)
         || payload.payment.status !== "captured"
         || typeof payload.payment.id !== "string"

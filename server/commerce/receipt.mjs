@@ -2,7 +2,7 @@ import {
   AppHttpError, appContext, appError, appJson, onlyGet,
   requireCommerceWriteRole, supabaseJson
 } from "../../api/_app-auth.mjs";
-import { requiredUuid } from "./_shared.mjs";
+import { requiredUuid, validCommerceBusinessDate, validCommerceTimestamp } from "./_shared.mjs";
 
 // PostgREST may encode SQL NUMERIC as a JSON number or decimal string.
 // Compare exact integer cents, never IEEE-754 products or rounded displays.
@@ -108,7 +108,9 @@ export async function handle(req, res, deps = {}) {
         || !Array.isArray(stores) || stores.length !== 1
         || stores[0].tenant_id !== ctx.tenant.id
         || stores[0].id !== storeId || !stores[0].name
-        || !order.order_number || order.total == null || !order.paid_at) {
+        || !order.order_number || order.total == null
+        || !validCommerceBusinessDate(order.business_date)
+        || !validCommerceTimestamp(order.paid_at)) {
       throw new AppHttpError(502, "COMMERCE_RECEIPT_INCOMPLETE", "Server receipt is incomplete");
     }
 

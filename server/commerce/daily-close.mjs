@@ -15,33 +15,23 @@ import {
   commerceReturnedCount,
   optionalBusinessDate,
   requiredUuid,
-  strictFields
+  strictFields,
+  validCommerceBusinessDate,
+  validCommerceTimestamp
 } from "./_shared.mjs";
 
 const ALLOWED_FIELDS = new Set(["storeId", "businessDate"]);
-
-function validBusinessDate(value) {
-  return typeof value === "string" && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value)
-    && !Number.isNaN(Date.parse(value + "T00:00:00Z"))
-    && new Date(value + "T00:00:00Z").toISOString().slice(0, 10) === value;
-}
-
-function validCloseTimestamp(value) {
-  return typeof value === "string"
-    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[.]\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
-    && Number.isFinite(Date.parse(value));
-}
 
 function validClose(payload, tenantId, storeId, requestedDate) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)
       || typeof payload.id !== "string" || !UUID_RE.test(payload.id)
       || payload.tenantId !== tenantId || payload.storeId !== storeId
-      || !validBusinessDate(payload.businessDate)
+      || !validCommerceBusinessDate(payload.businessDate)
       || (requestedDate !== null && payload.businessDate !== requestedDate)
       || !commerceReturnedCount(payload.orderCount)
       || typeof payload.closedByUserId !== "string"
       || !UUID_RE.test(payload.closedByUserId)
-      || !validCloseTimestamp(payload.closedAt)
+      || !validCommerceTimestamp(payload.closedAt)
       || typeof payload.idempotent !== "boolean") return false;
   const sales = commerceReturnedCents(payload.salesTotal);
   const payments = commerceReturnedCents(payload.paymentTotal);

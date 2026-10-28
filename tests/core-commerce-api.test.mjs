@@ -16,6 +16,7 @@ import { handle as openOrdersHandle } from "../server/commerce/open-orders.mjs";
 import { handle as paidOrdersHandle } from "../server/commerce/paid-orders.mjs";
 import { handle as dashboardHandle } from "../server/commerce/dashboard.mjs";
 import { handle as dailyCloseHandle } from "../server/commerce/daily-close.mjs";
+import { validCommerceBusinessDate, validCommerceTimestamp } from "../server/commerce/_shared.mjs";
 
 const TENANT_A = "10000000-0000-4000-8000-000000000001";
 const USER_A = "a0000000-0000-4000-8000-000000000001";
@@ -958,6 +959,7 @@ test("Daily Close refuses cross-Tenant receipts, wrong day and unbalanced accoun
     { ...close, closedByUserId: "not-a-uuid" },
     { ...close, closedAt: null },
     { ...close, closedAt: "invalid" },
+    { ...close, closedAt: "2026-02-30T20:00:00Z" },
     { ...close, salesTotal: "35000.30" },
     { ...close, paymentTotal: "35000.28" },
     { ...close, cashTotal: "30000.01" },
@@ -1336,6 +1338,29 @@ test("Payment confirmation refuses mismatched capture evidence without retry or 
   assert.equal(parsed(valid).payment.amount, 35000.29);
 });
 
+test("Commerce timestamp evidence rejects rolled-over calendar days and preserves valid leap days", () => {
+  for (const timestamp of [
+    "2026-02-30T12:30:00Z",
+    "2026-04-31T03:00:00+07:00",
+    "2026-10-25T24:00:00Z",
+    "2026-10-25T23:60:00Z",
+    "2026-10-25T23:59:60Z",
+    "2026-10-25T12:30:00",
+    "invalid"
+  ]) {
+    assert.equal(validCommerceTimestamp(timestamp), false, timestamp);
+  }
+  for (const timestamp of [
+    "2024-02-29T23:59:59Z",
+    "2026-10-25T20:00:00.123456+07:00",
+    "2026-10-25T20:00:00-07:00"
+  ]) {
+    assert.equal(validCommerceTimestamp(timestamp), true, timestamp);
+  }
+  assert.equal(validCommerceBusinessDate("2026-02-30"), false);
+  assert.equal(validCommerceBusinessDate("2024-02-29"), true);
+});
+
 test("paid receipt reads Store/Tenant-scoped immutable items and payment without any writes", async () => {
   const calls = [];
   const paidAt = "2026-10-27T09:30:00Z";
@@ -1449,6 +1474,10 @@ test("paid receipt refuses role misuse, cross-store, unpaid, missing and partial
     [[order], [], payments, 502, "COMMERCE_RECEIPT_INCOMPLETE"],
     [[order], lines, [], 502, "COMMERCE_RECEIPT_INCOMPLETE"],
     [[order], lines, [...payments, ...payments], 502, "COMMERCE_RECEIPT_INCOMPLETE"],
+    [[{ ...order, business_date: "2026-02-30" }], lines, payments, 502, "COMMERCE_RECEIPT_INCOMPLETE"],
+    [[{ ...order, paid_at: "2026-02-30T09:30:00Z" }], lines,
+      [{ ...payments[0], paid_at: "2026-02-30T09:30:00Z" }],
+      502, "COMMERCE_RECEIPT_INCOMPLETE"],
     [[order], lines, [{ ...payments[0], paid_at: "2026-10-27T09:30:01Z" }],
       502, "COMMERCE_RECEIPT_INCOMPLETE"],
     [[order], lines, [{ ...payments[0], reference: true }],
@@ -1622,6 +1651,7 @@ test("order browse pages verify all 21 rows, tenant identity, dates and exact mo
       { ...open, total: true },
       { ...open, channel: "unknown" },
       { ...open, created_at: "invalid" },
+      { ...open, created_at: "2026-02-30T07:00:00Z" },
       { ...open, order_number: "" }
     ]],
     [paidOrdersHandle, paidRoute, paid, [
@@ -1630,6 +1660,7 @@ test("order browse pages verify all 21 rows, tenant identity, dates and exact mo
       { ...paid, total: 0 },
       { ...paid, total: null },
       { ...paid, paid_at: "invalid" },
+      { ...paid, paid_at: "2026-02-30T08:00:00Z" },
       { ...paid, business_date: "2026-02-30" },
       { ...paid, business_date: "invalid" },
       { ...paid, id: "invalid-uuid" }
