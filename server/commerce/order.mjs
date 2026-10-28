@@ -56,6 +56,43 @@ function normalizeItems(value) {
   });
 }
 
+// The order RPC may return line items in a different order and may serialize
+// SQL NUMERIC(12,3) as JSON numbers or decimal strings. Compare exact
+// thousandths, not floating-point equality or array order. Distinct duplicate
+// menu IDs remain valid only if all requested (ID,quantity) pairs are present.
+function quantityMilli(value) {
+  if ((typeof value !== "number" && typeof value !== "string")
+      || (typeof value === "number" && !Number.isFinite(value))) return null;
+  const match = /^(0|[1-9][0-9]*)(?:[.]([0-9]{1,3}))?$/.exec(String(value));
+  if (!match) return null;
+  const milli = BigInt(match[1]) * 1000n
+    + BigInt((match[2] ?? "").padEnd(3, "0"));
+  return milli > 0n && milli <= 1000000n ? String(milli) : null;
+}
+
+function returnedItemsMatchIntent(returned, requested) {
+  if (!Array.isArray(returned) || returned.length !== requested.length) return false;
+  const remaining = new Map();
+  for (const item of requested) {
+    const quantity = quantityMilli(item.quantity);
+    if (quantity === null) return false;
+    const key = item.menuItemId + ":" + quantity;
+    remaining.set(key, (remaining.get(key) ?? 0) + 1);
+  }
+  for (const item of returned) {
+    if (!item || typeof item !== "object" || Array.isArray(item)
+        || typeof item.menuItemId !== "string" || !UUID_RE.test(item.menuItemId)) return false;
+    const quantity = quantityMilli(item.quantity);
+    if (quantity === null) return false;
+    const key = item.menuItemId + ":" + quantity;
+    const remainingCount = remaining.get(key) ?? 0;
+    if (remainingCount === 0) return false;
+    if (remainingCount === 1) remaining.delete(key);
+    else remaining.set(key, remainingCount - 1);
+  }
+  return remaining.size === 0;
+}
+
 export async function handle(req, res, deps = {}) {
   if (!onlyPost(req, res)) return;
   try {
@@ -105,7 +142,7 @@ export async function handle(req, res, deps = {}) {
         || !["open", "paid", "voided"].includes(confirmed.status)
         || typeof confirmed.orderNumber !== "string" || !confirmed.orderNumber.trim()
         || !validReturnedTotal(confirmed.total)
-        || !Array.isArray(payload.items) || payload.items.length !== items.length) {
+        || !returnedItemsMatchIntent(payload.items, items)) {
       throw new AppHttpError(502, "SUPABASE_UPSTREAM",
         "Commerce order service returned inconsistent order evidence");
     }
