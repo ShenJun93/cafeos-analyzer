@@ -1713,6 +1713,9 @@ async function loadHQSourceCoverage() {
     const keys = ["bothPresent", "posOnly", "importsOnly", "neither"];
     if (!report || report.sourceBoundary !== "separate_not_deduplicated"
       || report.businessDate !== date || !validCount(report.activeStoreCount)
+      || report.directoryEvidence?.status !== "exact_store_directory"
+      || report.directoryEvidence?.verified !== true
+      || report.directoryEvidence?.matchedStoreCount !== report.activeStoreCount
       || !Array.isArray(report.stores) || report.stores.length !== report.activeStoreCount
       || !report.counts || keys.some(k => !validCount(report.counts[k]))
       || keys.reduce((sum, k) => sum + report.counts[k], 0) !== report.activeStoreCount
@@ -1777,7 +1780,7 @@ async function loadHQSourceCoverage() {
     }
     if (!report.stores.length) rowsRoot.textContent = "Tenant chưa có Store hoạt động.";
     el("hqSourcesStatus").textContent = date + " · " + report.activeStoreCount
-      + " Store đã kiểm tra. Không có tổng doanh thu gộp POS + import.";
+      + " Store đã kiểm tra đủ danh mục. Không có tổng doanh thu gộp POS + import.";
   } catch (error) {
     if (stillCurrent()) {
       countsRoot.replaceChildren();
