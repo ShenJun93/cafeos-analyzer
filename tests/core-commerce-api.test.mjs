@@ -1173,8 +1173,7 @@ test("paid receipt refuses role misuse, cross-store, unpaid, missing and partial
   const lines = [{ id: "line-1", tenant_id: TENANT_A, order_id: ORDER_A, item_name: "Latte",
     unit_price: "35000.00", quantity: 2, line_total: "70000.00" }];
   const fake = (orderRows, itemRows = lines, payRows = payments,
-    storeRows = [{ id: STORE_A, tenant_id: TENANT_A, name: "Store A" }])
-    => authFetch("cashier", async url => {
+    storeRows = [{ id: STORE_A, tenant_id: TENANT_A, name: "Store A" }]) => authFetch("cashier", async url => {
     calls++;
     if (url.pathname === "/rest/v1/pos_orders") return jsonResponse(orderRows);
     if (url.pathname === "/rest/v1/pos_order_items") return jsonResponse(itemRows);
