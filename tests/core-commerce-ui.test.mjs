@@ -2131,6 +2131,9 @@ test("manager-only import lineage UI uses bounded Store/day diagnostics without 
   assert.match(html,/\/api\/app\/commerce-import-lineage\?storeId=/);
   assert.match(html,/p\.sourceBoundary\?\.deduplication !== "not_performed"/);
   assert.match(html,/p\.sourceBoundary\?\.transactionIdsExposed !== false/);
+  assert.match(html,/p\.sourceBoundary\?\.sourceAccountProvenance !== "not_verified"/);
+  assert.match(html,/p\.completeness\?\.exactResponseVerified !== true/);
+  assert.match(html,/p\.completeness\?\.exactMatchedLineItemCount !== p\.observedLineItemCount/);
   assert.match(html,/serial === importLineageSerial/);
   assert.match(html,/invalidateImportLineage\(\)/);
   assert.ok(vercel.rewrites.some(x=>x.source==="/api/app/commerce-import-lineage"

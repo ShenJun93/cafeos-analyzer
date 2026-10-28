@@ -214,11 +214,13 @@ async function installMockTransport(page) {
           sourceBoundary: {
             status: "import_namespace_observation_only",
             transactionIdentity: "tenant_store_source_namespace_transaction_id",
+            sourceAccountProvenance: "not_verified",
             comparedToPos: false, deduplication: "not_performed",
             combinedSales: null, transactionIdsExposed: false
           },
           completeness: { status:"bounded_read_only",
-            maxLineItems: 500, noRowLimitReached:true },
+            maxLineItems: 500, exactResponseVerified: true,
+            exactMatchedLineItemCount: 3, noRowLimitReached:true },
           observedLineItemCount: 3, observedNamespaceCount: 2,
           namespaces: [
             {sourceNamespace:"kiotviet",lineItemCount:2,sourceScopedTransactionCount:1},

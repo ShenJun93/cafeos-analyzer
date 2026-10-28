@@ -18,7 +18,7 @@ const env = {
   SUPABASE_URL: "https://synthetic.supabase.invalid",
   SUPABASE_PUBLISHABLE_KEY: "sb_publishable_synthetic"
 };
-const json = body => new Response(JSON.stringify(body), { status: 200 });
+const json = (body,headers={}) => new Response(JSON.stringify(body), { status: 200, headers });
 const res = () => ({
   statusCode: 0, body: "", setHeader() {}, end(x) { this.body = String(x); }
 });
@@ -64,9 +64,11 @@ function fixtureFetch({ role = "manager", lines = F.importLineItems } = {}) {
       assert.equal(options.headers.authorization, "Bearer synthetic");
       assert.equal(options.headers.apikey, env.SUPABASE_PUBLISHABLE_KEY);
       assert.equal(parsed.searchParams.get("limit"), "501");
+      assert.equal(options.headers.prefer,"count=exact");
       assert.equal(parsed.searchParams.get("tenant_id"), "eq." + F.tenantId);
       assert.equal(parsed.searchParams.get("store_id"), "eq." + F.storeId);
-      return json(lines);
+      return json(lines, { "content-range": lines.length
+        ? "0-" + (lines.length-1) + "/" + lines.length : "*/0" });
     }
     if (parsed.pathname === "/rest/v1/rpc/commerce_daily_dashboard") {
       assert.equal(options.headers.authorization, "Bearer synthetic");
@@ -196,10 +198,13 @@ test("read-only namespace HTTP response never exposes external IDs or a cross-so
   const p = payload(out);
   assert.equal(p.observedLineItemCount, 5);
   assert.equal(p.sourceBoundary.comparedToPos, false);
+  assert.equal(p.sourceBoundary.sourceAccountProvenance, "not_verified");
   assert.equal(p.sourceBoundary.deduplication, "not_performed");
   assert.equal(p.sourceBoundary.combinedSales, null);
   assert.equal(p.sourceBoundary.transactionIdsExposed, false);
   assert.equal(p.completeness.status, "bounded_read_only");
+  assert.equal(p.completeness.exactResponseVerified, true);
+  assert.equal(p.completeness.exactMatchedLineItemCount, 5);
   assert.deepEqual(p.namespaces, F.expectedObserved.namespaces);
   for (const external of ["COLLIDE-001", "COLLIDE-002", "COLLIDE-003"]) {
     assert.equal(out.body.includes(external), false);

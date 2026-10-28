@@ -39,7 +39,8 @@ export async function supabaseJson(path, {
   method = 'GET',
   body,
   headers = {},
-  mapError
+  mapError,
+  includeResponseMeta = false
 } = {}) {
   if (typeof fetchImpl !== 'function') throw new AppHttpError(500, 'FETCH_UNAVAILABLE', 'Server fetch is unavailable');
   const { url, publishableKey } = appConfig(env);
@@ -79,6 +80,13 @@ export async function supabaseJson(path, {
       if (mapped) throw mapped;
     }
     throw new AppHttpError(502, 'SUPABASE_UPSTREAM', 'Control Tower data service returned an error');
+  }
+  if (includeResponseMeta) {
+    return {
+      data: payload,
+      status: response.status,
+      contentRange: response.headers?.get?.('content-range') ?? null
+    };
   }
   return payload;
 }

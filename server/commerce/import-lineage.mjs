@@ -60,6 +60,28 @@ export function storeDayUtcBounds(day, timezone) {
   };
 }
 
+// Verify the entire RLS-scoped filtered result, not just the returned prefix.
+// A PostgREST db-max-rows cap may truncate a requested 501-row lookahead.
+export function exactLineagePage(rows, contentRange) {
+  const limit = () => new AppHttpError(422, "IMPORT_LINEAGE_LIMIT",
+    "Import line count exceeds the bounded audit; no incomplete result is published");
+  const invalid = () => new AppHttpError(502, "SUPABASE_UPSTREAM",
+    "Incomplete or unverifiable source lineage result");
+  if (!Array.isArray(rows)) throw invalid();
+  if (rows.length > MAX_ROWS) throw limit();
+  if (typeof contentRange !== "string") throw invalid();
+  if (contentRange === "*/0" && rows.length === 0) return 0;
+  const match = /^(\d+)-(\d+)\/(\d+)$/.exec(contentRange);
+  if (!match) throw invalid();
+  const [start, end, total] = match.slice(1).map(Number);
+  if (![start, end, total].every(Number.isSafeInteger)) throw invalid();
+  if (total > MAX_ROWS) throw limit();
+  if (start !== 0 || end !== rows.length - 1 || total !== rows.length) {
+    throw invalid();
+  }
+  return total;
+}
+
 function validatedStore(row, tenantId, storeId) {
   return row && typeof row === "object" && !Array.isArray(row)
     && row.id === storeId && row.tenant_id === tenantId
@@ -155,10 +177,12 @@ export async function handle(req, res, deps = {}) {
       and: "(occurred_at.gte." + start + ",occurred_at.lt." + end + ")",
       order: "occurred_at.asc,id.asc", limit: String(MAX_ROWS + 1)
     });
-    const rawRows = await supabaseJson("/rest/v1/transaction_line_items?" + lineQuery, {
-      token: ctx.token, ...deps
+    const page = await supabaseJson("/rest/v1/transaction_line_items?" + lineQuery, {
+      token: ctx.token, ...deps,
+      headers: { prefer: "count=exact" }, includeResponseMeta: true
     });
-    const summary = summarizeNamespaceRows(rawRows, {
+    const exactCount = exactLineagePage(page.data, page.contentRange);
+    const summary = summarizeNamespaceRows(page.data, {
       tenantId: ctx.tenant.id, storeId, day, formatter
     });
     return appJson(res, 200, {
@@ -169,6 +193,7 @@ export async function handle(req, res, deps = {}) {
       sourceBoundary: {
         status: "import_namespace_observation_only",
         transactionIdentity: "tenant_store_source_namespace_transaction_id",
+        sourceAccountProvenance: "not_verified",
         comparedToPos: false,
         deduplication: "not_performed",
         combinedSales: null,
@@ -177,6 +202,8 @@ export async function handle(req, res, deps = {}) {
       completeness: {
         status: "bounded_read_only",
         maxLineItems: MAX_ROWS,
+        exactResponseVerified: true,
+        exactMatchedLineItemCount: exactCount,
         noRowLimitReached: true
       },
       ...summary
