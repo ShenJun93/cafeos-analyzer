@@ -557,7 +557,7 @@ test("real TLS Supabase CLI fixture proves correct CA acceptance and wrong CA re
   for (const marker of [
     "set -euo pipefail", "127.0.0.1", "55433", "cafeos-cleanroom-20261029",
     "cafeos-tls-fixture-20261029", "POSTGRES_DB=postgres",
-    "hostnossl all all 0.0.0.0/0 reject", "SHOW ssl",
+    "hostnossl all all 0.0.0.0/0 reject", "show ssl",
     "pg_stat_ssl", "PGPASSFILE=", "PGSSLMODE=verify-full",
     "sslmode=verify-full", "sslrootcert=",
     "CAFEOS_PSQL_GOOD_CA_VERIFYFULL_PASS", "CAFEOS_PSQL_BAD_CA_REJECTED",
