@@ -188,6 +188,47 @@ target_cols="$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 
   exit 42
 }
 echo CAFEOS_SYNTHETIC_TARGET_AUTH_SCHEMA_REPLAY_PASS
+# A column-only hash can falsely pass after dropping a constraint, index,
+# policy or noninternal trigger. Compare the actual managed Auth table catalogs
+# after DDL replay (still SYNTHETIC only). ACLs, roles, settings and JWT remain
+# separate unproven recovery gates.
+auth_catalog_sql="WITH auth_tables AS (
+  SELECT c.oid, c.relname, c.relrowsecurity, c.relforcerowsecurity
+  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='auth' AND c.relname IN ('users','identities')
+    AND c.relkind IN ('r','p')
+), items AS (
+  SELECT 'TABLE|'||relname||'|'||relrowsecurity::text||'|'||
+    relforcerowsecurity::text AS item FROM auth_tables
+  UNION ALL SELECT 'CONSTRAINT|'||t.relname||'|'||c.conname||'|'||
+    pg_get_constraintdef(c.oid, true)
+    FROM auth_tables t JOIN pg_constraint c ON c.conrelid=t.oid
+  UNION ALL SELECT 'INDEX|'||t.relname||'|'||i.indexname||'|'||
+    i.indexdef FROM auth_tables t JOIN pg_indexes i
+    ON i.schemaname='auth' AND i.tablename=t.relname
+  UNION ALL SELECT 'POLICY|'||t.relname||'|'||p.policyname||'|'||
+    p.cmd||'|'||p.permissive||'|'||array_to_string(p.roles,',')||'|'||
+    coalesce(p.qual,'')||'|'||coalesce(p.with_check,'')
+    FROM auth_tables t JOIN pg_policies p
+    ON p.schemaname='auth' AND p.tablename=t.relname
+  UNION ALL SELECT 'TRIGGER|'||t.relname||'|'||tr.tgname||'|'||
+    pg_get_triggerdef(tr.oid, true)
+    FROM auth_tables t JOIN pg_trigger tr
+    ON tr.tgrelid=t.oid AND NOT tr.tgisinternal
+)
+SELECT count(*)::text||':'||md5(coalesce(
+  string_agg(item, chr(30) ORDER BY item),'')) FROM items"
+source_auth_catalog="$(psql "$local_db" -XAtq -v ON_ERROR_STOP=1 -c "$auth_catalog_sql")"
+target_auth_catalog="$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d "$target_db" -c "$auth_catalog_sql")"
+[[ "$source_auth_catalog" =~ ^[1-9][0-9]*:[0-9a-f]{32}$ &&
+   "$source_auth_catalog" == "$target_auth_catalog" ]] || {
+  echo "SOURCE_AUTH_CATALOG_ITEM_COUNT=${source_auth_catalog%%:*}" >&2
+  echo "TARGET_AUTH_CATALOG_ITEM_COUNT=${target_auth_catalog%%:*}" >&2
+  echo STOP_AUTH_CATALOG_CONSTRAINT_INDEX_POLICY_TRIGGER_DRIFT >&2
+  exit 42
+}
+echo CAFEOS_SYNTHETIC_AUTH_CATALOG_INVARIANTS_PASS
+
 [[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d "$target_db" -c \
   "select (select count(*) from auth.users)::text || ':' || (select count(*) from auth.identities)::text")" == '0:0' ]] ||
   { echo STOP_TARGET_AUTH_NOT_BLANK >&2; exit 42; }
