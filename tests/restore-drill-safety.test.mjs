@@ -511,3 +511,37 @@ test("staging source VERIFYFULL gate parses and fails closed without protected o
   assert.notEqual(attempt.status, 0, "must refuse to run without protected real owner files");
   assert.match(attempt.stdout + attempt.stderr, /STOP_STAGING_CONFIG_DIRECTORY/);
 });
+
+
+test("synthetic Auth/history age restore refuses any remote source and preserves plaintext-free pipes", async () => {
+  const source = await readFile(
+    new URL("../scripts/run-local-auth-history-age-restore-drill.sh", import.meta.url),
+    "utf8"
+  );
+  const workflow = await readFile(new URL("../.github/workflows/supabase-db.yml", import.meta.url), "utf8");
+  for (const key of [
+    "GITHUB_ACTIONS", "CI", "127.0.0.1:54322",
+    "cafeos_ci_auth_hist_src", "cafeos_ci_auth_hist_dst",
+    "auth.users", "auth.identities", "supabase_migrations.schema_migrations",
+    "--no-owner --no-acl", "age -R", "age -d -i",
+    "SET LOCAL session_replication_role=replica",
+    "dropdb --maintenance-db=", "trap cleanup EXIT",
+    "CAFEOS_SYNTHETIC_DISTINCT_DB_AUTH_HISTORY_AGE_RESTORE_PASS",
+    "SAME_LOCAL_POSTGRES_SERVER_NOT_REAL_SUPABASE_RESTORE_NOT_OFFHOST"
+  ]) assert.ok(source.includes(key), key);
+  assert.match(workflow, /run: bash scripts\/run-local-auth-history-age-restore-drill\.sh/);
+  assert.doesNotMatch(source, /wjatnyvdygvblirggdcm|supabase\.co|--linked|supabase link|supabase db push|supabase migration repair|PGPASSFILE|PGSSLROOTCERT|service_role|sb_secret_/i);
+  assert.doesNotMatch(source, /supabase db reset|supabase stop|rm -rf.*\/mnt\/e/i);
+});
+
+test("synthetic Auth/history age restore is CI-only and shell-parses", posixShellOnly, () => {
+  const path = fileURLToPath(new URL("../scripts/run-local-auth-history-age-restore-drill.sh", import.meta.url));
+  const syntax = spawnSync("bash", ["-n", path], { encoding: "utf8", timeout: 6000 });
+  assert.equal(syntax.status, 0, syntax.stderr);
+  const attempt = spawnSync("bash", [path], {
+    env: { PATH: process.env.PATH, CI: "", GITHUB_ACTIONS: "" },
+    encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(attempt.status, 0);
+  assert.match(attempt.stderr, /STOP: disposable GitHub Actions environment required/);
+});
