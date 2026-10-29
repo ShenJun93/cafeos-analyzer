@@ -689,3 +689,24 @@ test("Supabase encrypted stream and TLS routing CI pin the same exact CLI versio
   assert.match(stream, /stream_encrypted history-data/);
   assert.doesNotMatch(stream, /--linked|wjatnyvdygvblirggdcm|supabase\.co|SUPABASE_ACCESS_TOKEN/i);
 });
+
+test("CLI age stream proves synthetic Auth USER and IDENTITY payloads, not empty COPY headers", async () => {
+  const script = await readFile(new URL("../scripts/run-local-supabase-cli-age-stream-drill.sh", import.meta.url), "utf8");
+  assert.match(script, /GITHUB_ACTIONS:-.*CI:-/);
+  assert.match(script, /postgresql:\/\/postgres:postgres@127\.0\.0\.1:54322\/postgres/);
+  assert.match(script, /'0:0'/);
+  assert.match(script, /'1:1'/);
+  assert.match(script, /INSERT INTO auth\.users/);
+  assert.match(script, /INSERT INTO auth\.identities/);
+  assert.match(script, /fixture_inserted=0/);
+  assert.match(script, /trap cleanup EXIT/);
+  assert.match(script, /DELETE FROM auth\.identities WHERE id=/);
+  assert.match(script, /DELETE FROM auth\.users WHERE id=/);
+  assert.match(script, /91000000-0000-4000-8000-000000000001/);
+  assert.match(script, /91000000-0000-4000-8000-000000000002/);
+  assert.match(script, /in_users && index\(\$0,/);
+  assert.match(script, /in_identities && index\(\$0,/);
+  assert.match(script, /CAFEOS_LOCAL_AUTH_NONEMPTY_ENCRYPTED_EXPORT_PASS/);
+  assert.match(script, /age -d -i "\$work\/identity\.txt" "\$work\/data\.sql\.age" \|/);
+  assert.doesNotMatch(script, /--linked|wjatnyvdygvblirggdcm|\.supabase\.co|SUPABASE_ACCESS_TOKEN/i);
+});
