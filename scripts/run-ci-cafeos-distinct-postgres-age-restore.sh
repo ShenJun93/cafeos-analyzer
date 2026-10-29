@@ -15,6 +15,7 @@ done
 
 readonly local_db='postgresql://postgres:postgres@127.0.0.1:54322/postgres'
 readonly target='cafeos-ci-distinct-postgres-restore'
+readonly target_db='cafeos_ci_distinct_restore'
 # Use Supabase's official full PostgreSQL 17.11 image, not the CLI slim
 # image (requires CLI-managed bootstrap). Pin the GHCR manifest digest.
 # Do not use public ECR for this CI fixture: registry returned a data cap.
@@ -145,24 +146,21 @@ fi
 [[ "$(docker exec -u postgres "$target" stat -f -c '%T' /var/lib/postgresql/data)" == tmpfs ]] ||
   { echo STOP_TARGET_DATA_NOT_TMPFS >&2; exit 42; }
 
-# The full image has a different bare Auth bootstrap than the CLI slim
-# source (44 source columns versus 21 bare target columns in CI). For THIS
-# DISPOSABLE SYNTHETIC PostgreSQL portability drill ONLY, rehydrate the source
-# Auth DDL into the independent, networkless tmpfs target before data replay.
-# This is NOT the Supabase managed-platform restore procedure. It must remain
-# an explicit adaptation, followed by the original strict schema hash gate.
-readonly target_auth_baseline_sql="SELECT
-  CASE WHEN to_regclass('auth.users') IS NULL THEN 'ABSENT'
-       WHEN (SELECT count(*) FROM auth.users)=0 THEN 'EMPTY'
-       ELSE 'NOT_EMPTY' END"
-[[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c "$target_auth_baseline_sql")" != NOT_EMPTY ]] ||
-  { echo STOP_TARGET_AUTH_NOT_EMPTY_BEFORE_DDL_REPLAY >&2; exit 42; }
-# Fresh target only: no other Auth users, and its network / tmpfs / image
-# identity was pinned above. Drop the old baseline schema, NEVER source data.
-printf 'DROP SCHEMA IF EXISTS auth CASCADE;\n' |
-  docker exec -i -u postgres "$target" psql -Xqw -v ON_ERROR_STOP=1 -d postgres -f - >/dev/null
+# The full image has older managed Auth bootstrap than the CLI slim
+# source (44 source columns versus 21 bare target columns in CI). Do NOT
+# DROP or mutate the image-owned auth schema. Instead, on this separate,
+# networkless, tmpfs synthetic server, create a NEW EMPTY DATABASE and replay
+# local synthetic Auth DDL there. This is NOT managed Supabase restore.
+[[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c \
+  "select count(*) from pg_database where datname='$target_db'")" == 0 ]] ||
+  { echo STOP_TARGET_SCRATCH_DATABASE_EXISTS >&2; exit 42; }
+docker exec -u postgres "$target" createdb --template=template0 "$target_db" ||
+  { echo STOP_TARGET_SCRATCH_CREATE_FAILED >&2; exit 42; }
+[[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d "$target_db" -c \
+  "select count(*) from pg_namespace where nspname='auth'")" == 0 ]] ||
+  { echo STOP_TARGET_SCRATCH_NOT_EMPTY >&2; exit 42; }
 pg_dump "$local_db" --schema-only --schema=auth --no-owner --no-acl |
-  docker exec -i -u postgres "$target" psql -Xqw -v ON_ERROR_STOP=1 -d postgres -f - >/dev/null
+  docker exec -i -u postgres "$target" psql -Xqw -v ON_ERROR_STOP=1 -d "$target_db" -f - >/dev/null
 
 # The source-derived test-only Auth schema must now match exactly.
 auth_columns="select md5(string_agg(table_name || ':' || column_name || ':' ||
@@ -170,7 +168,7 @@ auth_columns="select md5(string_agg(table_name || ':' || column_name || ':' ||
   from information_schema.columns
   where table_schema='auth' and table_name in ('users','identities')"
 source_cols="$(psql "$local_db" -XAtq -v ON_ERROR_STOP=1 -c "$auth_columns")"
-target_cols="$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c "$auth_columns")"
+target_cols="$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d "$target_db" -c "$auth_columns")"
 [[ -n "$source_cols" && "$source_cols" == "$target_cols" ]] || {
   # Diagnostic ONLY: this queries catalog column definitions, NOT user rows,
   # Auth metadata or secrets. Do NOT delete this mismatch security gate.
@@ -180,7 +178,7 @@ target_cols="$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 
     where table_schema='auth' and table_name in ('users','identities')
     order by table_name,ordinal_position"
   src_names="$(psql "$local_db" -XAtq -v ON_ERROR_STOP=1 -c "$auth_catalog")"
-  dst_names="$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c "$auth_catalog")"
+  dst_names="$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d "$target_db" -c "$auth_catalog")"
   echo "SOURCE_AUTH_COLUMN_COUNT=$(printf '%s\\n' "$src_names" | awk 'NF {n++} END {print n+0}')" >&2
   echo "TARGET_AUTH_COLUMN_COUNT=$(printf '%s\\n' "$dst_names" | awk 'NF {n++} END {print n+0}')" >&2
   # Only bounded +/- difference lines. Neither database's rows are queried.
@@ -190,18 +188,18 @@ target_cols="$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 
   exit 42
 }
 echo CAFEOS_SYNTHETIC_TARGET_AUTH_SCHEMA_REPLAY_PASS
-[[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c \
+[[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d "$target_db" -c \
   "select (select count(*) from auth.users)::text || ':' || (select count(*) from auth.identities)::text")" == '0:0' ]] ||
   { echo STOP_TARGET_AUTH_NOT_BLANK >&2; exit 42; }
 
 # Reconstruct only historical ledger DDL from the disposable local source,
 # including actual column order/types. No source row data is printed.
 printf 'CREATE SCHEMA supabase_migrations;\n' |
-  docker exec -i -u postgres "$target" psql -Xqw -v ON_ERROR_STOP=1 -d postgres -f - >/dev/null
+  docker exec -i -u postgres "$target" psql -Xqw -v ON_ERROR_STOP=1 -d "$target_db" -f - >/dev/null
 pg_dump "$local_db" --schema-only --no-owner --no-acl \
   --table=supabase_migrations.schema_migrations |
-  docker exec -i -u postgres "$target" psql -Xqw -v ON_ERROR_STOP=1 -d postgres -f - >/dev/null
-[[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c \
+  docker exec -i -u postgres "$target" psql -Xqw -v ON_ERROR_STOP=1 -d "$target_db" -f - >/dev/null
+[[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d "$target_db" -c \
   "select count(*) from supabase_migrations.schema_migrations")" == 0 ]] ||
   { echo STOP_TARGET_LEDGER_NOT_BLANK >&2; exit 42; }
 
@@ -250,14 +248,14 @@ sha256sum "$work/three-tables.pgcustom.age" > "$work/manifest.sha256"
 age -d -i "$work/identity.txt" "$work/three-tables.pgcustom.age" |
   docker exec -i -u postgres "$target" pg_restore \
     -w --data-only --no-owner --single-transaction --exit-on-error \
-    -d postgres - >/dev/null
+    -d "$target_db" - >/dev/null
 
 auth_check="select count(*) from auth.users u join auth.identities i
   on i.user_id=u.id where u.id='$uid' and i.id='$iid'
   and u.email='separate-server-fixture@example.invalid'"
-[[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c "$auth_check")" == 1 ]] ||
+[[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d "$target_db" -c "$auth_check")" == 1 ]] ||
   { echo STOP_CROSS_SERVER_AUTH_IDENTITY_MISSING >&2; exit 42; }
-[[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c \
+[[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d "$target_db" -c \
   "select (select count(*) from auth.users)::text || ':' || (select count(*) from auth.identities)::text")" == '1:1' ]] ||
   { echo STOP_CROSS_SERVER_AUTH_COUNT >&2; exit 42; }
 
@@ -268,7 +266,7 @@ history_sql="select count(*)::text || ':' || encode(sha256(convert_to(
   coalesce(array_to_string(statements,chr(30)),''),chr(29) order by version),''),
   'UTF8')),'hex') from supabase_migrations.schema_migrations"
 source_fp="$(psql "$local_db" -XAtq -v ON_ERROR_STOP=1 -c "$history_sql")"
-target_fp="$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c "$history_sql")"
+target_fp="$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d "$target_db" -c "$history_sql")"
 [[ "$source_fp" =~ ^[1-9][0-9]*:[0-9a-f]{64}$ && "$source_fp" == "$target_fp" ]] ||
   { echo STOP_CROSS_SERVER_HISTORY_FINGERPRINT_MISMATCH >&2; exit 42; }
 success=1

@@ -784,13 +784,16 @@ test("distinct synthetic target replays SOURCE Auth DDL before strict column ver
   const s = await readFile(new URL("../scripts/run-ci-cafeos-distinct-postgres-age-restore.sh", import.meta.url), "utf8");
   const net = s.indexOf("--network none");
   const tm = s.indexOf("--tmpfs /var/lib/postgresql/data");
-  const before = s.indexOf("STOP_TARGET_AUTH_NOT_EMPTY_BEFORE_DDL_REPLAY");
-  const drop = s.indexOf("DROP SCHEMA IF EXISTS auth CASCADE");
+  const before = s.indexOf("STOP_TARGET_SCRATCH_DATABASE_EXISTS");
+  const createdb = s.indexOf('createdb --template=template0 "$target_db"');
+  const empty = s.indexOf("STOP_TARGET_SCRATCH_NOT_EMPTY");
   const dump = s.indexOf('pg_dump "$local_db" --schema-only --schema=auth --no-owner --no-acl');
   const hash = s.indexOf("STOP_MANAGED_AUTH_SCHEMA_MISMATCH");
   const success = s.indexOf("CAFEOS_SYNTHETIC_TARGET_AUTH_SCHEMA_REPLAY_PASS");
-  assert.ok(net >= 0 && tm > net && before > tm && drop > before &&
-    dump > drop && hash > dump && success > hash);
+  assert.ok(net >= 0 && tm > net && before > tm && createdb > before &&
+    empty > createdb && dump > empty && hash > dump && success > hash);
+  assert.doesNotMatch(s, /DROP SCHEMA IF EXISTS auth CASCADE/);
+  assert.match(s, /readonly target_db='cafeos_ci_distinct_restore'/);
   assert.match(s, /docker exec -i -u postgres "\$target" psql/);
   assert.match(s, /SOURCE_AUTH_COLUMN_COUNT/);
   assert.match(s, /TARGET_AUTH_COLUMN_COUNT/);
