@@ -566,8 +566,8 @@ test("real TLS Supabase CLI fixture proves correct CA acceptance and wrong CA re
     "CAFEOS_LOCAL_TLS_CERT_TEST_PASS_ONLY_SYNTHETIC", "NO_STAGING_SOURCE_ACCESSED",
   ]) assert.ok(source.includes(marker), "missing local TLS marker: " + marker);
   assert.doesNotMatch(source, /wjatnyvdygvblirggdcm|aws-0-ap-southeast-1\.pooler|supabase db push|--linked|supabase link|migration repair|sb_secret_/i);
-  assert.match(research, /LOCAL TLS-ENABLED CA POSITIVE\/NEGATIVE TEST = \*\*PASS\*\*/);
-  assert.match(research, /SSL-OFF NO-DOWNGRADE TEST = \*\*FAIL\*\*/);
+  assert.match(research, /TLS-ENABLED CA POSITIVE\/NEGATIVE TEST = \*\*PASS\*\*/);
+  assert.match(research, /SSL-OFF \*\*REMOTE-ROUTE\*\* REQUIRED-TLS REJECTION = \*\*PASS\*\*/);
   assert.match(research, /STAGING BACKUP = \*\*NOT AUTHORIZED \/ NOT RUN\*\*/);
   assert.match(research, /RELEASE NO-GO/);
 });
@@ -610,4 +610,57 @@ test("explicit SSL-off downgrade negative gate shell-parses and refuses missing 
   });
   assert.notEqual(attempt.status, 0);
   assert.match(attempt.stdout + attempt.stderr, /STOP_PINNED_LOCAL_CLI_MISSING/);
+});
+
+
+test("CLI route-discrimination regression protects exact local versus remote SSL-off matrix", async () => {
+  const script = await readFile(
+    new URL("../scripts/check-cafeos-cli-db-url-routing-local.sh", import.meta.url), "utf8"
+  );
+  const ciScript = await readFile(
+    new URL("../scripts/run-ci-cafeos-cli-tls-routing.sh", import.meta.url), "utf8"
+  );
+  const workflow = await readFile(
+    new URL("../.github/workflows/cafeos-cli-tls-routing.yml", import.meta.url), "utf8"
+  );
+  for (const marker of [
+    "set -euo pipefail", "127.0.0.1", "localhost",
+    "54322", "show ssl", "auth.users", "PGPASSFILE=",
+    "check '127.0.0.1' 'verify-full'",
+    "check 'localhost' 'disable'",
+    "check 'localhost' 'require'",
+    "check 'localhost' 'verify-ca'",
+    "check 'localhost' 'verify-full'",
+    "STOP_REMOTE_PATH_FAILED_TO_REQUIRE_TLS_",
+    "CAFEOS_CLI_2_122_0_LOCAL_REMOTE_TLS_ROUTE_PASS",
+  ]) assert.ok(script.includes(marker), "missing local CLI route marker: " + marker);
+  for (const marker of [
+    "GITHUB_ACTIONS", "CI", "127.0.0.1", "localhost",
+    "supabase --version", "2.122.0", "PGPASSFILE=",
+    "STOP_REMOTE_TLS_DOWNGRADE_", "STOP_NOT_REMOTE_ROUTE_",
+    "CAFEOS_CLI_2_122_0_ROUTE_TLS_CI_PASS",
+    "LOCAL_DISPOSABLE_ONLY_STAGING_NOT_ACCESSED",
+  ]) assert.ok(ciScript.includes(marker), "missing CI CLI route marker: " + marker);
+  assert.match(workflow, /version: 2\.122\.0/);
+  assert.match(workflow, /run: bash scripts\/run-ci-cafeos-cli-tls-routing\.sh/);
+  assert.match(workflow, /supabase stop --no-backup/);
+  assert.doesNotMatch(script + ciScript + workflow, /wjatnyvdygvblirggdcm|aws-0-ap-southeast-1\.pooler|supabase link|supabase db push|migration repair|sb_secret_/i);
+});
+
+test("CLI route-discrimination scripts parse and deny execution outside their authorized fixture", posixShellOnly, () => {
+  for (const script of [
+    "../scripts/check-cafeos-cli-db-url-routing-local.sh",
+    "../scripts/run-ci-cafeos-cli-tls-routing.sh",
+  ]) {
+    const path = fileURLToPath(new URL(script, import.meta.url));
+    const syntax = spawnSync("bash", ["-n", path], { encoding: "utf8", timeout: 6000 });
+    assert.equal(syntax.status, 0, syntax.stderr);
+  }
+  const path = fileURLToPath(new URL("../scripts/run-ci-cafeos-cli-tls-routing.sh", import.meta.url));
+  const denied = spawnSync("bash", [path], {
+    env: { PATH: process.env.PATH, GITHUB_ACTIONS: "", CI: "" },
+    encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(denied.status, 0);
+  assert.match(denied.stderr, /STOP_GITHUB_ACTIONS_ONLY/);
 });
