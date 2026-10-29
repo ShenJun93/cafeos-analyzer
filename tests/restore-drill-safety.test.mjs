@@ -710,3 +710,107 @@ test("CLI age stream proves synthetic Auth USER and IDENTITY payloads, not empty
   assert.match(script, /age -d -i "\$work\/identity\.txt" "\$work\/data\.sql\.age" \|/);
   assert.doesNotMatch(script, /--linked|wjatnyvdygvblirggdcm|\.supabase\.co|SUPABASE_ACCESS_TOKEN/i);
 });
+
+
+test("distinct PostgreSQL server age restore is hard-pinned to disposable CI and cleans up", async () => {
+  const path = fileURLToPath(new URL("../scripts/run-ci-cafeos-distinct-postgres-age-restore.sh", import.meta.url));
+  const script = await readFile(path, "utf8");
+  const workflow = await readFile(new URL("../.github/workflows/supabase-db.yml", import.meta.url), "utf8");
+  assert.match(script, /GITHUB_ACTIONS/);
+  assert.match(script, /CI/);
+  assert.match(script, /127\.0\.0\.1:54322\/postgres/);
+  assert.match(script, /STOP_SOURCE_AUTH_NOT_BLANK/);
+  assert.match(script, /STOP_LOCAL_SOURCE_DOCKER_CONTAINER_COUNT/);
+  assert.match(script, /public\.ecr\.aws\/supabase\/postgres:17\./);
+  assert.match(script, /ghcr\.io\/supabase\/cli\/postgres:17\.11\.0\.006-r0/);
+  assert.match(script, /STOP_SOURCE_DOCKER_CONTAINER_NAME/);
+  assert.match(script, /STOP_SOURCE_DOCKER_IMAGE_NOT_PINN/);
+  assert.match(script, /readonly target_image='ghcr\.io\/supabase\/postgres:17\.11\.0\.006@sha256:c141fd17ac6a76c4323e90b3aee8ff1a23d2e89e547c2b963cfadc309c079cc2'/);
+  assert.match(script, /"\$target_image" >\/dev\/null/);
+  assert.match(script, /--network none/);
+  assert.match(script, /--tmpfs \/var\/lib\/postgresql\/data/);
+  assert.match(script, /STOP_TARGET_PORT_BINDINGS/);
+  assert.match(script, /STOP_TARGET_HOST_MOUNTS/);
+  assert.match(script, /STOP_MANAGED_AUTH_SCHEMA_MISMATCH/);
+  assert.match(script, /pg_dump "\$local_db" -w -Fc --data-only/);
+  assert.match(script, /age -R "\$work\/recipient\.txt" -o/);
+  assert.match(script, /age -d -i "\$work\/identity\.txt"/);
+  assert.match(script, /docker exec -i -u postgres "\$target" pg_restore/);
+  assert.match(script, /STOP_CROSS_SERVER_HISTORY_FINGERPRINT_MISMATCH/);
+  assert.match(script, /STOP_CROSS_SERVER_AUTH_IDENTITY_MISSING/);
+  assert.match(script, /docker rm -f "\$target"/);
+  assert.match(script, /DELETE FROM auth\.users/);
+  assert.match(script, /DELETE FROM auth\.identities/);
+  assert.match(script, /trap cleanup EXIT/);
+  assert.match(workflow, /run: bash scripts\/run-ci-cafeos-distinct-postgres-age-restore\.sh/);
+  assert.doesNotMatch(script, /wjatnyvdygvblirggdcm|\.supabase\.co|--linked|SUPABASE_ACCESS_TOKEN|db push|migration repair|sb_secret_/i);
+  const syntax = spawnSync("bash", ["-n", path], { encoding: "utf8", timeout: 6000 });
+  assert.equal(syntax.status, 0, syntax.stderr);
+  const attempt = spawnSync("bash", [path], {
+    env: { PATH: process.env.PATH }, encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(attempt.status, 0, "must reject non-CI execution before DB mutation");
+});
+
+test("distinct server Auth schema mismatch emits only bounded catalog metadata and keeps hard stop", async () => {
+  const script = await readFile(new URL("../scripts/run-ci-cafeos-distinct-postgres-age-restore.sh", import.meta.url), "utf8");
+  assert.match(script, /where table_schema='auth' and table_name in \('users','identities'\)/);
+  assert.match(script, /from information_schema\.columns/);
+  assert.match(script, /SOURCE_AUTH_COLUMN_COUNT=/);
+  assert.match(script, /TARGET_AUTH_COLUMN_COUNT=/);
+  assert.match(script, /SCHEMA_DIFF/);
+  assert.match(script, /n <= 70/);
+  assert.match(script, /STOP_MANAGED_AUTH_SCHEMA_MISMATCH/);
+  assert.match(script, /exit 42/);
+  assert.doesNotMatch(script, /SELECT \* FROM auth\.|SELECT \* FROM vault\.|--linked/i);
+});
+
+test("distinct managed target requires stable SQL readiness and diagnoses a crash without relaxing schema guard", async () => {
+  const script = await readFile(new URL("../scripts/run-ci-cafeos-distinct-postgres-age-restore.sh", import.meta.url), "utf8");
+  assert.match(script, /for \(\(i=0; i<120; i\+\+\)\)/);
+  assert.match(script, /-c "SELECT 'READY'"/);
+  assert.match(script, /from information_schema\.columns/);
+  assert.match(script, /ready=\$\(\(ready\+1\)\)/);
+  assert.match(script, /\[\[ "\$ready" -ge 3 \]\]/);
+  assert.match(script, /STOP_TARGET_EXITED_DURING_MANAGED_INIT/);
+  assert.match(script, /STOP_TARGET_PG_NOT_STABLY_QUERYABLE/);
+  assert.match(script, /OOM=\{\{\.State\.OOMKilled\}\}/);
+  assert.match(script, /STOP_MANAGED_AUTH_SCHEMA_MISMATCH/);
+  assert.match(script, /--network none/);
+  assert.doesNotMatch(script, /wjatnyvdygvblirggdcm|--linked|\.supabase\.co/i);
+});
+
+test("distinct synthetic target replays SOURCE Auth DDL before strict column verification", async () => {
+  const s = await readFile(new URL("../scripts/run-ci-cafeos-distinct-postgres-age-restore.sh", import.meta.url), "utf8");
+  const net = s.indexOf("--network none");
+  const tm = s.indexOf("--tmpfs /var/lib/postgresql/data");
+  const before = s.indexOf("STOP_TARGET_SCRATCH_DATABASE_EXISTS");
+  const createdb = s.indexOf('createdb --template=template0 "$target_db"');
+  const empty = s.indexOf("STOP_TARGET_SCRATCH_NOT_EMPTY");
+  const dump = s.indexOf('pg_dump "$local_db" --schema-only --schema=auth --no-owner --no-acl');
+  const hash = s.indexOf("STOP_MANAGED_AUTH_SCHEMA_MISMATCH");
+  const success = s.indexOf("CAFEOS_SYNTHETIC_TARGET_AUTH_SCHEMA_REPLAY_PASS");
+  assert.ok(net >= 0 && tm > net && before > tm && createdb > before &&
+    empty > createdb && dump > empty && hash > dump && success > hash);
+  assert.doesNotMatch(s, /DROP SCHEMA IF EXISTS auth CASCADE/);
+  assert.match(s, /readonly target_db='cafeos_ci_distinct_restore'/);
+  assert.match(s, /docker exec -i -u postgres "\$target" psql/);
+  assert.match(s, /SOURCE_AUTH_COLUMN_COUNT/);
+  assert.match(s, /TARGET_AUTH_COLUMN_COUNT/);
+  assert.match(s, /STOP_TARGET_HOST_MOUNTS/);
+  assert.match(s, /STOP_TARGET_PORT_BINDINGS/);
+  assert.doesNotMatch(s, /--linked|wjatnyvdygvblirggdcm|\.supabase\.co|SUPABASE_ACCESS_TOKEN/i);
+});
+
+test("distinct age stream pg_restore consumes stdin without a literal dash FILE", async () => {
+  const s = await readFile(new URL("../scripts/run-ci-cafeos-distinct-postgres-age-restore.sh", import.meta.url), "utf8");
+  const start = s.indexOf('age -d -i "$work/identity.txt" "$work/three-tables.pgcustom.age" |');
+  const end = s.indexOf("\nauth_check=", start);
+  assert.ok(start >= 0 && end > start, "must locate decrypt-to-pg_restore section");
+  const section = s.slice(start, end);
+  assert.match(section, /docker exec -i -u postgres "\$target" pg_restore/);
+  assert.match(section, /--single-transaction --exit-on-error/);
+  assert.match(section, /-d "\$target_db" >\/dev\/null/);
+  assert.doesNotMatch(section, /-d "\$target_db" -/);
+  assert.doesNotMatch(section, /pg_restore.*-f\s+\S+/);
+});
