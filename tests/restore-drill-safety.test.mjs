@@ -545,3 +545,35 @@ test("synthetic Auth/history age restore is CI-only and shell-parses", posixShel
   assert.notEqual(attempt.status, 0);
   assert.match(attempt.stderr, /STOP: disposable GitHub Actions environment required/);
 });
+
+
+test("Supabase CLI TLS negative control fails closed on local invalid CA and never targets staging", async () => {
+  const source = await readFile(
+    new URL("../scripts/check-cafeos-cli-dump-tls-negative-local.sh", import.meta.url), "utf8"
+  );
+  const research = await readFile(
+    new URL("../docs/research/2026-10-29-cafeos-cli-dump-tls-no-go.md", import.meta.url), "utf8"
+  );
+  for (const marker of [
+    "set -euo pipefail", "127.0.0.1:54322", "cafeos-cleanroom-20261029",
+    "PGPASSFILE=", "PGSSLMODE=verify-full", "sslmode=verify-full",
+    "sslrootcert=", "STOP_CAFEOS_CLI_VERIFYFULL_BAD_CA_ACCEPTED",
+    "exit 42", "STAGING_NOT_AUTHORIZED",
+  ]) assert.ok(source.includes(marker), "missing fail-closed local TLS marker: " + marker);
+  assert.doesNotMatch(source, /wjatnyvdygvblirggdcm|aws-0-ap-southeast-1\.pooler|supabase db push|--linked|supabase link|migration repair|PGPASSWORD=/i);
+  assert.match(research, /SECURITY FAIL/);
+  assert.match(research, /staging CLI dump blocked/);
+  assert.match(research, /RELEASE NO-GO/);
+});
+
+test("Supabase CLI TLS negative control refuses without exact local cleanroom", posixShellOnly, () => {
+  const path = fileURLToPath(new URL("../scripts/check-cafeos-cli-dump-tls-negative-local.sh", import.meta.url));
+  const syntax = spawnSync("bash", ["-n", path], { encoding: "utf8", timeout: 6000 });
+  assert.equal(syntax.status, 0, syntax.stderr);
+  const attempt = spawnSync("bash", [path], {
+    env: { PATH: process.env.PATH, HOME: "/nonexistent-cafeos-local-cli-fixture" },
+    encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(attempt.status, 0);
+  assert.match(attempt.stdout + attempt.stderr, /STOP_LOCAL_CLI_OR_CLEANROOM_MISSING/);
+});
