@@ -1,0 +1,44 @@
+name: CafeOS Storage Object Recovery Synthetic
+
+on:
+  push:
+    branches:
+      - test/cafeos-storage-object-age-integrity-v1
+    paths:
+      - "scripts/run-ci-cafeos-storage-objects-age-drill.sh"
+      - "tests/restore-drill-safety.test.mjs"
+      - ".github/workflows/cafeos-storage-object-recovery-synthetic.yml"
+  pull_request:
+    paths:
+      - "scripts/run-ci-cafeos-storage-objects-age-drill.sh"
+      - "tests/restore-drill-safety.test.mjs"
+      - ".github/workflows/cafeos-storage-object-recovery-synthetic.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  storage-objects-synthetic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ubuntu-packaged age (no Docker or Supabase credentials)
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+          age --version
+
+      - name: Verify synthetic-only recovery script and static safety contract
+        run: |
+          set -euo pipefail
+          bash -n scripts/run-ci-cafeos-storage-objects-age-drill.sh
+          node --test tests/restore-drill-safety.test.mjs
+
+      - name: Prove encrypted synthetic Storage object-byte recovery
+        env:
+          CI: "true"
+        run: bash scripts/run-ci-cafeos-storage-objects-age-drill.sh

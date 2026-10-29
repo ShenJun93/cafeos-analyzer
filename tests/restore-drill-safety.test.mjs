@@ -833,3 +833,22 @@ test("cross-server Auth recovery checks constraints, indexes, policies, triggers
   assert.match(script, /-d "\$target_db" -c "\$auth_catalog_sql"/);
   assert.doesNotMatch(script, /--linked|wjatnyvdygvblirggdcm|\.supabase\.co|SUPABASE_ACCESS_TOKEN/i);
 });
+
+test("Storage object-byte recovery remains synthetic, tmpfs-only, authenticated-age and CI-isolated", async () => {
+  const s = await readFile(new URL("../scripts/run-ci-cafeos-storage-objects-age-drill.sh", import.meta.url), "utf8");
+  const ci = await readFile(new URL("../.github/workflows/cafeos-storage-object-recovery-synthetic.yml", import.meta.url), "utf8");
+  for (const literal of [
+    "CAFEOS_SYNTHETIC_LOCAL", "GITHUB_ACTIONS", "STOP_SYNTHETIC_TMPFS_REQUIRED",
+    "mktemp -d /dev/shm/", "trap cleanup EXIT", "age-keygen -o",
+    "age -R", "age -d -i", "sha256sum", "verify_restored",
+    "STOP_WRONG_AGE_KEY_ACCEPTED", "STOP_CORRUPTED_AGE_ARCHIVE_ACCEPTED",
+    "STOP_MISSING_STORAGE_OBJECT_NOT_DETECTED", "STOP_EXTRA_STORAGE_OBJECT_NOT_DETECTED",
+    "STOP_CORRUPT_STORAGE_BYTES_NOT_DETECTED",
+    "NO_STAGING_NO_REAL_STORAGE_API_NO_FULL_SUPABASE_RESTORE",
+  ]) assert.ok(s.includes(literal), `missing fail-closed Storage guard: ${literal}`);
+  assert.doesNotMatch(s, /\bsupabase db\b|--linked|wjatnyvdygvblirggdcm|\.supabase\.co|SUPABASE_ACCESS_TOKEN|\bdocker\b|\baws s3\b/i);
+  assert.match(ci, /runs-on: ubuntu-24\.04/);
+  assert.match(ci, /apt-get install -y -qq age/);
+  assert.match(ci, /bash scripts\/run-ci-cafeos-storage-objects-age-drill\.sh/);
+  assert.doesNotMatch(ci, /supabase\/setup-cli|supabase start|docker login|GHCR_TOKEN|SUPABASE_ACCESS_TOKEN/);
+});
