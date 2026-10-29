@@ -801,3 +801,16 @@ test("distinct synthetic target replays SOURCE Auth DDL before strict column ver
   assert.match(s, /STOP_TARGET_PORT_BINDINGS/);
   assert.doesNotMatch(s, /--linked|wjatnyvdygvblirggdcm|\.supabase\.co|SUPABASE_ACCESS_TOKEN/i);
 });
+
+test("distinct age stream pg_restore consumes stdin without a literal dash FILE", async () => {
+  const s = await readFile(new URL("../scripts/run-ci-cafeos-distinct-postgres-age-restore.sh", import.meta.url), "utf8");
+  const start = s.indexOf('age -d -i "$work/identity.txt" "$work/three-tables.pgcustom.age" |');
+  const end = s.indexOf("\nauth_check=", start);
+  assert.ok(start >= 0 && end > start, "must locate decrypt-to-pg_restore section");
+  const section = s.slice(start, end);
+  assert.match(section, /docker exec -i -u postgres "\$target" pg_restore/);
+  assert.match(section, /--single-transaction --exit-on-error/);
+  assert.match(section, /-d "\$target_db" >\/dev\/null/);
+  assert.doesNotMatch(section, /-d "\$target_db" -/);
+  assert.doesNotMatch(section, /pg_restore.*-f\s+\S+/);
+});

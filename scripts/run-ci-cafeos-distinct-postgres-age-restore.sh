@@ -248,7 +248,7 @@ sha256sum "$work/three-tables.pgcustom.age" > "$work/manifest.sha256"
 age -d -i "$work/identity.txt" "$work/three-tables.pgcustom.age" |
   docker exec -i -u postgres "$target" pg_restore \
     -w --data-only --no-owner --single-transaction --exit-on-error \
-    -d "$target_db" - >/dev/null
+    -d "$target_db" >/dev/null
 
 auth_check="select count(*) from auth.users u join auth.identities i
   on i.user_id=u.id where u.id='$uid' and i.id='$iid'
