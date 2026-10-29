@@ -4,14 +4,19 @@ on:
   push:
     branches:
       - test/cafeos-storage-object-age-integrity-v1
+      - test/cafeos-storage-metadata-bytes-reconcile-v1
     paths:
       - "scripts/run-ci-cafeos-storage-objects-age-drill.sh"
+      - "scripts/verify-cafeos-synthetic-storage-recovery.mjs"
       - "tests/restore-drill-safety.test.mjs"
+      - "tests/storage-recovery-reconcile.test.mjs"
       - ".github/workflows/cafeos-storage-object-recovery-synthetic.yml"
   pull_request:
     paths:
       - "scripts/run-ci-cafeos-storage-objects-age-drill.sh"
+      - "scripts/verify-cafeos-synthetic-storage-recovery.mjs"
       - "tests/restore-drill-safety.test.mjs"
+      - "tests/storage-recovery-reconcile.test.mjs"
       - ".github/workflows/cafeos-storage-object-recovery-synthetic.yml"
   workflow_dispatch:
 
@@ -36,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -n scripts/run-ci-cafeos-storage-objects-age-drill.sh
-          node --test tests/restore-drill-safety.test.mjs
+          node --test tests/restore-drill-safety.test.mjs tests/storage-recovery-reconcile.test.mjs
 
       - name: Prove encrypted synthetic Storage object-byte recovery
         env:

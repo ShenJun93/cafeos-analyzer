@@ -80,6 +80,38 @@ verify_restored() {
   [[ "$(sha256sum "$root/bucket-menus/menu.csv" | cut -d ' ' -f1)" == "$(cat "$work/menu.sha256")" ]] || return 1
 }
 verify_restored "$restored_dir" || { echo STOP_SYNTHETIC_STORAGE_BYTES_MISMATCH >&2; exit 42; }
+
+# A byte-only success can be misleading if Storage bucket policy, object
+# owner, version, metadata.size or path changes. Reconcile two synthetic
+# metadata snapshots and the pre-encryption SHA-256 manifest against the
+# ACTUAL age-restored bytes before declaring PASS.
+photo_size="$(stat -c %s "$source_dir/bucket-photos/object.bin")"
+menu_size="$(stat -c %s "$source_dir/bucket-menus/menu.csv")"
+photo_sha="$(cat "$work/photo.sha256")"
+menu_sha="$(cat "$work/menu.sha256")"
+cat > "$work/source-storage-metadata.json" <<JSON
+{"buckets":[
+  {"id":"bucket-photos","name":"Synthetic Photos","public":false,"owner_id":null,"file_size_limit":4096,"allowed_mime_types":["application/octet-stream"]},
+  {"id":"bucket-menus","name":"Synthetic Menus","public":false,"owner_id":null,"file_size_limit":4096,"allowed_mime_types":["text/csv"]}
+],"objects":[
+  {"id":"object-photo","bucket_id":"bucket-photos","name":"object.bin","version":"synthetic-v1","owner_id":null,"metadata":{"size":$photo_size,"mimetype":"application/octet-stream"}},
+  {"id":"object-menu","bucket_id":"bucket-menus","name":"menu.csv","version":"synthetic-v2","owner_id":null,"metadata":{"size":$menu_size,"mimetype":"text/csv"}}
+]}
+JSON
+# This target snapshot is a synthetic equality fixture, NOT a real restored
+# database export; a real data source and readback is a separate release gate.
+cp "$work/source-storage-metadata.json" "$work/restored-storage-metadata.json"
+cat > "$work/object-byte-manifest.json" <<JSON
+[
+  {"bucket_id":"bucket-photos","name":"object.bin","version":"synthetic-v1","sha256":"$photo_sha"},
+  {"bucket_id":"bucket-menus","name":"menu.csv","version":"synthetic-v2","sha256":"$menu_sha"}
+]
+JSON
+CAFEOS_SYNTHETIC_LOCAL=1 node scripts/verify-cafeos-synthetic-storage-recovery.mjs \
+  "$work/source-storage-metadata.json" \
+  "$work/restored-storage-metadata.json" \
+  "$work/object-byte-manifest.json" "$restored_dir"
+
 cmp -s "$source_dir/bucket-photos/object.bin" "$restored_dir/bucket-photos/object.bin" || exit 42
 cmp -s "$source_dir/bucket-menus/menu.csv" "$restored_dir/bucket-menus/menu.csv" || exit 42
 
