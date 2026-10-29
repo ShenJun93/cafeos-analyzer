@@ -145,7 +145,26 @@ fi
 [[ "$(docker exec -u postgres "$target" stat -f -c '%T' /var/lib/postgresql/data)" == tmpfs ]] ||
   { echo STOP_TARGET_DATA_NOT_TMPFS >&2; exit 42; }
 
-# The copied source image should provide identical managed Auth base structure.
+# The full image has a different bare Auth bootstrap than the CLI slim
+# source (44 source columns versus 21 bare target columns in CI). For THIS
+# DISPOSABLE SYNTHETIC PostgreSQL portability drill ONLY, rehydrate the source
+# Auth DDL into the independent, networkless tmpfs target before data replay.
+# This is NOT the Supabase managed-platform restore procedure. It must remain
+# an explicit adaptation, followed by the original strict schema hash gate.
+readonly target_auth_baseline_sql="SELECT
+  CASE WHEN to_regclass('auth.users') IS NULL THEN 'ABSENT'
+       WHEN (SELECT count(*) FROM auth.users)=0 THEN 'EMPTY'
+       ELSE 'NOT_EMPTY' END"
+[[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c "$target_auth_baseline_sql")" != NOT_EMPTY ]] ||
+  { echo STOP_TARGET_AUTH_NOT_EMPTY_BEFORE_DDL_REPLAY >&2; exit 42; }
+# Fresh target only: no other Auth users, and its network / tmpfs / image
+# identity was pinned above. Drop the old baseline schema, NEVER source data.
+printf 'DROP SCHEMA IF EXISTS auth CASCADE;\n' |
+  docker exec -i -u postgres "$target" psql -Xqw -v ON_ERROR_STOP=1 -d postgres -f - >/dev/null
+pg_dump "$local_db" --schema-only --schema=auth --no-owner --no-acl |
+  docker exec -i -u postgres "$target" psql -Xqw -v ON_ERROR_STOP=1 -d postgres -f - >/dev/null
+
+# The source-derived test-only Auth schema must now match exactly.
 auth_columns="select md5(string_agg(table_name || ':' || column_name || ':' ||
   udt_name || ':' || is_nullable, '|' order by table_name,ordinal_position))
   from information_schema.columns
@@ -170,6 +189,7 @@ target_cols="$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 
   echo STOP_MANAGED_AUTH_SCHEMA_MISMATCH >&2
   exit 42
 }
+echo CAFEOS_SYNTHETIC_TARGET_AUTH_SCHEMA_REPLAY_PASS
 [[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c \
   "select (select count(*) from auth.users)::text || ':' || (select count(*) from auth.identities)::text")" == '0:0' ]] ||
   { echo STOP_TARGET_AUTH_NOT_BLANK >&2; exit 42; }
