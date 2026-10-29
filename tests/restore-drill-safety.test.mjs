@@ -875,3 +875,35 @@ test("Storage synthetic CI reconciles restored file bytes with source and target
   assert.match(workflow, /scripts\/verify-cafeos-synthetic-storage-recovery\.mjs/);
   assert.doesNotMatch(shell + verifier + workflow, /--linked|wjatnyvdygvblirggdcm|\.supabase\.co|SUPABASE_ACCESS_TOKEN|docker login/);
 });
+
+test("Storage PostgreSQL metadata readback uses two disposable local databases and no GHCR", async () => {
+  const script = await readFile(new URL("../scripts/run-ci-cafeos-storage-postgres-readback-drill.sh", import.meta.url), "utf8");
+  const workflow = await readFile(new URL("../.github/workflows/cafeos-storage-postgres-readback-synthetic.yml", import.meta.url), "utf8");
+  for (const marker of [
+    "STOP_GITHUB_ACTIONS_SYNTHETIC_ONLY",
+    "readonly source_db=cafeos_synthetic_storage_source_20261029",
+    "readonly target_db=cafeos_synthetic_storage_recovered_20261029",
+    "STOP_SYNTHETIC_DATABASE_NAME_COLLISION",
+    "sudo -u postgres createdb --template=template0",
+    "sudo -u postgres dropdb --if-exists --force",
+    "CREATE SCHEMA storage",
+    "CREATE TABLE storage.buckets",
+    "CREATE TABLE storage.objects",
+    "ALTER TABLE storage.buckets ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY",
+    "sudo -u postgres pg_dump -Fc --schema=storage",
+    "sudo -u postgres pg_restore -w --no-owner --single-transaction --exit-on-error",
+    "snapshot \"$source_db\" \"$work/source.json\"",
+    "snapshot \"$target_db\" \"$work/target.json\"",
+    "verify-cafeos-synthetic-storage-recovery.mjs",
+    "STOP_SQL_TARGET_VERSION_DRIFT_UNDETECTED",
+    "STOP_SQL_TARGET_PUBLIC_DRIFT_UNDETECTED",
+    "CAFEOS_SYNTHETIC_STORAGE_POSTGRES_SOURCE_TARGET_READBACK_PASS",
+    "NO_REAL_SUPABASE_STORAGE_API_OR_PRODUCTION_DATA",
+  ]) assert.ok(script.includes(marker), "missing SQL metadata readback guard: " + marker);
+  assert.match(workflow, /runs-on: ubuntu-24\.04/);
+  assert.match(workflow, /sudo systemctl start postgresql\.service/);
+  assert.match(workflow, /sudo apt-get install -y -qq age/);
+  assert.match(workflow, /run: bash scripts\/run-ci-cafeos-storage-postgres-readback-drill\.sh/);
+  assert.doesNotMatch(script + workflow, /wjatnyvdygvblirggdcm|\.supabase\.co|SUPABASE_ACCESS_TOKEN|supabase db push|--linked|docker login|supabase start|ghcr\.io/i);
+});

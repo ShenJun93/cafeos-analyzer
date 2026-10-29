@@ -1,0 +1,54 @@
+name: CafeOS Storage PostgreSQL Readback Synthetic
+
+on:
+  push:
+    branches:
+      - test/cafeos-storage-real-pg-synthetic-readback-v1
+    paths:
+      - ".github/workflows/cafeos-storage-postgres-readback-synthetic.yml"
+      - "scripts/run-ci-cafeos-storage-postgres-readback-drill.sh"
+      - "scripts/verify-cafeos-synthetic-storage-recovery.mjs"
+      - "tests/restore-drill-safety.test.mjs"
+  pull_request:
+    paths:
+      - ".github/workflows/cafeos-storage-postgres-readback-synthetic.yml"
+      - "scripts/run-ci-cafeos-storage-postgres-readback-drill.sh"
+      - "scripts/verify-cafeos-synthetic-storage-recovery.mjs"
+      - "tests/restore-drill-safety.test.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  metadata-sql-readback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start preinstalled PostgreSQL using local Unix socket
+        run: |
+          set -euo pipefail
+          sudo systemctl start postgresql.service
+          sudo -u postgres pg_isready -q -d postgres
+          test "$(sudo -u postgres psql -XAtq -v ON_ERROR_STOP=1 -d postgres -c "SELECT current_setting('server_version_num')::int / 10000")" = 16
+
+      - name: Install Ubuntu age package without GHCR
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+          age --version
+
+      - name: Verify fail-closed synthetic contract and Bash syntax
+        run: |
+          set -euo pipefail
+          bash -n scripts/run-ci-cafeos-storage-postgres-readback-drill.sh
+          node --test tests/restore-drill-safety.test.mjs
+
+      - name: Restore synthetic PostgreSQL Storage metadata and compare object bytes
+        env:
+          GITHUB_ACTIONS: "true"
+          CI: "true"
+        run: bash scripts/run-ci-cafeos-storage-postgres-readback-drill.sh
