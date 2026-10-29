@@ -135,8 +135,24 @@ auth_columns="select md5(string_agg(table_name || ':' || column_name || ':' ||
   where table_schema='auth' and table_name in ('users','identities')"
 source_cols="$(psql "$local_db" -XAtq -v ON_ERROR_STOP=1 -c "$auth_columns")"
 target_cols="$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c "$auth_columns")"
-[[ -n "$source_cols" && "$source_cols" == "$target_cols" ]] ||
-  { echo STOP_MANAGED_AUTH_SCHEMA_MISMATCH >&2; exit 42; }
+[[ -n "$source_cols" && "$source_cols" == "$target_cols" ]] || {
+  # Diagnostic ONLY: this queries catalog column definitions, NOT user rows,
+  # Auth metadata or secrets. Do NOT delete this mismatch security gate.
+  auth_catalog="select table_name || '.' || column_name || '|' ||
+    ordinal_position::text || '|' || udt_name || '|' || is_nullable
+    from information_schema.columns
+    where table_schema='auth' and table_name in ('users','identities')
+    order by table_name,ordinal_position"
+  src_names="$(psql "$local_db" -XAtq -v ON_ERROR_STOP=1 -c "$auth_catalog")"
+  dst_names="$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c "$auth_catalog")"
+  echo "SOURCE_AUTH_COLUMN_COUNT=$(printf '%s\\n' "$src_names" | awk 'NF {n++} END {print n+0}')" >&2
+  echo "TARGET_AUTH_COLUMN_COUNT=$(printf '%s\\n' "$dst_names" | awk 'NF {n++} END {print n+0}')" >&2
+  # Only bounded +/- difference lines. Neither database's rows are queried.
+  diff -U 0 <(printf '%s\\n' "$src_names") <(printf '%s\\n' "$dst_names") |
+    awk '/^[-+]/ && !/^---/ && !/^\\+\\+\\+/ { if (++n <= 70) print "SCHEMA_DIFF " $0 }' >&2 || true
+  echo STOP_MANAGED_AUTH_SCHEMA_MISMATCH >&2
+  exit 42
+}
 [[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c \
   "select (select count(*) from auth.users)::text || ':' || (select count(*) from auth.identities)::text")" == '0:0' ]] ||
   { echo STOP_TARGET_AUTH_NOT_BLANK >&2; exit 42; }

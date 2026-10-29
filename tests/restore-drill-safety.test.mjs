@@ -751,3 +751,16 @@ test("distinct PostgreSQL server age restore is hard-pinned to disposable CI and
   });
   assert.notEqual(attempt.status, 0, "must reject non-CI execution before DB mutation");
 });
+
+test("distinct server Auth schema mismatch emits only bounded catalog metadata and keeps hard stop", async () => {
+  const script = await readFile(new URL("../scripts/run-ci-cafeos-distinct-postgres-age-restore.sh", import.meta.url), "utf8");
+  assert.match(script, /where table_schema='auth' and table_name in \('users','identities'\)/);
+  assert.match(script, /from information_schema\.columns/);
+  assert.match(script, /SOURCE_AUTH_COLUMN_COUNT=/);
+  assert.match(script, /TARGET_AUTH_COLUMN_COUNT=/);
+  assert.match(script, /SCHEMA_DIFF/);
+  assert.match(script, /n <= 70/);
+  assert.match(script, /STOP_MANAGED_AUTH_SCHEMA_MISMATCH/);
+  assert.match(script, /exit 42/);
+  assert.doesNotMatch(script, /SELECT \* FROM auth\.|SELECT \* FROM vault\.|--linked/i);
+});
