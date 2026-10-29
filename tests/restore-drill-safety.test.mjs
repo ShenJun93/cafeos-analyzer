@@ -852,3 +852,26 @@ test("Storage object-byte recovery remains synthetic, tmpfs-only, authenticated-
   assert.match(ci, /bash scripts\/run-ci-cafeos-storage-objects-age-drill\.sh/);
   assert.doesNotMatch(ci, /supabase\/setup-cli|supabase start|docker login|GHCR_TOKEN|SUPABASE_ACCESS_TOKEN/);
 });
+
+test("Storage synthetic CI reconciles restored file bytes with source and target metadata", async () => {
+  const shell = await readFile(new URL("../scripts/run-ci-cafeos-storage-objects-age-drill.sh", import.meta.url), "utf8");
+  const workflow = await readFile(new URL("../.github/workflows/cafeos-storage-object-recovery-synthetic.yml", import.meta.url), "utf8");
+  const verifier = await readFile(new URL("../scripts/verify-cafeos-synthetic-storage-recovery.mjs", import.meta.url), "utf8");
+  const tests = await readFile(new URL("./storage-recovery-reconcile.test.mjs", import.meta.url), "utf8");
+  assert.match(shell, /source-storage-metadata\.json/);
+  assert.match(shell, /restored-storage-metadata\.json/);
+  assert.match(shell, /object-byte-manifest\.json/);
+  assert.match(shell, /node scripts\/verify-cafeos-synthetic-storage-recovery\.mjs/);
+  assert.match(verifier, /SYNTHETIC_TMPFS_ROOT_REQUIRED/);
+  assert.match(verifier, /STOP_STORAGE_|'STOP_STORAGE_'/);
+  assert.match(verifier, /O_NOFOLLOW/);
+  assert.match(verifier, /checkSameMaps\(orig\.buckets, next\.buckets, 'BUCKET'\)/);
+  assert.match(verifier, /checkSameMaps\(orig\.objects, next\.objects, 'OBJECT'\)/);
+  assert.match(verifier, /stop\(kind \+ '_ATTRIBUTE_DRIFT'\)/);
+  assert.match(verifier, /BYTE_MANIFEST_OBJECT_OR_VERSION_DRIFT/);
+  assert.match(verifier, /RECOVERED_SHA256_DRIFT/);
+  assert.match(tests, /await symlink/);
+  assert.match(workflow, /node --test tests\/restore-drill-safety\.test\.mjs tests\/storage-recovery-reconcile\.test\.mjs/);
+  assert.match(workflow, /scripts\/verify-cafeos-synthetic-storage-recovery\.mjs/);
+  assert.doesNotMatch(shell + verifier + workflow, /--linked|wjatnyvdygvblirggdcm|\.supabase\.co|SUPABASE_ACCESS_TOKEN|docker login/);
+});
