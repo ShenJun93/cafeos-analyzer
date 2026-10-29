@@ -814,3 +814,22 @@ test("distinct age stream pg_restore consumes stdin without a literal dash FILE"
   assert.doesNotMatch(section, /-d "\$target_db" -/);
   assert.doesNotMatch(section, /pg_restore.*-f\s+\S+/);
 });
+
+test("cross-server Auth recovery checks constraints, indexes, policies, triggers and RLS, not columns alone", async () => {
+  const script = await readFile(new URL("../scripts/run-ci-cafeos-distinct-postgres-age-restore.sh", import.meta.url), "utf8");
+  const schemaPass = script.indexOf("CAFEOS_SYNTHETIC_TARGET_AUTH_SCHEMA_REPLAY_PASS");
+  const catalogProbe = script.indexOf('auth_catalog_sql="WITH auth_tables AS (');
+  const catalogPass = script.indexOf("CAFEOS_SYNTHETIC_AUTH_CATALOG_INVARIANTS_PASS");
+  const fixtureInsertion = script.indexOf("fixture_marked=1", catalogPass);
+  assert.ok(schemaPass >= 0 && catalogProbe > schemaPass && catalogPass > catalogProbe);
+  assert.ok(fixtureInsertion > catalogPass, "catalog comparison must precede any Auth fixture mutation");
+  for (const marker of [
+    "relrowsecurity", "relforcerowsecurity",
+    "pg_constraint", "pg_get_constraintdef", "pg_indexes",
+    "pg_policies", "pg_trigger", "NOT tr.tgisinternal",
+    "STOP_AUTH_CATALOG_CONSTRAINT_INDEX_POLICY_TRIGGER_DRIFT",
+  ]) assert.ok(script.includes(marker), `missing Auth invariant: ${marker}`);
+  assert.match(script, /source_auth_catalog.*==.*target_auth_catalog/);
+  assert.match(script, /-d "\$target_db" -c "\$auth_catalog_sql"/);
+  assert.doesNotMatch(script, /--linked|wjatnyvdygvblirggdcm|\.supabase\.co|SUPABASE_ACCESS_TOKEN/i);
+});
