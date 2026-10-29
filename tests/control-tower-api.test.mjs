@@ -1069,3 +1069,114 @@ test("Supabase gateway maps network/timeout/aborted response bodies without 500 
       error.code === "SUPABASE_TIMEOUT"
   );
 });
+
+test("tenant authorization verifies returned tenant ID and role before granting any capability", async () => {
+  const auth = { token: "synthetic-jwt", user: { id: USER_A } };
+  const checked = async rows => requireTenant(
+    req({ "x-cafeos-tenant-id": TENANT_A }),
+    auth,
+    { env, fetchImpl: async () => jsonResponse(rows) }
+  );
+  for (const role of ["owner", "admin", "manager", "cashier", "analyst", "viewer"]) {
+    assert.deepEqual(await checked([{ tenant_id: TENANT_A, role }]), { id: TENANT_A, role });
+  }
+  await assert.rejects(checked([]),
+    error => error instanceof AppHttpError && error.status === 403 && error.code === "TENANT_FORBIDDEN");
+  await assert.rejects(checked([{ tenant_id: "20000000-0000-4000-8000-000000000002", role: "owner" }]),
+    error => error instanceof AppHttpError && error.status === 403 && error.code === "TENANT_FORBIDDEN");
+  for (const bad of [
+    null, {}, [null], ["owner"], [{ tenant_id: TENANT_A }], [{ role: "owner" }],
+    [{ tenant_id: TENANT_A, role: "superadmin" }],
+    [{ tenant_id: TENANT_A, role: ["owner"] }],
+    [{ tenant_id: "../other", role: "owner" }],
+    [{ tenant_id: TENANT_A, role: "owner" }, { tenant_id: TENANT_A, role: "owner" }]
+  ]) {
+    await assert.rejects(checked(bad),
+      error => error instanceof AppHttpError && error.status === 502 &&
+        error.code === "TENANT_MEMBERSHIP_INVALID");
+  }
+});
+
+test("session rejects malformed, duplicate and foreign tenant membership evidence before tenant lookup", async () => {
+  const expectSession = async (members, tenants, status, code, expectedTenantLookups) => {
+    let tenantLookups = 0;
+    const fetchImpl = async url => {
+      const parsedUrl = new URL(url);
+      if (parsedUrl.pathname === "/auth/v1/user") return jsonResponse({ id: USER_A });
+      if (parsedUrl.pathname === "/rest/v1/tenant_members") {
+        assert.equal(parsedUrl.searchParams.get("user_id"), "eq." + USER_A);
+        return jsonResponse(members);
+      }
+      if (parsedUrl.pathname === "/rest/v1/tenants") {
+        tenantLookups++;
+        return jsonResponse(tenants);
+      }
+      throw new Error("unexpected endpoint");
+    };
+    const output = res();
+    await sessionHandle(req({ authorization: "Bearer synthetic-jwt" }), output, { env, fetchImpl });
+    assert.equal(output.statusCode, status);
+    if (code) assert.equal(parsed(output).error.code, code);
+    assert.equal(tenantLookups, expectedTenantLookups);
+  };
+  for (const malformed of [
+    {}, [null], [{ tenant_id: "not-a-uuid", role: "owner" }],
+    [{ tenant_id: TENANT_A, role: "root" }],
+    [{ tenant_id: TENANT_A, role: "owner" }, { tenant_id: TENANT_A, role: "analyst" }]
+  ]) {
+    await expectSession(malformed, [], 502, "TENANT_MEMBERSHIP_INVALID", 0);
+  }
+  await expectSession(
+    [{ tenant_id: TENANT_A, role: "owner" }],
+    [{ id: "20000000-0000-4000-8000-000000000002", name: "Wrong tenant" }],
+    502, "TENANT_DIRECTORY_INVALID", 1
+  );
+  await expectSession(
+    [{ tenant_id: TENANT_A, role: "owner" }],
+    [{ id: TENANT_A, name: "Cafe A" }, { id: TENANT_A, name: "Duplicate" }],
+    502, "TENANT_DIRECTORY_INVALID", 1
+  );
+  await expectSession(
+    [{ tenant_id: TENANT_A, role: "owner" }],
+    [{ id: TENANT_A, name: null }],
+    502, "TENANT_DIRECTORY_INVALID", 1
+  );
+  await expectSession(
+    [{ tenant_id: TENANT_A, role: "owner" }],
+    [{ id: TENANT_A, name: "Cafe A" }],
+    200, null, 1
+  );
+});
+
+test("tenant membership comparison preserves UUID case-insensitive semantics without duplicate grants", async () => {
+  const upper = TENANT_A.toUpperCase();
+  const auth = { token: "synthetic-jwt", user: { id: USER_A } };
+  const fetchImpl = async url => {
+    const u = new URL(url);
+    assert.equal(u.searchParams.get("tenant_id"), "eq." + upper);
+    return jsonResponse([{ tenant_id: TENANT_A, role: "manager" }]);
+  };
+  assert.deepEqual(await requireTenant(
+    req({ "x-cafeos-tenant-id": upper }), auth, { env, fetchImpl }
+  ), { id: upper, role: "manager" });
+  let lookups = 0;
+  const sessionFetch = async url => {
+    const u = new URL(url);
+    if (u.pathname === "/auth/v1/user") return jsonResponse({ id: USER_A });
+    if (u.pathname === "/rest/v1/tenant_members") {
+      return jsonResponse([
+        { tenant_id: TENANT_A, role: "viewer" },
+        { tenant_id: upper, role: "owner" }
+      ]);
+    }
+    lookups++;
+    return jsonResponse([]);
+  };
+  const output = res();
+  await sessionHandle(req({ authorization: "Bearer synthetic-jwt" }), output, {
+    env, fetchImpl: sessionFetch
+  });
+  assert.equal(output.statusCode, 502);
+  assert.equal(parsed(output).error.code, "TENANT_MEMBERSHIP_INVALID");
+  assert.equal(lookups, 0, "case-variant duplicate must not trigger another tenant lookup");
+});

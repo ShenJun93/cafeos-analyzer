@@ -4,15 +4,18 @@ on:
   push:
     branches:
       - fix/cafeos-upstream-auth-boundary-v1
+      - fix/cafeos-tenant-membership-response-boundary-v1
     paths:
       - ".github/workflows/cafeos-upstream-auth-boundary.yml"
       - "api/_app-auth.mjs"
+      - "api/app/session.mjs"
       - "tests/control-tower-api.test.mjs"
       - "tests/core-commerce-api.test.mjs"
   pull_request:
     paths:
       - ".github/workflows/cafeos-upstream-auth-boundary.yml"
       - "api/_app-auth.mjs"
+      - "api/app/session.mjs"
       - "tests/control-tower-api.test.mjs"
       - "tests/core-commerce-api.test.mjs"
   workflow_dispatch:
