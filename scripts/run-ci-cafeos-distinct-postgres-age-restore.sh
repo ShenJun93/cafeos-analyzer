@@ -15,10 +15,10 @@ done
 
 readonly local_db='postgresql://postgres:postgres@127.0.0.1:54322/postgres'
 readonly target='cafeos-ci-distinct-postgres-restore'
-# Full Supabase PostgreSQL image booted successfully under --network none
-# on the owner's separate, synthetic-only MAIN-PC test. The source CI slim
-# image needs its CLI-managed bootstrap and failed standalone readiness.
-readonly target_image='public.ecr.aws/supabase/postgres:17.11.0.006'
+# Use Supabase's official full PostgreSQL 17.11 image, not the CLI slim
+# image (requires CLI-managed bootstrap). Pin the GHCR manifest digest.
+# Do not use public ECR for this CI fixture: registry returned a data cap.
+readonly target_image='ghcr.io/supabase/postgres:17.11.0.006@sha256:c141fd17ac6a76c4323e90b3aee8ff1a23d2e89e547c2b963cfadc309c079cc2'
 readonly uid='92000000-0000-4000-8000-000000000001'
 readonly iid='92000000-0000-4000-8000-000000000002'
 pg_isready -h 127.0.0.1 -p 54322 -U postgres -d postgres -q ||
