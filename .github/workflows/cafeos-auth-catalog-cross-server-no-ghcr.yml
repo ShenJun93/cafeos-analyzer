@@ -1,0 +1,54 @@
+name: CafeOS Auth Catalog Distinct PostgreSQL Synthetic
+
+on:
+  push:
+    branches:
+      - test/cafeos-auth-catalog-no-ghcr-cross-server-v1
+    paths:
+      - ".github/workflows/cafeos-auth-catalog-cross-server-no-ghcr.yml"
+      - "scripts/run-ci-cafeos-auth-catalog-cross-server-no-ghcr.sh"
+      - "scripts/run-ci-cafeos-distinct-postgres-age-restore.sh"
+      - "tests/restore-drill-safety.test.mjs"
+  pull_request:
+    paths:
+      - ".github/workflows/cafeos-auth-catalog-cross-server-no-ghcr.yml"
+      - "scripts/run-ci-cafeos-auth-catalog-cross-server-no-ghcr.sh"
+      - "scripts/run-ci-cafeos-distinct-postgres-age-restore.sh"
+      - "tests/restore-drill-safety.test.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  distinct-postgres-auth-catalog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start runner's PostgreSQL 16 (source cluster)
+        run: |
+          set -euo pipefail
+          sudo systemctl start postgresql.service
+          sudo -u postgres pg_isready -q -d postgres
+          test "$(sudo -u postgres psql -XAtq -v ON_ERROR_STOP=1 -d postgres -c "select current_setting('server_version_num')::int / 10000")" = 16
+
+      - name: Install age from Ubuntu apt only
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+          age --version
+
+      - name: Static fail-closed and exact SQL source checks
+        run: |
+          set -euo pipefail
+          bash -n scripts/run-ci-cafeos-auth-catalog-cross-server-no-ghcr.sh
+          node --test tests/restore-drill-safety.test.mjs
+
+      - name: Verify auth catalog on two independent isolated synthetic PostgreSQL clusters
+        env:
+          GITHUB_ACTIONS: "true"
+          CI: "true"
+        run: sudo -u postgres env GITHUB_ACTIONS=true CI=true bash scripts/run-ci-cafeos-auth-catalog-cross-server-no-ghcr.sh
