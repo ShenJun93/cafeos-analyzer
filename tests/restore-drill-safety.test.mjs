@@ -764,3 +764,18 @@ test("distinct server Auth schema mismatch emits only bounded catalog metadata a
   assert.match(script, /exit 42/);
   assert.doesNotMatch(script, /SELECT \* FROM auth\.|SELECT \* FROM vault\.|--linked/i);
 });
+
+test("distinct managed target requires stable SQL readiness and diagnoses a crash without relaxing schema guard", async () => {
+  const script = await readFile(new URL("../scripts/run-ci-cafeos-distinct-postgres-age-restore.sh", import.meta.url), "utf8");
+  assert.match(script, /for \(\(i=0; i<120; i\+\+\)\)/);
+  assert.match(script, /to_regclass\('auth\.users'\)/);
+  assert.match(script, /to_regclass\('auth\.identities'\)/);
+  assert.match(script, /ready=\$\(\(ready\+1\)\)/);
+  assert.match(script, /\[\[ "\$ready" -ge 3 \]\]/);
+  assert.match(script, /STOP_TARGET_EXITED_DURING_MANAGED_INIT/);
+  assert.match(script, /STOP_TARGET_PG_NOT_STABLY_QUERYABLE/);
+  assert.match(script, /OOM=\{\{\.State\.OOMKilled\}\}/);
+  assert.match(script, /STOP_MANAGED_AUTH_SCHEMA_MISMATCH/);
+  assert.match(script, /--network none/);
+  assert.doesNotMatch(script, /wjatnyvdygvblirggdcm|--linked|\.supabase\.co/i);
+});

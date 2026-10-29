@@ -74,6 +74,11 @@ SQL
       cleanup_failed=1
   fi
   if [[ "$target_created" == 1 ]]; then
+    if [[ "$status" != 0 && "$fixture_marked" == 0 ]]; then
+      # Only this blank, synthetic target exists; bounded startup diagnostics.
+      docker inspect --format 'TARGET_STATE_RUNNING={{.State.Running}} EXIT={{.State.ExitCode}} OOM={{.State.OOMKilled}} HEALTH={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$target" >&2 || true
+      docker logs --tail 18 "$target" >&2 || true
+    fi
     docker rm -f "$target" >/dev/null 2>&1 || cleanup_failed=1
     [[ -z "$(docker ps -aq --filter "name=^/$target$")" ]] || cleanup_failed=1
   fi
@@ -109,15 +114,26 @@ target_created=1
   { echo STOP_TARGET_HOST_MOUNTS >&2; exit 42; }
 [[ "$(docker inspect --format '{{.HostConfig.Privileged}}' "$target")" == 'false' ]] ||
   { echo STOP_TARGET_PRIVILEGED >&2; exit 42; }
+# pg_isready can transiently succeed before the managed init process reaches
+# a stable queryable state. Require 3 consecutive REAL SQL connections with
+# the managed Auth tables present, not a transient TCP/socket readiness signal.
 ready=0
-for ((i=0; i<90; i++)); do
-  if docker exec -u postgres "$target" pg_isready -q -d postgres >/dev/null 2>&1; then
-    ready=1; break
+for ((i=0; i<120; i++)); do
+  if docker exec -u postgres "$target" pg_isready -q -d postgres >/dev/null 2>&1 &&
+     [[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c "select CASE WHEN to_regclass('auth.users') IS NOT NULL AND to_regclass('auth.identities') IS NOT NULL THEN 'READY' ELSE 'NOT_READY' END" 2>/dev/null || true)" == READY ]]; then
+    ready=$((ready+1))
+    if [[ "$ready" -ge 3 ]]; then break; fi
+  else
+    ready=0
+  fi
+  if [[ "$(docker inspect --format '{{.State.Running}}' "$target")" != true ]]; then
+    echo STOP_TARGET_EXITED_DURING_MANAGED_INIT >&2
+    break
   fi
   sleep 1
 done
-if [[ "$ready" != 1 ]]; then
-  echo STOP_TARGET_PG_NOT_READY >&2
+if [[ "$ready" -lt 3 ]]; then
+  echo STOP_TARGET_PG_NOT_STABLY_QUERYABLE >&2
   # Diagnostic output is from a throwaway database without any real keys.
   docker logs --tail=12 "$target" >&2 || true
   exit 42
