@@ -492,12 +492,12 @@ test("staging source VERIFYFULL gate uses explicit READ ONLY and refuses credent
   assert.match(source, /PGCONNECT_TIMEOUT=8/);
   assert.match(source, /BEGIN TRANSACTION READ ONLY;/);
   assert.match(source, /unset PGOPTIONS PGPASSWORD/);
-  assert.match(source, /cafeos-staging-receipt-fingerprint\\.sql/);
+  assert.match(source, /cafeos-staging-receipt-fingerprint\.sql/);
   assert.match(source, /fa57902e637543dde1082d4ff307aabda1a9e223a3b0a354780948da8bb34eb3/);
   assert.match(source, /CAFEOS_STAGING_SEVEN_ORIGINAL_RECEIPTS_PASS/);
   assert.match(source, /EXPORT_AND_RESTORE_NOT_AUTHORIZED/);
-  assert.doesNotMatch(source, /(?:pg_dump|pg_dumpall|supabase db dump|supabase db push|supabase migration|migration repair|\\bpg_restore\\b|service_role|sb_secret_)/i);
-  assert.doesNotMatch(source, /(?:\\bINSERT\\s+INTO\\b|\\bUPDATE\\s+\\w+\\s+SET\\b|\\bDELETE\\s+FROM\\b|\\bDROP\\s+TABLE\\b)/i);
+  assert.doesNotMatch(source, /(?:pg_dump|pg_dumpall|supabase db dump|supabase db push|supabase migration|migration repair|\bpg_restore\b|service_role|sb_secret_)/i);
+  assert.doesNotMatch(source, /(?:\bINSERT\s+INTO\b|\bUPDATE\s+\w+\s+SET\b|\bDELETE\s+FROM\b|\bDROP\s+TABLE\b)/i);
 });
 
 test("staging source VERIFYFULL gate parses and fails closed without protected owner files", posixShellOnly, () => {
