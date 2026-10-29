@@ -115,12 +115,13 @@ target_created=1
 [[ "$(docker inspect --format '{{.HostConfig.Privileged}}' "$target")" == 'false' ]] ||
   { echo STOP_TARGET_PRIVILEGED >&2; exit 42; }
 # pg_isready can transiently succeed before the managed init process reaches
-# a stable queryable state. Require 3 consecutive REAL SQL connections with
-# the managed Auth tables present, not a transient TCP/socket readiness signal.
+# a stable queryable state. Require 3 consecutive REAL SQL connections.
+# Auth table presence/shape is a DIFFERENT strict gate below: a healthy bare
+# PG target MUST get a schema mismatch diagnostic, never stall at readiness.
 ready=0
 for ((i=0; i<120; i++)); do
   if docker exec -u postgres "$target" pg_isready -q -d postgres >/dev/null 2>&1 &&
-     [[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c "select CASE WHEN to_regclass('auth.users') IS NOT NULL AND to_regclass('auth.identities') IS NOT NULL THEN 'READY' ELSE 'NOT_READY' END" 2>/dev/null || true)" == READY ]]; then
+     [[ "$(docker exec -u postgres "$target" psql -XAtqw -v ON_ERROR_STOP=1 -d postgres -c "SELECT 'READY'" 2>/dev/null || true)" == READY ]]; then
     ready=$((ready+1))
     if [[ "$ready" -ge 3 ]]; then break; fi
   else
