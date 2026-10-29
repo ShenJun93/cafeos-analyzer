@@ -1,4 +1,4 @@
-# CafeOS — Supabase CLI 2.122.0 TLS evidence corrected; staging export remains NO-GO
+# CafeOS — CLI 2.122.0 local/remote TLS classification established; staging export remains NO-GO
 
 Date: 2026-10-29. Applies to DRAFT PR #95 atop DRAFT PR #94. **No staging database dump/export or mutation was performed.**
 
@@ -31,7 +31,7 @@ Exact source of the run: `scripts/check-cafeos-cli-dump-tls-negative-local.sh` i
 
 **Conservative interpretation:** 2.122.0 correctly discriminated CA trust under this single TLS-enabled Docker/local scenario. This **does not establish all TLS behaviors** (revocation, DNS redirects, changed targets, or complete handling of real managed Supabase certificates) or make it safe to export staging without an independently tested approved process.
 
-## Further negative control: SSL-off downgrade (FAIL)
+## Historical SSL-off managed-local behavior (not a remote TLS test)
 
 A separate direct owner MAIN-PC test used the original blank CafeOS cleanroom with `SHOW ssl=off` and its private synthetic `PGPASSFILE`, but **no merchant data**. The pinned CLI 2.122.0 was given a passwordless `--db-url` explicitly requiring each of `sslmode=require`, `sslmode=verify-ca`, and `sslmode=verify-full`. SQL stdout was discarded; no `--dry-run` or staging connection occurred.
 
@@ -44,11 +44,31 @@ A separate direct owner MAIN-PC test used the original blank CafeOS cleanroom wi
 | `verify-ca` | **exit 0; 1,933 SQL bytes** | exit 2 (rejected) |
 | `verify-full` | **exit 0; 1,933 SQL bytes** | exit 2 (rejected) |
 
-This is **security FAIL** of the invariant “required TLS must reject a source that cannot negotiate SSL” on the tested CLI code path. It does not contradict the positive/negative CA check on a **different, SSL-enabled** server; both results are real. The cause (libpq parameters, fallback, wrapper, engine or container environment) has **not** been isolated. Do not claim the CLI is safe for high-assurance staging export merely because CA checking succeeds when SSL is available.
+These outputs are real, but the hostname `127.0.0.1` at the exact running local-stack port `54322` is classified by upstream CLI as **isLocal=true**. The resulting dump environment intentionally omits PGSSL* settings for this managed-local route. It is **not a valid negative test of the remote isLocal=false backup path**, and should not be described as a proven staging security vulnerability.
 
-New fail-closed `scripts/check-cafeos-cli-ssl-downgrade-local.sh` reproduces the condition ONLY against the cleanroom localhost. Exact committed script was run directly on MAIN-PC and emitted `STOP_CAFEOS_CLI_SSL_OFF_DOWNGRADE_require`, `...verify-ca`, `...verify-full`, and `STOP_CAFEOS_CLI_TLS_DOWNGRADE_GATE_FAILED`. It intentionally exits **42 within Bash** to signal unresolved vulnerability (Remote Desktop Commander PowerShell wrapper presented nonzero exit 1). Do not run this gate against staging or weaken it to green by changing its expected semantics.
+New fail-closed `scripts/check-cafeos-cli-ssl-downgrade-local.sh` reproduces the condition ONLY against the cleanroom localhost. Exact committed script was run directly on MAIN-PC and emitted `STOP_CAFEOS_CLI_SSL_OFF_DOWNGRADE_require`, `...verify-ca`, `...verify-full`, and `STOP_CAFEOS_CLI_TLS_DOWNGRADE_GATE_FAILED`. It intentionally exits **42 within Bash** when strict TLS options are supplied to the managed-local route (Remote Desktop Commander PowerShell wrapper reported nonzero exit 1). This historical **local-route** diagnostic is not a remote TLS security gate; do not run it against staging or misinterpret its expected failure.
 
-**Security decision:** `supabase db dump --db-url` against the real staging project is **BLOCKED**, independently of the missing off-host recovery custodian. Require a reviewed, fail-closed no-downgrade mechanism and PASS under SSL-disabled and SSL-enabled fixtures before considering real-source export.
+**Operational decision:** real staging export is still **NOT AUTHORIZED**, because recovery-key custody, actual-source export controls and independently compatible restore are incomplete. The prior local result no longer constitutes a proven remote TLS blocker.
+
+## Direct route-discrimination test against the SAME SSL-off database (PASS)
+
+**Source-grounded explanation (upstream `supabase/cli@v2.122.0`):** `db-config.layer.ts` checks whether a `--db-url` hostname/port identifies the running local stack. For exactly `127.0.0.1:54322`, it returns `isLocal=true`; `dump.handler.ts` sets `remote: !isLocal`; `pg-dump.env.ts` intentionally forwards `PGSSLMODE` and `PGSSLROOTCERT` only for the remote route. `getHostname` normally resolves to `127.0.0.1` on the MAIN-PC. `localhost` is not an exact local-host string match, so a passwordless URL using `localhost:54322` follows the **remote** route even though the destination remains the SAME disposable PostgreSQL server.
+
+**Directly executed MAIN-PC result**, pinned standalone CLI 2.122.0, fresh private synthetic pgpass and SQL output counted/discarded:
+
+| Host in `--db-url` | Mode | CLI result | Route interpretation |
+| --- | --- | --- | --- |
+| `127.0.0.1:54322` | `verify-full` | exit 0, 1,933 bytes | managed-local route; SSL flags deliberately omitted |
+| `localhost:54322` | `disable` | exit 0, 1,933 bytes | remote route; non-TLS allowed |
+| `localhost:54322` | `require` | exit 1, 0 bytes | remote route **rejects SSL-off** |
+| `localhost:54322` | `verify-ca` | exit 1, 0 bytes | remote route **rejects SSL-off** |
+| `localhost:54322` | `verify-full` | exit 1, 0 bytes | remote route **rejects SSL-off** |
+
+An initial standalone direct command also showed: `Dumping schemas from remote database...` followed by `server does not support SSL, but SSL was required`. The committed, fail-closed `scripts/check-cafeos-cli-db-url-routing-local.sh` was copied from Git to MAIN-PC and run with **exit 0**, producing `CAFEOS_REMOTE_PATH_REJECTS_SSL_OFF_require`, `...verify-ca`, `...verify-full`, and `CAFEOS_CLI_2_122_0_LOCAL_REMOTE_TLS_ROUTE_PASS`.
+
+This establishes the local versus remote classification hypothesis **empirically**, using the same SQL-only synthetic source. No staging connection or real backup was made.
+
+A separate `.github/workflows/cafeos-cli-tls-routing.yml` workflow pins CLI **2.122.0** and runs `scripts/run-ci-cafeos-cli-tls-routing.sh` on a disposable Actions stack. The existing Supabase DB CI workflow pins CLI **2.117.0** and must NOT be cited as an exact binary acceptance for 2.122.0. Obtain and record final dedicated workflow status before claiming independent runner acceptance.
 
 ## Source comparison and trust boundaries
 
@@ -67,4 +87,4 @@ The CLI may resolve a `PGPASSFILE` password and pass it to the dump container as
 3. A real multi-part roles/schema/data/history backup is not yet made. Actual staging Auth, receipts, extension state and independent restore are unverified.
 4. Real second-target restore, signed-JWT tenant-isolation E2E, migration integrity guards, owner security approval, merge and deployment remain NO-GO.
 
-**Gate status:** LOCAL TLS-ENABLED CA POSITIVE/NEGATIVE TEST = **PASS**, but SSL-OFF NO-DOWNGRADE TEST = **FAIL**. STAGING CLI EXPORT = **SECURITY BLOCKED**. STAGING BACKUP = **NOT AUTHORIZED / NOT RUN**. PR #95 remains DRAFT. **RELEASE NO-GO.**
+**Gate status:** TLS-ENABLED CA POSITIVE/NEGATIVE TEST = **PASS**. SSL-OFF **REMOTE-ROUTE** REQUIRED-TLS REJECTION = **PASS** on MAIN-PC. The SSL-OFF MANAGED-LOCAL ROUTE deliberately omits TLS flags, and cannot be used to infer remote TLS failure. STAGING BACKUP = **NOT AUTHORIZED / NOT RUN** pending independent key custody, safe real-source procedure and independent real-data restore. PR #95 remains DRAFT. **RELEASE NO-GO.**
