@@ -60,13 +60,13 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: 2.117.0
+          version: 2.122.0
 
       - name: Initialize local Supabase config
         shell: bash
         run: |
           set -euo pipefail
-          supabase --version
+          test "$(supabase --version)" = "2.122.0"
           supabase init
           python - <<'PY'
           from pathlib import Path
