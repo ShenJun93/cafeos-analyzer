@@ -566,7 +566,8 @@ test("real TLS Supabase CLI fixture proves correct CA acceptance and wrong CA re
     "CAFEOS_LOCAL_TLS_CERT_TEST_PASS_ONLY_SYNTHETIC", "NO_STAGING_SOURCE_ACCESSED",
   ]) assert.ok(source.includes(marker), "missing local TLS marker: " + marker);
   assert.doesNotMatch(source, /wjatnyvdygvblirggdcm|aws-0-ap-southeast-1\.pooler|supabase db push|--linked|supabase link|migration repair|sb_secret_/i);
-  assert.match(research, /LOCAL CLI TLS POSITIVE\/NEGATIVE TEST = \*\*PASS\*\*/);
+  assert.match(research, /LOCAL TLS-ENABLED CA POSITIVE\/NEGATIVE TEST = \*\*PASS\*\*/);
+  assert.match(research, /SSL-OFF NO-DOWNGRADE TEST = \*\*FAIL\*\*/);
   assert.match(research, /STAGING BACKUP = \*\*NOT AUTHORIZED \/ NOT RUN\*\*/);
   assert.match(research, /RELEASE NO-GO/);
 });
@@ -581,4 +582,32 @@ test("real TLS Supabase CLI fixture parses and fails closed if local cleanroom a
   });
   assert.notEqual(attempt.status, 0);
   assert.match(attempt.stdout + attempt.stderr, /STOP: pinned CLI absent/);
+});
+
+
+test("explicit SSL-off downgrade negative gate rejects strict TLS fallback and never reaches staging", async () => {
+  const script = await readFile(
+    new URL("../scripts/check-cafeos-cli-ssl-downgrade-local.sh", import.meta.url), "utf8"
+  );
+  for (const marker of [
+    "set -euo pipefail", "127.0.0.1:54322", "cafeos-cleanroom-20261029",
+    "supabase_db_cafeos-cleanroom-20261029", "show ssl",
+    "require verify-ca verify-full", "PGPASSFILE",
+    "STOP_CAFEOS_CLI_SSL_OFF_DOWNGRADE_", "STOP_CAFEOS_CLI_TLS_DOWNGRADE_GATE_FAILED",
+    "CAFEOS_CLI_TLS_NO_DOWNGRADE_LOCAL_GATE_PASS", "exit 42",
+    "SYNTHETIC_LOCAL_ONLY_STAGING_NOT_AUTHORIZED",
+  ]) assert.ok(script.includes(marker), "missing anti-downgrade guard: " + marker);
+  assert.doesNotMatch(script, /wjatnyvdygvblirggdcm|aws-0-ap-southeast-1\.pooler|--linked|supabase db push|migration repair|PGPASSWORD=/i);
+});
+
+test("explicit SSL-off downgrade negative gate shell-parses and refuses missing cleanroom", posixShellOnly, () => {
+  const path = fileURLToPath(new URL("../scripts/check-cafeos-cli-ssl-downgrade-local.sh", import.meta.url));
+  const syntax = spawnSync("bash", ["-n", path], { encoding: "utf8", timeout: 6000 });
+  assert.equal(syntax.status, 0, syntax.stderr);
+  const attempt = spawnSync("bash", [path], {
+    env: { PATH: process.env.PATH, HOME: "/nonexistent-cafeos-fixture" },
+    encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(attempt.status, 0);
+  assert.match(attempt.stdout + attempt.stderr, /STOP_PINNED_LOCAL_CLI_MISSING/);
 });
