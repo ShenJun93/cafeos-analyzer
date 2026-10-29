@@ -1,49 +1,51 @@
-# CafeOS recovery — Supabase CLI 2.122.0 remote TLS verification HOLD
+# CafeOS — Supabase CLI 2.122.0 TLS evidence corrected; staging export remains NO-GO
 
-Date: 2026-10-29. Scope: MAIN-PC Ubuntu WSL 2 + Docker local cleanroom, **not** staging data. Related: DRAFT PR #95 atop DRAFT PR #94.
+Date: 2026-10-29. Applies to DRAFT PR #95 atop DRAFT PR #94. **No staging database dump/export or mutation was performed.**
 
-## Observed (direct execution; not inference)
+## Correction to initial TLS alarm
 
-Executable: `/home/pacmap/.local/share/cafeos-tools/supabase-2.122.0/supabase`, CLI version **2.122.0**, cleanroom Postgres **17.11**, Docker Engine **29.8.2**. All tests used the disposable local password `postgres` for `127.0.0.1:54322/postgres`. `PGPASSFILE` was a freshly created private `0600` file; URL contained **no password**. Temporary files were removed after each command.
+**Earlier observation (real, but incomplete):** `supabase db dump --db-url` succeeded against the existing **local** CafeOS cleanroom despite `sslmode=verify-full` with an invalid or missing CA. The cleanroom's PostgreSQL 17.11 was subsequently queried and returned `SHOW ssl = off`. Therefore that server was **not a valid positive/negative TLS test fixture**. The prior conclusion that the released Supabase CLI inherently ignores certificate verification was unsupported. Preserve the historical observations, but **do not reuse the resulting "CLI TLS security fail" verdict as a proven vulnerability**.
 
-| Probe | Outcome |
-| --- | --- |
-| `supabase db dump --db-url` (local URL, no password) using valid local `PGPASSFILE` | PASS |
-| Same but deliberately incorrect private `PGPASSFILE` | rejected, PASS |
-| `psql` with `PGSSLMODE=verify-full` and invalid `PGSSLROOTCERT` | rejected, PASS |
-| CLI `--db-url` with `PGSSLMODE=verify-full` and invalid `PGSSLROOTCERT` | **succeeded**, SECURITY FAIL |
-| CLI URL with `?sslmode=verify-full&sslrootcert=<invalid-local-CA-file>` | **succeeded**, SECURITY FAIL |
-| CLI URL with `?sslmode=verify-full&sslrootcert=<nonexistent-local-CA-file>` | **succeeded**, SECURITY FAIL |
-| CLI URL with unknown `sslmode=this-is-not-valid` | rejected (parser validation present) |
+The local cleanroom also demonstrated:
+- Pinned CLI binary version 2.122.0; passwordless URL + private 0600 `PGPASSFILE` works.
+- Invalid synthetic `PGPASSFILE` is rejected.
+- CLI rejects an invalid `sslmode` string.
+- CLI `--dry-run` can print an expanded `PGPASSWORD` even with synthetic local credentials. **Never use `--dry-run` with real staging credentials.**
 
-**Critical interpretation:** a real `--db-url` CLI export successfully connected to local Postgres despite an expressly invalid `verify-full` root CA. This demonstrates that **this CLI execution path is not yet proven to enforce TLS verification**. It does not by itself establish the internal root cause; avoid speculating or treating upstream TS source code as proof the released binary behaves that way.
+## Corrected direct MAIN-PC test: SSL-enabled PostgreSQL source
 
-Upstream tagged `v2.122.0` source:
-- `apps/cli/src/command-internal/pg-dump.env.ts`: declares `PGSSLMODE` / `PGSSLROOTCERT` propagation for remote mode.
-- `apps/cli/src/command-internal/pg-dump.run.ts`: containerTlsFiles intends read-only certificate mounts.
-- `apps/cli-go/pkg/migration/dump.go`: separate Go implementation's `toEnv` only includes `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`. These implementations coexist at this release tag; which path actually explains the measured behavior needs investigation.
-- Supabase CLI documentation: https://supabase.com/docs/reference/cli/supabase-db-dump
-- Supabase PostgreSQL SSL documentation: https://supabase.com/docs/guides/database/psql
+The owner MAIN-PC ran a NEW disposable `postgres:17-alpine` container `cafeos-tls-fixture-20261029` at `127.0.0.1:55433` with a temporary one-day locally generated CA and server cert carrying SAN for `127.0.0.1`/localhost.
 
-**Security boundary:** the CLI resolves a password from `PGPASSFILE` and places that password in the child dump container environment, which is potentially visible to privileged Docker operators. The successful no-password URL test is not a claim of zero exposure in Docker. **Never run `--dry-run` with real credentials**: local CLI `--dry-run` printed an expanded shell script containing `export PGPASSWORD=...`.
+Controls: PostgreSQL `SHOW ssl=on`; a `hostnossl ... reject` rule prevents plaintext connections; `psql` with `PGSSLMODE=verify-full` + correct CA must report `pg_stat_ssl.ssl=true`, while `psql` with wrong CA must be rejected. All of these conditions **PASS**.
 
-## Immediate policy: staging CLI dump blocked
+**Pinned Supabase CLI 2.122.0 behavior on the same real TLS-enabled server:**
 
-**DO NOT** run `supabase db dump --db-url`, `--linked`, or `--dry-run` against real CafeOS staging until a reviewed and reproducible verify-full positive/negative TLS test proves server identity and CA validation on the actual execution path. Prior CI green on **five synthetic encrypted streams** does *not* authorize a live dump.
+| Source-local control | Direct observation | Interpretation |
+| --- | --- | --- |
+| `--db-url ...?sslmode=verify-full&sslrootcert=<correct CA>` | `CAFEOS_CLI_GOOD_CA_ACCEPTED` | PASS |
+| Same URL, separate unrelated valid root CA | `CAFEOS_CLI_BAD_CA_REJECTED_ON_TLS_SERVER` | PASS |
+| `--db-url ...?sslmode=disable` against server rejecting non-TLS | `CAFEOS_CLI_SSL_DISABLE_REJECTED_ON_TLS_SERVER` | PASS |
+| Overall local marker | `CAFEOS_LOCAL_TLS_CERT_TEST_PASS_ONLY_SYNTHETIC` | LOCAL-ONLY PASS |
 
-A fail-closed **localhost-only** executable `scripts/check-cafeos-cli-dump-tls-negative-local.sh` validates:
-1. The existing exact cleanroom, its container identity and zero real users.
-2. The test-only local `PGPASSFILE` resolves without embedding a password in a URL.
-3. `psql` refuses the invalid CA.
-4. The CLI also refuses the invalid CA; if the CLI accepts it, prints `STOP_CAFEOS_CLI_VERIFYFULL_BAD_CA_ACCEPTED` and exits **42**.
+Exact source of the run: `scripts/check-cafeos-cli-dump-tls-negative-local.sh` in PR #95, copied from a successful owner-local script. It uses only generated test identities and public-default synthetic credentials, no staging identifiers or account records. The ephemeral container was explicitly checked afterward to be **absent**; Docker image may remain cached. The first attempt failed while copying certs into a temporary container path; the final successful run copied certs directly into the isolated PostgreSQL data directory. Neither attempt targeted staging.
 
-As of the observed CLI release, this security test is **expected to FAIL**, not a release success marker. Future remediation must use a version/implementation that truly enforces the CA gate, or an independently reviewed native client + Supabase-filtering approach; it may not silently fall back to TLS `prefer` or raw `pg_dump` claiming Supabase restore compatibility.
+**Conservative interpretation:** 2.122.0 correctly discriminated CA trust under this single TLS-enabled Docker/local scenario. This **does not establish all TLS behaviors** (revocation, DNS redirects, changed targets, or complete handling of real managed Supabase certificates) or make it safe to export staging without an independently tested approved process.
 
-## Other unresolved gates (unchanged)
+## Source comparison and trust boundaries
 
-- An independent trusted second-device age recovery identity, escrow and offhost cryptographic readback are still absent.
-- The main-PC staging PostgreSQL **psql** `verify-full` read-only query and independently attested seven-receipt SHA-256 have PASS evidence, but this does not validate CLI Docker SSL settings.
-- No actual staging roles/schema/data/history export or real-source restore has been executed. A same-server synthetic Auth/history restore is not independent recovery.
-- No staging mutation, migration repair, guard deployment, branch merge or production release authorized.
+Official tagged upstream `supabase/cli@v2.122.0`:
+- `apps/cli/src/command-internal/db-config.parse.ts` resolves URL `sslmode` and `sslrootcert` and `PGPASSFILE`/libpq fallbacks.
+- `apps/cli/src/command-internal/pg-dump.env.ts` forwards `PGSSLMODE` and `PGSSLROOTCERT` for remote targets.
+- `apps/cli/src/command-internal/pg-dump.run.ts` arranges readonly certificate bind mounts to the tool container.
+- `apps/cli-go/pkg/migration/dump.go` contains an older separate Go implementation. The mere presence of both source trees does not prove which code path explains a runtime observation.
 
-**Status: security HOLD, PRs DRAFT, RELEASE NO-GO.**
+The CLI may resolve a `PGPASSFILE` password and pass it to the dump container as an environment variable; this is **not** a guarantee of secret isolation from privileged Docker operators. Only operate with a trusted local Docker host. Avoid CLI `--dry-run` with staging.
+
+## Remaining blocking gates (no relaxation)
+
+1. **Off-MAIN-PC private recovery identity and verified encrypted escrow** remain absent. No actual staging backup/export is authorized without explicit owner-approved custody and a recoverable independent recipient.
+2. The staging DB protected `psql` connection has previously passed TLS `verify-full` and complete original seven-receipt SQL fingerprint, but the actual CLI dump **from staging** has not been exercised; any future approved remote export must be guarded and prove the intended CA/host without printing credentials.
+3. A real multi-part roles/schema/data/history backup is not yet made. Actual staging Auth, receipts, extension state and independent restore are unverified.
+4. Real second-target restore, signed-JWT tenant-isolation E2E, migration integrity guards, owner security approval, merge and deployment remain NO-GO.
+
+**Gate status:** LOCAL CLI TLS POSITIVE/NEGATIVE TEST = **PASS**. STAGING BACKUP = **NOT AUTHORIZED / NOT RUN**. PR #95 remains DRAFT. **RELEASE NO-GO.**
