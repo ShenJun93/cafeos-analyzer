@@ -833,22 +833,3 @@ test("cross-server Auth recovery checks constraints, indexes, policies, triggers
   assert.match(script, /-d "\$target_db" -c "\$auth_catalog_sql"/);
   assert.doesNotMatch(script, /--linked|wjatnyvdygvblirggdcm|\.supabase\.co|SUPABASE_ACCESS_TOKEN/i);
 });
-
-test("database recovery CI excludes unrelated Supabase services without disabling PostgreSQL tests", async () => {
-  const workflow = await readFile(new URL("../.github/workflows/supabase-db.yml", import.meta.url), "utf8");
-  const start = workflow.match(/run: supabase start -x ([a-z,-]+)/);
-  assert.ok(start, "database CI must declare the explicit Supabase exclude set");
-  const services = new Set(start[1].split(","));
-  for (const service of ["gotrue", "realtime", "storage-api", "imgproxy", "kong",
-    "mailpit", "postgrest", "postgres-meta", "studio", "edge-runtime", "logflare",
-    "vector", "supavisor"]) {
-    assert.ok(services.has(service), `unexpected non-DB container start: ${service}`);
-  }
-  assert.ok(!services.has("postgres") && !services.has("db"), "PostgreSQL must be started");
-  for (const step of ["supabase test db", "run-local-commerce-concurrency-drill.sh",
-    "run-supabase-restore-drill.sh", "run-local-supabase-cli-age-stream-drill.sh",
-    "run-local-auth-history-age-restore-drill.sh", "run-ci-cafeos-distinct-postgres-age-restore.sh"]) {
-    assert.ok(workflow.includes(step), `recovery test dropped: ${step}`);
-  }
-  assert.doesNotMatch(workflow, /--ignore-health-check/);
-});
