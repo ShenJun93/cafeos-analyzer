@@ -13,6 +13,7 @@ on:
       - "scripts/run-local-age-backup-drill.sh"
       - "scripts/run-local-supabase-cli-age-stream-drill.sh"
       - "scripts/run-local-auth-history-age-restore-drill.sh"
+      - "scripts/run-ci-cafeos-distinct-postgres-age-restore.sh"
       - "scripts/backup-cafeos-staging-age.sh"
       - "scripts/verify-cafeos-staging-age-archive.sh"
       - "scripts/verify-cafeos-age-recovery-offhost.sh"
@@ -35,6 +36,7 @@ on:
       - "scripts/run-local-age-backup-drill.sh"
       - "scripts/run-local-supabase-cli-age-stream-drill.sh"
       - "scripts/run-local-auth-history-age-restore-drill.sh"
+      - "scripts/run-ci-cafeos-distinct-postgres-age-restore.sh"
       - "scripts/backup-cafeos-staging-age.sh"
       - "scripts/verify-cafeos-staging-age-archive.sh"
       - "scripts/verify-cafeos-age-recovery-offhost.sh"
@@ -120,6 +122,9 @@ jobs:
 
       - name: Restore synthetic Auth identity and migration history from age into a second disposable DB
         run: bash scripts/run-local-auth-history-age-restore-drill.sh
+
+      - name: Verify encrypted Auth and migration recovery on a distinct networkless PostgreSQL server
+        run: bash scripts/run-ci-cafeos-distinct-postgres-age-restore.sh
 
       - name: Restore age-encrypted synthetic PostgreSQL backup to a separate local database
         run: bash scripts/run-local-age-backup-drill.sh

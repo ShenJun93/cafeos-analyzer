@@ -710,3 +710,39 @@ test("CLI age stream proves synthetic Auth USER and IDENTITY payloads, not empty
   assert.match(script, /age -d -i "\$work\/identity\.txt" "\$work\/data\.sql\.age" \|/);
   assert.doesNotMatch(script, /--linked|wjatnyvdygvblirggdcm|\.supabase\.co|SUPABASE_ACCESS_TOKEN/i);
 });
+
+
+test("distinct PostgreSQL server age restore is hard-pinned to disposable CI and cleans up", async () => {
+  const path = fileURLToPath(new URL("../scripts/run-ci-cafeos-distinct-postgres-age-restore.sh", import.meta.url));
+  const script = await readFile(path, "utf8");
+  const workflow = await readFile(new URL("../.github/workflows/supabase-db.yml", import.meta.url), "utf8");
+  assert.match(script, /GITHUB_ACTIONS/);
+  assert.match(script, /CI/);
+  assert.match(script, /127\.0\.0\.1:54322\/postgres/);
+  assert.match(script, /STOP_SOURCE_AUTH_NOT_BLANK/);
+  assert.match(script, /STOP_LOCAL_SOURCE_DOCKER_CONTAINER_COUNT/);
+  assert.match(script, /public\.ecr\.aws\/supabase\/postgres:17\./);
+  assert.match(script, /--network none/);
+  assert.match(script, /--tmpfs \/var\/lib\/postgresql\/data/);
+  assert.match(script, /STOP_TARGET_PORT_BINDINGS/);
+  assert.match(script, /STOP_TARGET_HOST_MOUNTS/);
+  assert.match(script, /STOP_MANAGED_AUTH_SCHEMA_MISMATCH/);
+  assert.match(script, /pg_dump "\$local_db" -w -Fc --data-only/);
+  assert.match(script, /age -R "\$work\/recipient\.txt" -o/);
+  assert.match(script, /age -d -i "\$work\/identity\.txt"/);
+  assert.match(script, /docker exec -i -u postgres "\$target" pg_restore/);
+  assert.match(script, /STOP_CROSS_SERVER_HISTORY_FINGERPRINT_MISMATCH/);
+  assert.match(script, /STOP_CROSS_SERVER_AUTH_IDENTITY_MISSING/);
+  assert.match(script, /docker rm -f "\$target"/);
+  assert.match(script, /DELETE FROM auth\.users/);
+  assert.match(script, /DELETE FROM auth\.identities/);
+  assert.match(script, /trap cleanup EXIT/);
+  assert.match(workflow, /run: bash scripts\/run-ci-cafeos-distinct-postgres-age-restore\.sh/);
+  assert.doesNotMatch(script, /wjatnyvdygvblirggdcm|\.supabase\.co|--linked|SUPABASE_ACCESS_TOKEN|db push|migration repair|sb_secret_/i);
+  const syntax = spawnSync("bash", ["-n", path], { encoding: "utf8", timeout: 6000 });
+  assert.equal(syntax.status, 0, syntax.stderr);
+  const attempt = spawnSync("bash", [path], {
+    env: { PATH: process.env.PATH }, encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(attempt.status, 0, "must reject non-CI execution before DB mutation");
+});
