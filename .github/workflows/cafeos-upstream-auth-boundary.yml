@@ -1,0 +1,36 @@
+name: CafeOS Upstream Auth Boundary
+
+on:
+  push:
+    branches:
+      - fix/cafeos-upstream-auth-boundary-v1
+    paths:
+      - ".github/workflows/cafeos-upstream-auth-boundary.yml"
+      - "api/_app-auth.mjs"
+      - "tests/control-tower-api.test.mjs"
+      - "tests/core-commerce-api.test.mjs"
+  pull_request:
+    paths:
+      - ".github/workflows/cafeos-upstream-auth-boundary.yml"
+      - "api/_app-auth.mjs"
+      - "tests/control-tower-api.test.mjs"
+      - "tests/core-commerce-api.test.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upstream-auth-boundary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify shared Supabase auth boundary and commerce regressions
+        run: |
+          set -euo pipefail
+          node --check api/_app-auth.mjs
+          node --test tests/control-tower-api.test.mjs tests/core-commerce-api.test.mjs
