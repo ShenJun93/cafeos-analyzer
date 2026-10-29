@@ -35,9 +35,14 @@ source_ids="$(docker ps -q --filter 'publish=54322')"
   { echo STOP_LOCAL_SOURCE_DOCKER_CONTAINER_COUNT >&2; exit 42; }
 source_name="$(docker inspect --format '{{.Name}}' "$source_ids")"
 source_image="$(docker inspect --format '{{.Config.Image}}' "$source_ids")"
-[[ "$source_name" == /supabase_db_* &&
+[[ "$source_name" == /supabase_db_* ]] ||
+  { echo STOP_SOURCE_DOCKER_CONTAINER_NAME >&2; exit 42; }
+# CI's SUPABASE_USE_SLIM_IMAGES=true selects the signed GHCR slim image.
+# Other than the exact upstream 17.11.0.006-r0 slim build, permit only
+# the separately observed source ECR PostgreSQL 17 family.
+[[ "$source_image" == ghcr.io/supabase/cli/postgres:17.11.0.006-r0* ||
    "$source_image" == public.ecr.aws/supabase/postgres:17.* ]] ||
-  { echo STOP_SOURCE_DOCKER_IMAGE_IDENTITY >&2; exit 42; }
+  { echo STOP_SOURCE_DOCKER_IMAGE_NOT_PINNED >&2; exit 42; }
 [[ -z "$(docker ps -aq --filter "name=^/$target$")" ]] ||
   { echo STOP_TARGET_ALREADY_EXISTS >&2; exit 42; }
 
