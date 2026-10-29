@@ -907,3 +907,37 @@ test("Storage PostgreSQL metadata readback uses two disposable local databases a
   assert.match(workflow, /run: bash scripts\/run-ci-cafeos-storage-postgres-readback-drill\.sh/);
   assert.doesNotMatch(script + workflow, /wjatnyvdygvblirggdcm|\.supabase\.co|SUPABASE_ACCESS_TOKEN|supabase db push|--linked|docker login|supabase start|ghcr\.io/i);
 });
+
+test("GHCR-free Auth catalog CI uses two independent PostgreSQL clusters with exact PR99 SQL", async () => {
+  const shell = await readFile(new URL("../scripts/run-ci-cafeos-auth-catalog-cross-server-no-ghcr.sh", import.meta.url), "utf8");
+  const workflow = await readFile(new URL("../.github/workflows/cafeos-auth-catalog-cross-server-no-ghcr.yml", import.meta.url), "utf8");
+  for (const required of [
+    "STOP_CI_POSTGRES_ONLY",
+    "STOP_TMPFS_REQUIRED",
+    "STOP_SOURCE_DB_COLLISION",
+    "auth_catalog_sql=",
+    "source_auth_catalog=",
+    "scripts/run-ci-cafeos-distinct-postgres-age-restore.sh",
+    "pg_control_system()",
+    "STOP_NOT_DISTINCT_PG_SERVERS",
+    "listen_addresses=''",
+    "STOP_TARGET_HAS_TCP_LISTENER",
+    "pg_dump -Fc --schema=auth",
+    "pg_restore --no-owner --no-acl --single-transaction --exit-on-error",
+    "STOP_EXACT_PR99_CATALOG_BASELINE_DRIFT",
+    "must_drift index",
+    "must_drift constraint",
+    "must_drift rls",
+    "must_drift policy",
+    "must_drift trigger",
+    "must_recover trigger",
+    "CAFEOS_AUTH_CATALOG_DISTINCT_PG_CLUSTERS_PASS",
+    "CAFEOS_AUTH_CATALOG_PRIVATE_TMPFS_CLEANUP_PASS",
+    "NO_REAL_SUPABASE_AUTH_JWT_OR_STAGING_TESTED",
+  ]) assert.ok(shell.includes(required), "missing distinct server guard: " + required);
+  assert.match(workflow, /runs-on: ubuntu-24\.04/);
+  assert.match(workflow, /sudo systemctl start postgresql\.service/);
+  assert.match(workflow, /sudo apt-get install -y -qq age/);
+  assert.match(workflow, /sudo -u postgres env GITHUB_ACTIONS=true CI=true bash scripts\/run-ci-cafeos-auth-catalog-cross-server-no-ghcr\.sh/);
+  assert.doesNotMatch(shell + workflow, /supabase start|docker run|docker login|ghcr\.io|--linked|wjatnyvdygvblirggdcm|\.supabase\.co|SUPABASE_ACCESS_TOKEN/i);
+});
