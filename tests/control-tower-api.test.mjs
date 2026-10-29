@@ -5,6 +5,7 @@ import {
   AppHttpError,
   appConfig,
   bearerToken,
+  supabaseJson,
   requireUser,
   requestedTenantId,
   requireTenant
@@ -1000,4 +1001,71 @@ test("Control Tower client boundary stays GET-only while brief uses fixed intern
   assert.match(storeHealthSource, /\/rest\/v1\/rpc\/store_health_aggregate/);
   assert.doesNotMatch(briefSource, /\/rest\/v1\/transaction_line_items/);
   assert.doesNotMatch(storeHealthSource, /\/rest\/v1\/transaction_line_items/);
+});
+
+test("Supabase gateway pins relative URLs and forbids credential override or redirects", async () => {
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options });
+    return jsonResponse({ ok: true });
+  };
+  const deps = { token: "signed-in-user-token", env, fetchImpl };
+  const valid = await supabaseJson("/rest/v1/stores?select=id", {
+    ...deps,
+    headers: { Prefer: "count=exact" }
+  });
+  assert.deepEqual(valid, { ok: true });
+  assert.equal(calls.length, 1);
+  assert.equal(String(calls[0].url), "https://example.supabase.co/rest/v1/stores?select=id");
+  assert.equal(calls[0].options.headers.authorization, "Bearer signed-in-user-token");
+  assert.equal(calls[0].options.headers.apikey, env.SUPABASE_PUBLISHABLE_KEY);
+  assert.equal(calls[0].options.headers.Prefer, "count=exact");
+  assert.equal(calls[0].options.redirect, "error", "do not follow upstream redirects with bearer token");
+  assert.equal(calls[0].options.signal instanceof AbortSignal, true);
+
+  for (const destination of [
+    "https://other.example/rest/v1/users", "//other.example/steal",
+    "/\\other.example/steal", "rest/v1/stores", ""
+  ]) {
+    await assert.rejects(
+      supabaseJson(destination, deps),
+      error => error instanceof AppHttpError && error.status === 500 &&
+        error.code === "SUPABASE_PATH_INVALID"
+    );
+  }
+  for (const injected of [
+    { Authorization: "Bearer privileged-token" },
+    { APIKEY: "service_role_token" },
+    { Host: "other.example" },
+    { cookie: "session=x" }
+  ]) {
+    await assert.rejects(
+      supabaseJson("/rest/v1/stores", { ...deps, headers: injected }),
+      error => error instanceof AppHttpError && error.code === "SUPABASE_HEADER_INVALID"
+    );
+  }
+  assert.equal(calls.length, 1, "rejected destinations and headers must never make network calls");
+});
+
+test("Supabase gateway maps network/timeout/aborted response bodies without 500 or credential exposure", async () => {
+  const failure = async fetchImpl => supabaseJson("/auth/v1/user", {
+    token: "private-test-token", env, fetchImpl
+  });
+  await assert.rejects(
+    failure(async () => { throw new Error("Network failure: private-test-token"); }),
+    error => error instanceof AppHttpError && error.status === 502 &&
+      error.code === "SUPABASE_UPSTREAM" && !error.message.includes("private-test-token")
+  );
+  for (const name of ["TimeoutError", "AbortError"]) {
+    await assert.rejects(
+      failure(async () => { throw new DOMException("request stopped", name); }),
+      error => error instanceof AppHttpError && error.status === 504 &&
+        error.code === "SUPABASE_TIMEOUT"
+    );
+  }
+  await assert.rejects(
+    failure(async () => ({ text: async () => { throw new DOMException("timeout", "AbortError"); } })),
+    error => error instanceof AppHttpError && error.status === 504 &&
+      error.code === "SUPABASE_TIMEOUT"
+  );
 });

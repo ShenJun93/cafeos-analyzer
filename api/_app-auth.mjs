@@ -43,19 +43,47 @@ export async function supabaseJson(path, {
 } = {}) {
   if (typeof fetchImpl !== 'function') throw new AppHttpError(500, 'FETCH_UNAVAILABLE', 'Server fetch is unavailable');
   const { url, publishableKey } = appConfig(env);
-  const response = await fetchImpl(new URL(path, url), {
-    method,
-    headers: {
-      apikey: publishableKey,
-      authorization: `Bearer ${token}`,
-      accept: 'application/json',
-      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-      ...headers
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) })
-  });
+  // Never forward a merchant bearer token to a caller-supplied host.
+  // URL() treats //host and some backslash variants as an absolute authority.
+  if (typeof path !== 'string' || !path.startsWith('/') ||
+      path.startsWith('//') || path.includes('\\')) {
+    throw new AppHttpError(500, 'SUPABASE_PATH_INVALID', 'Invalid upstream path');
+  }
+  const endpoint = new URL(path, url);
+  if (endpoint.origin !== url) {
+    throw new AppHttpError(500, 'SUPABASE_PATH_INVALID', 'Invalid upstream path');
+  }
+  // In particular, do not allow an injected header to replace the signed-in
+  // user's token with a privileged service key or another tenant's token.
+  if (headers === null || typeof headers !== 'object' ||
+      Object.keys(headers).some(key => /^(authorization|apikey|host|cookie)$/i.test(key))) {
+    throw new AppHttpError(500, 'SUPABASE_HEADER_INVALID', 'Invalid upstream headers');
+  }
 
-  const raw = await response.text();
+  let response;
+  let raw;
+  try {
+    const signal = AbortSignal.timeout(8000);
+    response = await fetchImpl(endpoint, {
+      method,
+      signal,
+      redirect: 'error',
+      headers: {
+        ...headers,
+        apikey: publishableKey,
+        authorization: `Bearer ${token}`,
+        accept: 'application/json',
+        ...(body === undefined ? {} : { 'content-type': 'application/json' })
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    });
+    raw = await response.text();
+  } catch (error) {
+    if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+      throw new AppHttpError(504, 'SUPABASE_TIMEOUT', 'Data service timed out');
+    }
+    throw new AppHttpError(502, 'SUPABASE_UPSTREAM', 'Control Tower data service returned an error');
+  }
   let payload = null;
   if (raw) {
     try { payload = JSON.parse(raw); }
