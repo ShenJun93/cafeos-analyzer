@@ -477,3 +477,37 @@ test("staging recovery scope is a single non-secret SELECT-only inventory with a
   assert.doesNotMatch(sql, /\bselect\s+\*\s+from\s+(?:auth|storage|vault|public)\./i);
   assert.doesNotMatch(sql, /\b(?:current_setting\(['"]request\.jwt|auth\.jwt\(\)|auth\.uid\(\))/i);
 });
+
+
+test("staging source VERIFYFULL gate uses explicit READ ONLY and refuses credentials/receipt drift", async () => {
+  const source = await readFile(
+    new URL("../scripts/check-cafeos-staging-readonly-verifyfull.sh", import.meta.url),
+    "utf8"
+  );
+  assert.match(source, /set -euo pipefail/);
+  assert.match(source, /wjatnyvdygvblirggdcm/);
+  assert.match(source, /PGSSLMODE=verify-full/);
+  assert.match(source, /PGSSLROOTCERT/);
+  assert.match(source, /PGPASSFILE/);
+  assert.match(source, /PGCONNECT_TIMEOUT=8/);
+  assert.match(source, /BEGIN TRANSACTION READ ONLY;/);
+  assert.match(source, /unset PGOPTIONS PGPASSWORD/);
+  assert.match(source, /cafeos-staging-receipt-fingerprint\\.sql/);
+  assert.match(source, /fa57902e637543dde1082d4ff307aabda1a9e223a3b0a354780948da8bb34eb3/);
+  assert.match(source, /CAFEOS_STAGING_SEVEN_ORIGINAL_RECEIPTS_PASS/);
+  assert.match(source, /EXPORT_AND_RESTORE_NOT_AUTHORIZED/);
+  assert.doesNotMatch(source, /(?:pg_dump|pg_dumpall|supabase db dump|supabase db push|supabase migration|migration repair|\\bpg_restore\\b|service_role|sb_secret_)/i);
+  assert.doesNotMatch(source, /(?:\\bINSERT\\s+INTO\\b|\\bUPDATE\\s+\\w+\\s+SET\\b|\\bDELETE\\s+FROM\\b|\\bDROP\\s+TABLE\\b)/i);
+});
+
+test("staging source VERIFYFULL gate parses and fails closed without protected owner files", posixShellOnly, () => {
+  const script = fileURLToPath(new URL("../scripts/check-cafeos-staging-readonly-verifyfull.sh", import.meta.url));
+  const syntax = spawnSync("bash", ["-n", script], { encoding: "utf8", timeout: 6000 });
+  assert.equal(syntax.status, 0, syntax.stderr);
+  const attempt = spawnSync("bash", [script], {
+    env: { PATH: process.env.PATH, HOME: "/nonexistent-cafeos-owner-fixture" },
+    encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(attempt.status, 0, "must refuse to run without protected real owner files");
+  assert.match(attempt.stdout + attempt.stderr, /STOP_STAGING_CONFIG_DIRECTORY/);
+});
