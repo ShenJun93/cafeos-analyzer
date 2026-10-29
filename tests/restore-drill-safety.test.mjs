@@ -724,7 +724,9 @@ test("distinct PostgreSQL server age restore is hard-pinned to disposable CI and
   assert.match(script, /public\.ecr\.aws\/supabase\/postgres:17\./);
   assert.match(script, /ghcr\.io\/supabase\/cli\/postgres:17\.11\.0\.006-r0/);
   assert.match(script, /STOP_SOURCE_DOCKER_CONTAINER_NAME/);
-  assert.match(script, /STOP_SOURCE_DOCKER_IMAGE_NOT_PINNED/);
+  assert.match(script, /STOP_SOURCE_DOCKER_IMAGE_NOT_PINN/);
+  assert.match(script, /readonly target_image='public\.ecr\.aws\/supabase\/postgres:17\.11\.0\.006'/);
+  assert.match(script, /"\$target_image" >\/dev\/null/);
   assert.match(script, /--network none/);
   assert.match(script, /--tmpfs \/var\/lib\/postgresql\/data/);
   assert.match(script, /STOP_TARGET_PORT_BINDINGS/);

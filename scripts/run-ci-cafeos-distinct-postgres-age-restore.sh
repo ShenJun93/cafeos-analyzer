@@ -15,6 +15,10 @@ done
 
 readonly local_db='postgresql://postgres:postgres@127.0.0.1:54322/postgres'
 readonly target='cafeos-ci-distinct-postgres-restore'
+# Full Supabase PostgreSQL image booted successfully under --network none
+# on the owner's separate, synthetic-only MAIN-PC test. The source CI slim
+# image needs its CLI-managed bootstrap and failed standalone readiness.
+readonly target_image='public.ecr.aws/supabase/postgres:17.11.0.006'
 readonly uid='92000000-0000-4000-8000-000000000001'
 readonly iid='92000000-0000-4000-8000-000000000002'
 pg_isready -h 127.0.0.1 -p 54322 -U postgres -d postgres -q ||
@@ -41,8 +45,8 @@ source_image="$(docker inspect --format '{{.Config.Image}}' "$source_ids")"
 # Other than the exact upstream 17.11.0.006-r0 slim build, permit only
 # the separately observed source ECR PostgreSQL 17 family.
 [[ "$source_image" == ghcr.io/supabase/cli/postgres:17.11.0.006-r0* ||
-   "$source_image" == public.ecr.aws/supabase/postgres:17.* ]] ||
-  { echo STOP_SOURCE_DOCKER_IMAGE_NOT_PINNED >&2; exit 42; }
+   "$source_image" == public.ecr.aws/supabase/postgres:17.11.0.006* ]] ||
+  { echo STOP_SOURCE_DOCKER_IMAGE_NOT_PINN >&2; exit 42; }
 [[ -z "$(docker ps -aq --filter "name=^/$target$")" ]] ||
   { echo STOP_TARGET_ALREADY_EXISTS >&2; exit 42; }
 
@@ -95,7 +99,7 @@ docker run -d \
   --tmpfs /var/lib/postgresql/data:rw,exec,mode=0700 \
   --label cafeos.ci.synthetic_only=true \
   -e POSTGRES_HOST_AUTH_METHOD=trust \
-  "$source_image" >/dev/null
+  "$target_image" >/dev/null
 target_created=1
 [[ "$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$target")" == none ]] ||
   { echo STOP_TARGET_NETWORK >&2; exit 42; }
@@ -112,7 +116,12 @@ for ((i=0; i<90; i++)); do
   fi
   sleep 1
 done
-[[ "$ready" == 1 ]] || { echo STOP_TARGET_PG_NOT_READY >&2; exit 42; }
+if [[ "$ready" != 1 ]]; then
+  echo STOP_TARGET_PG_NOT_READY >&2
+  # Diagnostic output is from a throwaway database without any real keys.
+  docker logs --tail=12 "$target" >&2 || true
+  exit 42
+fi
 [[ "$(docker exec -u postgres "$target" psql -XAtq -w -v ON_ERROR_STOP=1 -d postgres -c \
   "SHOW data_directory")" == '/var/lib/postgresql/data' ]] ||
   { echo STOP_TARGET_PGDATA >&2; exit 42; }
