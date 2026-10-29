@@ -664,3 +664,28 @@ test("CLI route-discrimination scripts parse and deny execution outside their au
   assert.notEqual(denied.status, 0);
   assert.match(denied.stderr, /STOP_GITHUB_ACTIONS_ONLY/);
 });
+
+
+test("Supabase encrypted stream and TLS routing CI pin the same exact CLI version", async () => {
+  const dbWorkflow = await readFile(new URL("../.github/workflows/supabase-db.yml", import.meta.url), "utf8");
+  const tlsWorkflow = await readFile(new URL("../.github/workflows/cafeos-cli-tls-routing.yml", import.meta.url), "utf8");
+  const stream = await readFile(new URL("../scripts/run-local-supabase-cli-age-stream-drill.sh", import.meta.url), "utf8");
+
+  for (const [label, workflow] of [["db", dbWorkflow], ["tls", tlsWorkflow]]) {
+    assert.match(workflow, /supabase\/setup-cli@v1\s*\n\s*with:\s*\n\s*version: 2\.122\.0/,
+      `${label} workflow must explicitly pin CLI 2.122.0`);
+    assert.doesNotMatch(workflow, /version:\s*2\.117\.0/,
+      `${label} workflow must not retain the old CLI pin`);
+    assert.match(workflow, /test "\$\(supabase --version\)" = "2\.122\.0"/,
+      `${label} workflow must attest the executed CLI binary`);
+  }
+  assert.match(dbWorkflow, /bash scripts\/run-local-supabase-cli-age-stream-drill\.sh/);
+  assert.match(dbWorkflow, /bash scripts\/run-local-auth-history-age-restore-drill\.sh/);
+  assert.match(tlsWorkflow, /bash scripts\/run-ci-cafeos-cli-tls-routing\.sh/);
+  assert.match(stream, /stream_encrypted roles/);
+  assert.match(stream, /stream_encrypted schema/);
+  assert.match(stream, /stream_encrypted data/);
+  assert.match(stream, /stream_encrypted history-schema/);
+  assert.match(stream, /stream_encrypted history-data/);
+  assert.doesNotMatch(stream, /--linked|wjatnyvdygvblirggdcm|supabase\.co|SUPABASE_ACCESS_TOKEN/i);
+});
