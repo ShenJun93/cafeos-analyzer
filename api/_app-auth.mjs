@@ -141,6 +141,21 @@ export function requestedTenantId(req) {
   return tenantId;
 }
 
+export const CAFEOS_TENANT_ROLES = Object.freeze([
+  'owner', 'admin', 'manager', 'cashier', 'analyst', 'viewer'
+]);
+
+export function checkedTenantMembership(row) {
+  if (!row || typeof row !== 'object' || Array.isArray(row) ||
+      typeof row.tenant_id !== 'string' || !UUID_RE.test(row.tenant_id) ||
+      typeof row.role !== 'string' || !CAFEOS_TENANT_ROLES.includes(row.role)) {
+    throw new AppHttpError(502, 'TENANT_MEMBERSHIP_INVALID', 'Tenant membership evidence is invalid');
+  }
+  // PostgreSQL UUIDs are case-insensitive; canonicalize before comparing and
+  // detecting duplicate membership IDs in an upstream response.
+  return { tenantId: row.tenant_id.toLowerCase(), role: row.role };
+}
+
 export async function requireTenant(req, auth, deps = {}) {
   const tenantId = requestedTenantId(req);
   const params = new URLSearchParams({
@@ -153,8 +168,21 @@ export async function requireTenant(req, auth, deps = {}) {
     token: auth.token,
     ...deps
   });
-  const membership = Array.isArray(rows) ? rows[0] : null;
-  if (!membership) throw new AppHttpError(403, 'TENANT_FORBIDDEN', 'You do not have access to this tenant');
+  // PostgREST filters and RLS are necessary but not enough to assert what an
+  // unexpected upstream payload actually contains before authorizing writes.
+  if (!Array.isArray(rows)) {
+    throw new AppHttpError(502, 'TENANT_MEMBERSHIP_INVALID', 'Tenant membership evidence is invalid');
+  }
+  if (rows.length === 0) {
+    throw new AppHttpError(403, 'TENANT_FORBIDDEN', 'You do not have access to this tenant');
+  }
+  if (rows.length !== 1) {
+    throw new AppHttpError(502, 'TENANT_MEMBERSHIP_INVALID', 'Tenant membership evidence is invalid');
+  }
+  const membership = checkedTenantMembership(rows[0]);
+  if (membership.tenantId !== tenantId.toLowerCase()) {
+    throw new AppHttpError(403, 'TENANT_FORBIDDEN', 'You do not have access to this tenant');
+  }
   return { id: tenantId, role: membership.role };
 }
 

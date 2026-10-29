@@ -1,4 +1,4 @@
-import { appError, appJson, onlyGet, requireUser, supabaseJson } from '../_app-auth.mjs';
+import { AppHttpError, appError, appJson, checkedTenantMembership, onlyGet, requireUser, supabaseJson } from '../_app-auth.mjs';
 
 export async function handle(req, res, deps = {}) {
   if (!onlyGet(req, res)) return;
@@ -12,8 +12,14 @@ export async function handle(req, res, deps = {}) {
       token: auth.token,
       ...deps
     });
-    const safeMemberships = Array.isArray(memberships) ? memberships : [];
-    const ids = [...new Set(safeMemberships.map(x => x.tenant_id).filter(Boolean))];
+    if (!Array.isArray(memberships)) {
+      throw new AppHttpError(502, 'TENANT_MEMBERSHIP_INVALID', 'Tenant membership evidence is invalid');
+    }
+    const safeMemberships = memberships.map(checkedTenantMembership);
+    const ids = safeMemberships.map(x => x.tenantId);
+    if (new Set(ids).size !== ids.length) {
+      throw new AppHttpError(502, 'TENANT_MEMBERSHIP_INVALID', 'Tenant membership evidence is invalid');
+    }
 
     let tenantNames = new Map();
     if (ids.length) {
@@ -25,15 +31,21 @@ export async function handle(req, res, deps = {}) {
         token: auth.token,
         ...deps
       });
-      tenantNames = new Map((Array.isArray(tenants) ? tenants : []).map(x => [x.id, x.name]));
+      if (!Array.isArray(tenants) || tenants.some(x =>
+        !x || typeof x !== 'object' || Array.isArray(x) ||
+        !ids.includes(x.id) || typeof x.name !== 'string' || !x.name.trim()) ||
+        new Set(tenants.map(x => x.id)).size !== tenants.length) {
+        throw new AppHttpError(502, 'TENANT_DIRECTORY_INVALID', 'Tenant directory evidence is invalid');
+      }
+      tenantNames = new Map(tenants.map(x => [x.id, x.name]));
     }
 
     return appJson(res, 200, {
       user: { id: auth.user.id },
       memberships: safeMemberships.map(x => ({
-        tenantId: x.tenant_id,
+        tenantId: x.tenantId,
         role: x.role,
-        name: tenantNames.get(x.tenant_id) ?? null
+        name: tenantNames.get(x.tenantId) ?? null
       }))
     });
   } catch (error) {
