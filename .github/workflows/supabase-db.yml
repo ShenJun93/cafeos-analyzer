@@ -80,8 +80,11 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Start blank local Supabase stack and apply migrations
-        run: supabase start
+      - name: Start database-only disposable Supabase stack and apply migrations
+        # The recovery CI exercises SQL and direct PostgreSQL, not hosted APIs.
+        # Exclude non-DB services to limit GHCR pulls and avoid falsely
+        # representing this job as a full-stack Auth/Storage/Realtime E2E.
+        run: supabase start -x gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
 
       - name: Run database tests
         run: supabase test db
