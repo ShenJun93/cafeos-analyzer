@@ -31,6 +31,25 @@ Exact source of the run: `scripts/check-cafeos-cli-dump-tls-negative-local.sh` i
 
 **Conservative interpretation:** 2.122.0 correctly discriminated CA trust under this single TLS-enabled Docker/local scenario. This **does not establish all TLS behaviors** (revocation, DNS redirects, changed targets, or complete handling of real managed Supabase certificates) or make it safe to export staging without an independently tested approved process.
 
+## Further negative control: SSL-off downgrade (FAIL)
+
+A separate direct owner MAIN-PC test used the original blank CafeOS cleanroom with `SHOW ssl=off` and its private synthetic `PGPASSFILE`, but **no merchant data**. The pinned CLI 2.122.0 was given a passwordless `--db-url` explicitly requiring each of `sslmode=require`, `sslmode=verify-ca`, and `sslmode=verify-full`. SQL stdout was discarded; no `--dry-run` or staging connection occurred.
+
+**Measured against the SAME localhost SSL-off database** (portable libpq `psql` 18.6 as negative control):
+
+| Requested SSL mode | Supabase CLI 2.122.0 | psql |
+| --- | --- | --- |
+| `disable` | exit 0; 1,933 SQL bytes | exit 0 |
+| `require` | **exit 0; 1,933 SQL bytes** | exit 2 (rejected) |
+| `verify-ca` | **exit 0; 1,933 SQL bytes** | exit 2 (rejected) |
+| `verify-full` | **exit 0; 1,933 SQL bytes** | exit 2 (rejected) |
+
+This is **security FAIL** of the invariant “required TLS must reject a source that cannot negotiate SSL” on the tested CLI code path. It does not contradict the positive/negative CA check on a **different, SSL-enabled** server; both results are real. The cause (libpq parameters, fallback, wrapper, engine or container environment) has **not** been isolated. Do not claim the CLI is safe for high-assurance staging export merely because CA checking succeeds when SSL is available.
+
+New fail-closed `scripts/check-cafeos-cli-ssl-downgrade-local.sh` reproduces the condition ONLY against the cleanroom localhost. Exact committed script was run directly on MAIN-PC and emitted `STOP_CAFEOS_CLI_SSL_OFF_DOWNGRADE_require`, `...verify-ca`, `...verify-full`, and `STOP_CAFEOS_CLI_TLS_DOWNGRADE_GATE_FAILED`. It intentionally exits **42 within Bash** to signal unresolved vulnerability (Remote Desktop Commander PowerShell wrapper presented nonzero exit 1). Do not run this gate against staging or weaken it to green by changing its expected semantics.
+
+**Security decision:** `supabase db dump --db-url` against the real staging project is **BLOCKED**, independently of the missing off-host recovery custodian. Require a reviewed, fail-closed no-downgrade mechanism and PASS under SSL-disabled and SSL-enabled fixtures before considering real-source export.
+
 ## Source comparison and trust boundaries
 
 Official tagged upstream `supabase/cli@v2.122.0`:
@@ -48,4 +67,4 @@ The CLI may resolve a `PGPASSFILE` password and pass it to the dump container as
 3. A real multi-part roles/schema/data/history backup is not yet made. Actual staging Auth, receipts, extension state and independent restore are unverified.
 4. Real second-target restore, signed-JWT tenant-isolation E2E, migration integrity guards, owner security approval, merge and deployment remain NO-GO.
 
-**Gate status:** LOCAL CLI TLS POSITIVE/NEGATIVE TEST = **PASS**. STAGING BACKUP = **NOT AUTHORIZED / NOT RUN**. PR #95 remains DRAFT. **RELEASE NO-GO.**
+**Gate status:** LOCAL TLS-ENABLED CA POSITIVE/NEGATIVE TEST = **PASS**, but SSL-OFF NO-DOWNGRADE TEST = **FAIL**. STAGING CLI EXPORT = **SECURITY BLOCKED**. STAGING BACKUP = **NOT AUTHORIZED / NOT RUN**. PR #95 remains DRAFT. **RELEASE NO-GO.**
