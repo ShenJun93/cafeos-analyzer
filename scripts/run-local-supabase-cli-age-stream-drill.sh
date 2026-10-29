@@ -91,6 +91,19 @@ stream_encrypted data
 stream_encrypted history-schema
 stream_encrypted history-data
 
+# Ensure the Supabase-filtered data stream still carries managed Auth tables.
+# Do not print user records, COPY payloads or credentials into CI logs.
+age -d -i "$work/identity.txt" "$work/data.sql.age" |
+  awk '
+    index($0, "COPY \"auth\".\"users\" ") == 1 { users=1 }
+    index($0, "COPY \"auth\".\"identities\" ") == 1 { identities=1 }
+    END { exit !(users && identities) }
+  ' || {
+    echo 'STOP: exported data stream missing Auth user/identity tables' >&2
+    exit 42
+  }
+echo 'CAFEOS_LOCAL_AUTH_TABLE_EXPORT_SHAPE_PASS'
+
 (
   cd "$work"
   sha256sum roles.sql.age schema.sql.age data.sql.age \
