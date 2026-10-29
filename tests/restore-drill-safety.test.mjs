@@ -547,7 +547,7 @@ test("synthetic Auth/history age restore is CI-only and shell-parses", posixShel
 });
 
 
-test("Supabase CLI TLS negative control fails closed on local invalid CA and never targets staging", async () => {
+test("real TLS Supabase CLI fixture proves correct CA acceptance and wrong CA rejection without staging", async () => {
   const source = await readFile(
     new URL("../scripts/check-cafeos-cli-dump-tls-negative-local.sh", import.meta.url), "utf8"
   );
@@ -555,18 +555,23 @@ test("Supabase CLI TLS negative control fails closed on local invalid CA and nev
     new URL("../docs/research/2026-10-29-cafeos-cli-dump-tls-no-go.md", import.meta.url), "utf8"
   );
   for (const marker of [
-    "set -euo pipefail", "127.0.0.1:54322", "cafeos-cleanroom-20261029",
-    "PGPASSFILE=", "PGSSLMODE=verify-full", "sslmode=verify-full",
-    "sslrootcert=", "STOP_CAFEOS_CLI_VERIFYFULL_BAD_CA_ACCEPTED",
-    "exit 42", "STAGING_NOT_AUTHORIZED",
-  ]) assert.ok(source.includes(marker), "missing fail-closed local TLS marker: " + marker);
-  assert.doesNotMatch(source, /wjatnyvdygvblirggdcm|aws-0-ap-southeast-1\.pooler|supabase db push|--linked|supabase link|migration repair|PGPASSWORD=/i);
-  assert.match(research, /SECURITY FAIL/);
-  assert.match(research, /staging CLI dump blocked/);
+    "set -euo pipefail", "127.0.0.1", "55433", "cafeos-cleanroom-20261029",
+    "cafeos-tls-fixture-20261029", "POSTGRES_DB=postgres",
+    "hostnossl all all 0.0.0.0/0 reject", "SHOW ssl",
+    "pg_stat_ssl", "PGPASSFILE=", "PGSSLMODE=verify-full",
+    "sslmode=verify-full", "sslrootcert=",
+    "CAFEOS_PSQL_GOOD_CA_VERIFYFULL_PASS", "CAFEOS_PSQL_BAD_CA_REJECTED",
+    "CAFEOS_CLI_GOOD_CA_ACCEPTED", "CAFEOS_CLI_BAD_CA_REJECTED_ON_TLS_SERVER",
+    "STOP_CAFEOS_CLI_BAD_CA_ACCEPTED_ON_TLS_SERVER", "exit 42",
+    "CAFEOS_LOCAL_TLS_CERT_TEST_PASS_ONLY_SYNTHETIC", "NO_STAGING_SOURCE_ACCESSED",
+  ]) assert.ok(source.includes(marker), "missing local TLS marker: " + marker);
+  assert.doesNotMatch(source, /wjatnyvdygvblirggdcm|aws-0-ap-southeast-1\.pooler|supabase db push|--linked|supabase link|migration repair|sb_secret_/i);
+  assert.match(research, /LOCAL CLI TLS POSITIVE\/NEGATIVE TEST = \*\*PASS\*\*/);
+  assert.match(research, /STAGING BACKUP = \*\*NOT AUTHORIZED \/ NOT RUN\*\*/);
   assert.match(research, /RELEASE NO-GO/);
 });
 
-test("Supabase CLI TLS negative control refuses without exact local cleanroom", posixShellOnly, () => {
+test("real TLS Supabase CLI fixture parses and fails closed if local cleanroom absent", posixShellOnly, () => {
   const path = fileURLToPath(new URL("../scripts/check-cafeos-cli-dump-tls-negative-local.sh", import.meta.url));
   const syntax = spawnSync("bash", ["-n", path], { encoding: "utf8", timeout: 6000 });
   assert.equal(syntax.status, 0, syntax.stderr);
@@ -575,5 +580,5 @@ test("Supabase CLI TLS negative control refuses without exact local cleanroom", 
     encoding: "utf8", timeout: 6000
   });
   assert.notEqual(attempt.status, 0);
-  assert.match(attempt.stdout + attempt.stderr, /STOP_LOCAL_CLI_OR_CLEANROOM_MISSING/);
+  assert.match(attempt.stdout + attempt.stderr, /STOP: pinned CLI absent/);
 });
