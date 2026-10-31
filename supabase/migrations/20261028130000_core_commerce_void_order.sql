@@ -1,6 +1,15 @@
 -- CafeOS POS: manager-only void of unpaid orders, with immutable audit evidence.
 -- Incremental canonical migration for disposable/local test databases.
 -- NEVER run against cafeos-staging before owner-approved ledger/backup gates.
+-- Historical actor UUIDs are immutable evidence, not references to active access.
+-- Core Commerce RPCs verify authenticated Tenant membership at write time.
+-- A live tenant_members FK would block offboarding after the first order/payment/
+-- close, leaving former staff with an undeletable membership.
+-- This migration is a local/Draft candidate; staging history/backup gates remain.
+alter table public.pos_orders drop constraint if exists pos_orders_opened_by_fk;
+alter table public.pos_payments drop constraint if exists pos_payments_recorded_by_fk;
+alter table public.daily_closes drop constraint if exists daily_closes_closed_by_fk;
+
 create table public.pos_order_voids (
   tenant_id uuid not null,
   order_id uuid not null,
@@ -13,9 +22,7 @@ create table public.pos_order_voids (
   constraint pos_order_voids_order_fk foreign key (tenant_id, order_id)
     references public.pos_orders(tenant_id, id) on delete restrict,
   constraint pos_order_voids_store_fk foreign key (tenant_id, store_id)
-    references public.stores(tenant_id, id) on delete restrict,
-  constraint pos_order_voids_actor_fk foreign key (tenant_id, voided_by_user_id)
-    references public.tenant_members(tenant_id, user_id) on delete restrict
+    references public.stores(tenant_id, id) on delete restrict
 );
 create index pos_order_voids_tenant_store_day_idx
   on public.pos_order_voids (tenant_id, store_id, business_date);
