@@ -157,6 +157,19 @@
         </form>
       </div>
 
+      <div id="categoryAdminList" class="menu-admin-list"></div>
+      <form id="editCategoryForm" class="commerce-form hidden" aria-label="Edit menu category">
+        <h3>Chỉnh sửa nhóm món</h3>
+        <p class="muted">Ẩn nhóm chỉ ẩn bộ lọc nhóm; các món đang bán thuộc nhóm đó vẫn bán được qua "Tất cả nhóm". Muốn ngừng bán món, sửa trạng thái riêng của từng món.</p>
+        <label class="field-group">Tên nhóm<input id="editCategoryName" maxlength="200" required></label>
+        <label class="field-group">Thứ tự<input id="editCategorySort" type="number" min="-100000" max="100000" step="1" required></label>
+        <label class="field-group">Trạng thái nhóm<select id="editCategoryActive">
+          <option value="true">Hiển thị nhóm</option>
+          <option value="false">Ẩn nhóm</option>
+        </select></label>
+        <button id="saveEditCategoryButton" type="submit">Lưu nhóm món</button>
+        <button id="cancelEditCategoryButton" class="secondary" type="button">Hủy chỉnh sửa nhóm</button>
+      </form>
       <div id="menuAdminList" class="menu-admin-list"></div>
       <form id="editItemForm" class="commerce-form hidden" aria-label="Edit menu item">
         <h3>Chỉnh sửa món</h3>
@@ -258,6 +271,7 @@ let hqReadSerial = 0;
 let hqLoadInFlight = false;
 let menuState = { categories: [], items: [] };
 let editingMenuItemId = null;
+let editingMenuCategoryId = null;
 let paidReceiptState = null;
 let receiptReadSerial = 0;
 const cartState = new Map();
@@ -373,7 +387,10 @@ function renderRoleControls() {
   const manager = canManageCommerce();
   el("menuWriteControls").classList.toggle("hidden", !manager);
   el("menuReadOnlyNotice").classList.toggle("hidden", manager);
-  if (!manager) cancelEditItem();
+  if (!manager) {
+    cancelEditItem();
+    cancelEditCategory();
+  }
   el("closeManagerNotice").classList.toggle("hidden", manager);
   el("hqNav").classList.toggle("hidden", !manager);
   el("hqRefresh").disabled = !manager || hqLoadInFlight;
@@ -589,6 +606,9 @@ async function loadMenu() {
   if (editingMenuItemId && !menuState.items.some(item => item.id === editingMenuItemId)) {
     cancelEditItem();
   }
+  if (editingMenuCategoryId && !menuState.categories.some(c => c.id === editingMenuCategoryId)) {
+    cancelEditCategory();
+  }
   // Never show stale client prices after the Menu has been refreshed. During
   // an unresolved checkout, keep the cart frozen for server-side recovery.
   if (!hasUnfinishedCheckout()) {
@@ -615,13 +635,13 @@ function renderMenu() {
   all.value = "";
   all.textContent = "Tất cả nhóm";
   categoryFilter.append(all);
-  for (const category of menuState.categories) {
+  for (const category of menuState.categories.filter(row => row.active !== false)) {
     const option = document.createElement("option");
     option.value = category.id;
     option.textContent = category.name;
     categoryFilter.append(option);
   }
-  categoryFilter.value = menuState.categories.some(row => row.id === selectedCategory)
+  categoryFilter.value = menuState.categories.some(row => row.id === selectedCategory && row.active !== false)
     ? selectedCategory : "";
   const query = el("posMenuSearch").value.trim().toLocaleLowerCase("vi-VN");
   const visibleItems = menuState.items.filter(item => {
@@ -657,11 +677,31 @@ function renderMenu() {
   none.value = "";
   none.textContent = "No category";
   categorySelect.append(none);
-  for (const category of menuState.categories) {
+  for (const category of menuState.categories.filter(row => row.active !== false)) {
     const option = document.createElement("option");
     option.value = category.id;
     option.textContent = category.name;
     categorySelect.append(option);
+  }
+
+  const categoryAdmin = el("categoryAdminList");
+  categoryAdmin.replaceChildren();
+  if (canManageCommerce()) {
+    for (const category of menuState.categories) {
+      const row = document.createElement("div");
+      row.className = "evidence-row";
+      const label = document.createElement("span");
+      label.textContent = category.name + " · #" + category.sort_order
+        + (category.active === false ? " · ĐÃ ẨN NHÓM" : " · Đang hiển thị");
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "secondary";
+      edit.textContent = "Sửa nhóm";
+      edit.disabled = menuWriteInFlight;
+      edit.addEventListener("click", () => guarded(() => startEditCategory(category.id)));
+      row.append(label, edit);
+      categoryAdmin.append(row);
+    }
   }
 
   const admin = el("menuAdminList");
@@ -1245,6 +1285,8 @@ function setMenuWriteInFlight(busy) {
   el("createItemButton").disabled = busy;
   el("saveEditItemButton").disabled = busy;
   el("cancelEditItemButton").disabled = busy;
+  el("saveEditCategoryButton").disabled = busy;
+  el("cancelEditCategoryButton").disabled = busy;
   // Do not close while a Menu write is still awaiting server confirmation.
   renderClosePreview();
 }
@@ -1273,6 +1315,72 @@ async function writeMenuRecord(body, formId, successMessage) {
       menuState = { categories: [], items: [] };
       renderMenu();
       setStatus(successMessage + " Danh sách Menu chưa tải lại được; Refresh để kiểm tra, không tạo lại.", "warning");
+    }
+  } finally {
+    setMenuWriteInFlight(false);
+  }
+}
+
+function cancelEditCategory() {
+  if (menuWriteInFlight || editingMenuCategoryId === null) return;
+  editingMenuCategoryId = null;
+  el("editCategoryForm").classList.add("hidden");
+  el("editCategoryForm").reset?.();
+}
+
+function startEditCategory(id) {
+  if (!canManageCommerce() || menuWriteInFlight) {
+    throw new Error("Manager role required to edit Menu");
+  }
+  if (hasUnfinishedCheckout()) {
+    throw new Error("Hoàn tất đơn POS đang xử lý trước khi sửa nhóm món.");
+  }
+  const category = menuState.categories.find(c => c.id === id);
+  if (!category) throw new Error("Nhóm món đã thay đổi, hãy tải lại.");
+  editingMenuCategoryId = id;
+  el("editCategoryName").value = category.name;
+  el("editCategorySort").value = String(category.sort_order);
+  el("editCategoryActive").value = category.active === false ? "false" : "true";
+  el("editCategoryForm").classList.remove("hidden");
+  el("editCategoryName").focus?.();
+}
+
+async function saveEditCategory(event) {
+  event.preventDefault();
+  if (!canManageCommerce() || menuWriteInFlight) return;
+  const categoryId = editingMenuCategoryId;
+  if (!categoryId || !menuState.categories.some(c => c.id === categoryId)) {
+    throw new Error("Chọn nhóm hợp lệ trước khi sửa.");
+  }
+  if (hasUnfinishedCheckout()) {
+    throw new Error("Hoàn tất đơn POS đang xử lý trước khi sửa nhóm món.");
+  }
+  const tenant = currentTenantId, epoch = viewEpoch, token = sessionToken;
+  const body = {
+    kind: "category", categoryId,
+    name: el("editCategoryName").value.trim(),
+    sortOrder: Number(el("editCategorySort").value),
+    active: el("editCategoryActive").value === "true"
+  };
+  setMenuWriteInFlight(true);
+  setStatus("Đang cập nhật nhóm món…");
+  try {
+    try {
+      await appFetch("/api/app/commerce-menu", { method: "PATCH", body });
+    } catch (error) {
+      throw new Error("Chưa xác nhận nhóm đã được cập nhật. Refresh trước khi thử lại. " + error.message);
+    }
+    if (tenant !== currentTenantId || epoch !== viewEpoch || token !== sessionToken) return;
+    editingMenuCategoryId = null;
+    el("editCategoryForm").classList.add("hidden");
+    el("editCategoryForm").reset?.();
+    try {
+      await loadMenu();
+      setStatus("Đã cập nhật nhóm. Trạng thái bán của các món không đổi.", "ok");
+    } catch {
+      menuState = { categories: [], items: [] };
+      renderMenu();
+      setStatus("Nhóm đã cập nhật, chưa tải lại được Menu. Refresh trước khi tạo đơn.", "warning");
     }
   } finally {
     setMenuWriteInFlight(false);
@@ -1683,6 +1791,8 @@ el("hqBusinessDate").addEventListener("change", () => {
 });
 el("categoryForm").addEventListener("submit", event => guarded(() => createCategory(event)));
 el("itemForm").addEventListener("submit", event => guarded(() => createItem(event)));
+el("editCategoryForm").addEventListener("submit", event => guarded(() => saveEditCategory(event)));
+el("cancelEditCategoryButton").addEventListener("click", cancelEditCategory);
 el("editItemForm").addEventListener("submit", event => guarded(() => saveEditItem(event)));
 el("cancelEditItemButton").addEventListener("click", cancelEditItem);
 el("closeDay").addEventListener("click", () => guarded(closeBusinessDay));

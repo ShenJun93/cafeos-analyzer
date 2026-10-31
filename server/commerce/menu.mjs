@@ -10,6 +10,7 @@ import {
 import { UUID_RE, requiredUuid, strictFields, parseCommerceMoney, commerceReturnedCents } from "./_shared.mjs";
 
 const CATEGORY_FIELDS = new Set(["kind", "name", "sortOrder"]);
+const CATEGORY_UPDATE_FIELDS = new Set(["kind", "categoryId", "name", "sortOrder", "active"]);
 const ITEM_FIELDS = new Set(["kind", "categoryId", "sku", "name", "price"]);
 const ITEM_UPDATE_FIELDS = new Set(["kind", "itemId", "categoryId", "sku", "name", "price", "active"]);
 
@@ -63,6 +64,29 @@ function categoryBody(body, tenantId) {
 // A successful HTTP POST is not proof that the returned row is the one
 // requested. Return 502 on a mismatched acknowledgment: the insert might
 // already have committed, so clients must inspect Menu rather than retry.
+function updatedCategoryBody(body) {
+  strictFields(body, CATEGORY_UPDATE_FIELDS);
+  const id = requiredUuid(body.categoryId, "MENU_CATEGORY_ID_INVALID", "Invalid Menu category");
+  const insert = categoryBody({ kind: "category", name: body.name,
+    sortOrder: body.sortOrder }, null);
+  if (typeof body.active !== "boolean") {
+    throw new AppHttpError(400, "MENU_CATEGORY_ACTIVE_INVALID",
+      "Menu category active state must be boolean");
+  }
+  return { id, data: {
+    name: insert.name, sort_order: insert.sort_order, active: body.active
+  } };
+}
+
+function confirmedUpdatedCategory(rows, expected, tenantId, id) {
+  if (!Array.isArray(rows) || rows.length !== 1) return false;
+  const row = rows[0];
+  return !!row && typeof row === "object" && !Array.isArray(row)
+    && row.id === id && row.tenant_id === tenantId
+    && row.name === expected.name && row.sort_order === expected.sort_order
+    && row.active === expected.active;
+}
+
 function confirmedMenuCategory(rows, requested) {
   if (!Array.isArray(rows) || rows.length !== 1) return null;
   const row = rows[0];
@@ -163,7 +187,7 @@ export async function handle(req, res, deps = {}) {
       const categoryParams = new URLSearchParams({
         select: "id,tenant_id,name,sort_order,active,created_at,updated_at",
         tenant_id: "eq." + ctx.tenant.id,
-        active: "eq.true",
+        ...(includeInactive === "true" ? {} : { active: "eq.true" }),
         order: "sort_order.asc,name.asc",
         limit: "200"
       });
@@ -194,7 +218,8 @@ export async function handle(req, res, deps = {}) {
           || typeof row.id !== "string" || !UUID_RE.test(row.id)
           || typeof row.name !== "string" || !row.name.trim() || row.name.length > 200
           || !validReadCategorySort(row.sort_order)
-          || row.active !== true)
+          || (includeInactive === "true"
+            ? typeof row.active !== "boolean" : row.active !== true))
           || items.some(row => !row || row.tenant_id !== ctx.tenant.id
             || typeof row.id !== "string" || !UUID_RE.test(row.id)
             || (row.category_id !== null
@@ -216,7 +241,32 @@ export async function handle(req, res, deps = {}) {
 
     if (req.method === "PATCH") {
       const ctx = requireCommerceManagerRole(await appContext(req, deps));
-      const { id, data } = updatedItemBody(requestJsonObject(req));
+      const body = requestJsonObject(req);
+      if (body.kind === "category") {
+        const { id, data } = updatedCategoryBody(body);
+        const params = new URLSearchParams({
+          tenant_id: "eq." + ctx.tenant.id,
+          id: "eq." + id,
+          select: "id,tenant_id,name,sort_order,active,created_at,updated_at"
+        });
+        const rows = await supabaseJson("/rest/v1/menu_categories?" + params, {
+          token: ctx.token, method: "PATCH", body: data,
+          headers: { Prefer: "return=representation" }, ...deps
+        });
+        if (Array.isArray(rows) && rows.length === 0) {
+          throw new AppHttpError(404, "MENU_CATEGORY_NOT_FOUND",
+            "Menu category was not found in this tenant");
+        }
+        if (!confirmedUpdatedCategory(rows, data, ctx.tenant.id, id)) {
+          throw new AppHttpError(502, "COMMERCE_MENU_WRITE_UNCONFIRMED",
+            "Category update has uncertain commit evidence; inspect Menu before retry");
+        }
+        return appJson(res, 200, { tenant: ctx.tenant, category: rows[0] });
+      }
+      if (body.kind !== "item") {
+        throw new AppHttpError(400, "MENU_KIND_INVALID", "Menu update kind must be category or item");
+      }
+      const { id, data } = updatedItemBody(body);
       const params = new URLSearchParams({
         tenant_id: "eq." + ctx.tenant.id,
         id: "eq." + id,
