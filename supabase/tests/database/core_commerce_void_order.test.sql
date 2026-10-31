@@ -157,49 +157,49 @@ select ok(
    ) and contype = 'f') = 0,
   'Commerce audit actor UUIDs no longer reference active tenant memberships');
 select lives_ok(
- $delete from public.tenant_members
+ $$delete from public.tenant_members
    where tenant_id='83000000-0000-4000-8000-000000000011'
    and user_id in ('83000000-0000-4000-8000-000000000101',
-                   '83000000-0000-4000-8000-000000000102')$,
+                   '83000000-0000-4000-8000-000000000102')$$,
  'Owner and cashier membership can be revoked after sale, payment, close and void');
 select results_eq(
- $select count(*) from public.tenant_members where tenant_id=
+ $$select count(*) from public.tenant_members where tenant_id=
     '83000000-0000-4000-8000-000000000011' and user_id in
     ('83000000-0000-4000-8000-000000000101',
-     '83000000-0000-4000-8000-000000000102')$,
- $values (0::bigint)$,
+     '83000000-0000-4000-8000-000000000102')$$,
+ $$values (0::bigint)$$,
  'Revoked staff no longer have tenant memberships');
 select results_eq(
- $select count(*) from public.pos_orders
+ $$select count(*) from public.pos_orders
    where tenant_id='83000000-0000-4000-8000-000000000011'
-   and opened_by_user_id='83000000-0000-4000-8000-000000000102'$,
- $values (2::bigint)$,
+   and opened_by_user_id='83000000-0000-4000-8000-000000000102'$$,
+ $$values (2::bigint)$$,
  'Both original cashier order actor snapshots remain');
 select results_eq(
- $select count(*) from public.pos_payments
+ $$select count(*) from public.pos_payments
    where tenant_id='83000000-0000-4000-8000-000000000011'
-   and recorded_by_user_id='83000000-0000-4000-8000-000000000102'$,
- $values (1::bigint)$,
+   and recorded_by_user_id='83000000-0000-4000-8000-000000000102'$$,
+ $$values (1::bigint)$$,
  'Original cashier payment actor snapshot remains');
 select results_eq(
- $select count(*) from public.daily_closes
+ $$select count(*) from public.daily_closes
    where tenant_id='83000000-0000-4000-8000-000000000011'
-   and closed_by_user_id='83000000-0000-4000-8000-000000000101'$,
- $values (1::bigint)$,
+   and closed_by_user_id='83000000-0000-4000-8000-000000000101'$$,
+ $$values (1::bigint)$$,
  'Original manager close actor snapshot remains');
 select results_eq(
- $select count(*) from public.pos_order_voids
+ $$select count(*) from public.pos_order_voids
    where tenant_id='83000000-0000-4000-8000-000000000011'
-   and voided_by_user_id='83000000-0000-4000-8000-000000000101'$,
- $values (1::bigint)$,
+   and voided_by_user_id='83000000-0000-4000-8000-000000000101'$$,
+ $$values (1::bigint)$$,
  'Original manager void audit remains immutable after membership revocation');
 
 set local role authenticated;
 set local request.jwt.claim.sub='83000000-0000-4000-8000-000000000101';
 select throws_ok(
- $select public.commerce_void_order('83000000-0000-4000-8000-000000000011',
+ $$select public.commerce_void_order('83000000-0000-4000-8000-000000000011',
    (select id from public.pos_orders where client_order_key='void-test-1'),
-   'Wrong item entered')$,
+   'Wrong item entered')$$,
  '42501','COMMERCE_VOID_ROLE_FORBIDDEN',
  'Revoked manager cannot retry privileged void or regain authorization from historic audit');
 
