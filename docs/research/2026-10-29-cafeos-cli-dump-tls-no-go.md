@@ -48,7 +48,7 @@ These outputs are real, but the hostname `127.0.0.1` at the exact running local-
 
 New fail-closed `scripts/check-cafeos-cli-ssl-downgrade-local.sh` reproduces the condition ONLY against the cleanroom localhost. Exact committed script was run directly on MAIN-PC and emitted `STOP_CAFEOS_CLI_SSL_OFF_DOWNGRADE_require`, `...verify-ca`, `...verify-full`, and `STOP_CAFEOS_CLI_TLS_DOWNGRADE_GATE_FAILED`. It intentionally exits **42 within Bash** when strict TLS options are supplied to the managed-local route (Remote Desktop Commander PowerShell wrapper reported nonzero exit 1). This historical **local-route** diagnostic is not a remote TLS security gate; do not run it against staging or misinterpret its expected failure.
 
-**Operational decision:** real staging export is still **NOT AUTHORIZED**, because recovery-key custody, actual-source export controls and independently compatible restore are incomplete. The prior local result no longer constitutes a proven remote TLS blocker.
+**Operational decision (updated 2026-10-31):** real staging export is still **NOT AUTHORIZED**. The owner reported a successful independent Samsung/Termux encrypted-escrow readback on 2026-10-29, but durable independent physical-custody attestation, actual-source capture authorization/transport and a real compatible restore are not proven. The prior local result no longer constitutes a proven remote TLS blocker.
 
 ## Direct route-discrimination test against the SAME SSL-off database (PASS)
 
@@ -82,9 +82,26 @@ The CLI may resolve a `PGPASSFILE` password and pass it to the dump container as
 
 ## Remaining blocking gates (no relaxation)
 
-1. **Off-MAIN-PC private recovery identity and verified encrypted escrow** remain absent. No actual staging backup/export is authorized without explicit owner-approved custody and a recoverable independent recipient.
+1. **Off-host recovery readback: operator-reported PASS, custody attestation: PENDING.** On 2026-10-29 the owner confirmed Samsung/Termux emitted `CAFEOS_AGE_RECOVERY_CRYPTOGRAPHIC_READBACK_PASS` and the expected companion `INDEPENDENT_DEVICE_CUSTODY_REQUIRES_OWNER_ATTESTATION` / `ACTUAL_STAGING_BACKUP_AND_DATABASE_RESTORE_NOT_PROVEN` markers. This is evidence of an operator-reported encrypted-escrow readback using the second-device identity and independently transported public anchors; do **not** revert to the earlier incorrect statement that the recovery key and escrow do not exist. An independently preserved physical-custody/approval receipt is still missing, and neither real staging capture nor real restore was attempted. No staging export is authorized until those owner gates are satisfied.
 2. The staging DB protected `psql` connection has previously passed TLS `verify-full` and complete original seven-receipt SQL fingerprint, but the actual CLI dump **from staging** has not been exercised; any future approved remote export must be guarded and prove the intended CA/host without printing credentials.
 3. A real multi-part roles/schema/data/history backup is not yet made. Actual staging Auth, receipts, extension state and independent restore are unverified.
 4. Real second-target restore, signed-JWT tenant-isolation E2E, migration integrity guards, owner security approval, merge and deployment remain NO-GO.
 
-**Gate status:** TLS-ENABLED CA POSITIVE/NEGATIVE TEST = **PASS**. SSL-OFF **REMOTE-ROUTE** REQUIRED-TLS REJECTION = **PASS** on MAIN-PC. The SSL-OFF MANAGED-LOCAL ROUTE deliberately omits TLS flags, and cannot be used to infer remote TLS failure. STAGING BACKUP = **NOT AUTHORIZED / NOT RUN** pending independent key custody, safe real-source procedure and independent real-data restore. PR #95 remains DRAFT. **RELEASE NO-GO.**
+**Gate status (2026-10-31):** TLS-ENABLED CA POSITIVE/NEGATIVE TEST = **PASS**. SSL-OFF **REMOTE-ROUTE** REQUIRED-TLS REJECTION = **PASS** on MAIN-PC. The SSL-OFF MANAGED-LOCAL ROUTE deliberately omits TLS flags, and cannot be used to infer remote TLS failure. AGE OFF-HOST ESCROW CRYPTOGRAPHIC READBACK = **OPERATOR-REPORTED PASS**; OWNER INDEPENDENT PHYSICAL CUSTODY ATTESTATION = **PENDING**. STAGING BACKUP/COMPATIBLE RESTORE = **NOT AUTHORIZED / NOT RUN** pending approved source-capture safeguards, independent custody and independent real-data restore. PR #95 remains DRAFT. **RELEASE NO-GO.**
+
+## 2026-10-31 direct source read-only evidence checkpoint
+
+The assistant fetched the exact Git SQL files and ran **SELECT-only** queries through Supabase management against `cafeos-staging`, project ref `wjatnyvdygvblirggdcm`:
+
+| Gate / catalog evidence | Direct result |
+| --- | --- |
+| Ordered seven original migration receipt SQL fingerprint | `fa57902e637543dde1082d4ff307aabda1a9e223a3b0a354780948da8bb34eb3` — matches the prior independently pinned ledger checkpoint |
+| Staging migration classification | `PRE_REPAIR_NO_GO`; legacy 7/7, canonical 0/8, guard receipts 0 |
+| Core Commerce | RLS 6/6, required guarded RPC grants 3/3, forbidden untrusted schema CREATE verified |
+| Public database table catalog | 17/17 exact names counted: `public_scope_complete=true` |
+| Records of operational significance | Auth users/identities 1/1; Tenants/members/Stores 4/4/4; imported facts 3 imports / 7 line items; customers 1; Attention/Actions/History/Measurements 5/2/3/2 |
+| First-party POS and Storage | Menu 0, Orders/Payments/Close 0; Storage buckets/objects 0/0 |
+
+This is a point-in-time **read-only inventory**, not an export, backup, database restore, recipient attestation or release gate. Do not infer that records are disposable simply because POS counts are zero. The current WAG Remote session was healthy but `workspace_open(E:/Projects/cafeos-analyzer)` continued returning `WAG_REMOTE_WORKSPACE_ROOT_NOT_APPROVED`, preventing authorized local operator preflight through WAG.
+
+**Required next evidence:** owner-held two-device custody/approval receipt outside public Git, then source export design/rehearsal review with the already-pinned CA/PGPASSFILE/CLI (no `--dry-run` or logged credentials), owner-approved *actual* encrypted staging roles/schema/data/history capture, and independent Supabase-compatible isolated restore verified against a fresh source checkpoint. Do not run `db push` or `migration repair` as a substitute.
