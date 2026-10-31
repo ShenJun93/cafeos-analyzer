@@ -2101,3 +2101,119 @@ test("topping catalog strict fields and uncertain acknowledgments fail closed",a
     assert.equal(out.statusCode,code);
   }
 });
+
+test("POS billable topping intent is normalized, sorted and reconciles exact server price snapshots",async()=>{
+  const T1="14000000-0000-4000-8000-000000000001";
+  const T2="14000000-0000-4000-8000-000000000002";
+  const orderBody={storeId:STORE_A,clientOrderKey:"billable-topping-intent-1",channel:"counter",
+    items:[{menuItemId:ITEM_A,quantity:2,toppingIds:[T2,T1]}]};
+  let intent;
+  const response=res();
+  await orderHandle(req(authHeaders,"POST","/api/app/commerce-order",orderBody),response,{
+    env,fetchImpl:authFetch("cashier",(url,init)=>{
+      if(url.pathname!=="/rest/v1/rpc/commerce_create_order")return jsonResponse({},500);
+      intent=JSON.parse(init.body);
+      return jsonResponse({
+        order:{id:ORDER_A,tenantId:TENANT_A,storeId:STORE_A,
+          clientOrderKey:orderBody.clientOrderKey,channel:"counter",
+          orderNumber:"T-01",status:"open",subtotal:80000,
+          discountTotal:0,taxTotal:0,total:80000},
+        items:[{id:ORDER_LINE_A,menuItemId:ITEM_A,name:"Latte",quantity:2,
+          unitPrice:40000,baseUnitPrice:35000,
+          toppings:[{toppingId:T1,name:"Pearls",price:3000},
+            {toppingId:T2,name:"Cream",price:2000}],
+          lineTotal:80000}]
+      });
+    })
+  });
+  assert.equal(response.statusCode,201);
+  assert.deepEqual(intent.p_items,[{menuItemId:ITEM_A,quantity:2,toppingIds:[T1,T2]}]);
+  assert.equal(parsed(response).items[0].baseUnitPrice,35000);
+});
+
+test("POS selected topping price evidence must reconcile base plus distinct frozen topping prices",async()=>{
+  const T1="14000000-0000-4000-8000-000000000001";
+  const intent={storeId:STORE_A,clientOrderKey:"billable-check-1",channel:"counter",
+    items:[{menuItemId:ITEM_A,quantity:1,toppingIds:[T1]}]};
+  const line={id:ORDER_LINE_A,menuItemId:ITEM_A,name:"Latte",quantity:1,
+    unitPrice:40000,baseUnitPrice:35000,
+    toppings:[{toppingId:T1,name:"Pearls",price:5000}],lineTotal:40000};
+  const order={id:ORDER_A,tenantId:TENANT_A,storeId:STORE_A,
+    clientOrderKey:intent.clientOrderKey,channel:"counter",
+    orderNumber:"T-01",status:"open",subtotal:40000,discountTotal:0,taxTotal:0,total:40000};
+  const verify=async (lineEvidence,code=502)=>{
+    const out=res();await orderHandle(req(authHeaders,"POST","/api/app/commerce-order",intent),out,{
+      env,fetchImpl:authFetch("cashier",()=>jsonResponse({order,items:[lineEvidence]}))
+    });assert.equal(out.statusCode,code);return out;
+  };
+  await verify(line,201);
+  for(const invalid of [
+    {...line,baseUnitPrice:35000.01},
+    {...line,unitPrice:39999.99,lineTotal:39999.99},
+    {...line,toppings:[{...line.toppings[0],price:4999}]},
+    {...line,toppings:[{...line.toppings[0],name:""}]},
+    {...line,toppings:[]},
+    {...line,toppings:undefined},
+    {...line,toppings:[...line.toppings,...line.toppings]},
+    {...line,toppings:[{...line.toppings[0],toppingId:STORE_A}]},
+    {...line,baseUnitPrice:undefined}
+  ])await verify(invalid);
+  for(const body of [
+    {...intent,items:[{...intent.items[0],toppingIds:[T1,T1]}]},
+    {...intent,items:[{...intent.items[0],toppingIds:[1]}]},
+    {...intent,items:[{...intent.items[0],toppingIds:"string"}]},
+    {...intent,items:[{...intent.items[0],toppingIds:Array(9).fill(T1)}]},
+    {...intent,items:[{...intent.items[0],unitPrice:1}]}
+  ]){
+    const out=res();
+    await orderHandle(req(authHeaders,"POST","/api/app/commerce-order",body),out,{
+      env,fetchImpl:authFetch("cashier")
+    });
+    assert.equal(out.statusCode,400);
+  }
+});
+
+test("paid receipt verifies frozen base+toppings and rejects mismatched financial readback",async()=>{
+  const T1="14000000-0000-4000-8000-000000000001";
+  const paidAt="2026-10-27T09:30:00Z";
+  const line={id:"line-1",tenant_id:TENANT_A,order_id:ORDER_A,
+    item_name:"Latte",unit_price:"40000.00",base_unit_price:"35000.00",
+    toppings_snapshot:[{toppingId:T1,name:"Pearls",price:"5000.00"}],
+    quantity:"2.000",line_total:"80000.00"};
+  const order={id:ORDER_A,tenant_id:TENANT_A,store_id:STORE_A,
+    order_number:"T-002",channel:"counter",business_date:"2026-10-27",
+    status:"paid",subtotal:"80000.00",discount_total:"0.00",tax_total:"0.00",
+    total:"80000.00",paid_at:paidAt};
+  const payment={tenant_id:TENANT_A,order_id:ORDER_A,method:"cash",
+    amount:"80000.00",status:"captured",paid_at:paidAt,reference:null};
+  const doRead=async source=>{
+    const out=res();
+    await receiptHandle(req(authHeaders,"GET",
+      "/api/app/commerce-receipt?orderId="+ORDER_A+"&storeId="+STORE_A),out,{
+      env,fetchImpl:authFetch("cashier",url=>{
+        if(url.pathname==="/rest/v1/pos_orders")return jsonResponse([order]);
+        if(url.pathname==="/rest/v1/pos_order_items")return jsonResponse([source]);
+        if(url.pathname==="/rest/v1/pos_payments")return jsonResponse([payment]);
+        if(url.pathname==="/rest/v1/stores")return jsonResponse([{id:STORE_A,tenant_id:TENANT_A,name:"Test"}]);
+        return jsonResponse({},500);
+      })
+    });return out;
+  };
+  const good=await doRead(line);
+  assert.equal(good.statusCode,200);
+  assert.equal(parsed(good).receipt.items[0].toppings[0].name,"Pearls");
+  assert.equal(parsed(good).receipt.items[0].baseUnitPrice,"35000.00");
+  for(const bad of [
+    {...line,base_unit_price:"34999.99"},
+    {...line,toppings_snapshot:[{...line.toppings_snapshot[0],price:"4999.99"}]},
+    {...line,toppings_snapshot:[{...line.toppings_snapshot[0],name:""}]},
+    {...line,toppings_snapshot:[...line.toppings_snapshot,...line.toppings_snapshot]},
+    {...line,toppings_snapshot:[{...line.toppings_snapshot[0],toppingId:"bad-id"}]},
+    {...line,toppings_snapshot:[]},
+    {...line,base_unit_price:null}
+  ]){
+    const out=await doRead(bad);
+    assert.equal(out.statusCode,502);
+    assert.equal(parsed(out).error.code,"COMMERCE_RECEIPT_TOTAL_MISMATCH");
+  }
+});

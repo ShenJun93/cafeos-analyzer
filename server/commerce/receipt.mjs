@@ -2,7 +2,7 @@ import {
   AppHttpError, appContext, appError, appJson, onlyGet,
   requireCommerceWriteRole, supabaseJson
 } from "../../api/_app-auth.mjs";
-import { requiredUuid, validCommerceBusinessDate, validCommerceTimestamp } from "./_shared.mjs";
+import { UUID_RE, requiredUuid, validCommerceBusinessDate, validCommerceTimestamp } from "./_shared.mjs";
 
 const PAYMENT_METHODS = new Set(["cash", "card", "bank_transfer", "wallet", "other"]);
 const ORDER_CHANNELS = new Set(["counter", "takeaway", "pickup", "delivery"]);
@@ -70,7 +70,7 @@ export async function handle(req, res, deps = {}) {
     }
 
     const lineParams = new URLSearchParams({
-      select: "id,tenant_id,order_id,item_name,unit_price,quantity,line_total",
+      select: "id,tenant_id,order_id,item_name,unit_price,base_unit_price,toppings_snapshot,quantity,line_total",
       tenant_id: "eq." + ctx.tenant.id,
       order_id: "eq." + orderId,
       order: "created_at.asc,id.asc",
@@ -128,6 +128,7 @@ export async function handle(req, res, deps = {}) {
     const paymentAmount = receiptCents(payments[0].amount);
     let itemsSubtotal = 0n;
     const lineIds = new Set();
+    const verifiedLines = [];
     for (const line of lines) {
       // A source row is a distinct immutable snapshot, not a repeated page row.
       // A duplicate id can double-count into a plausible balanced receipt.
@@ -148,6 +149,44 @@ export async function handle(req, res, deps = {}) {
         throw new AppHttpError(502, "COMMERCE_RECEIPT_TOTAL_MISMATCH",
           "Receipt line has invalid financial data");
       }
+      // Legacy pre-feature lines have NULL base_unit_price and [] topping
+      // snapshot. Newly created lines must reconcile combined unit price with
+      // each frozen topping price, regardless of current Menu configuration.
+      const rawToppings = line.toppings_snapshot ?? [];
+      if (!Array.isArray(rawToppings) || rawToppings.length > 8) {
+        throw new AppHttpError(502, "COMMERCE_RECEIPT_TOTAL_MISMATCH",
+          "Invalid frozen topping snapshots");
+      }
+      const basePrice = receiptCents(line.base_unit_price ?? line.unit_price);
+      const seenToppings = new Set();
+      let toppingsTotal = 0n;
+      for (const topping of rawToppings) {
+        if (!topping || typeof topping !== "object" || Array.isArray(topping)
+            || typeof topping.toppingId !== "string" || !UUID_RE.test(topping.toppingId)
+            || seenToppings.has(topping.toppingId)
+            || typeof topping.name !== "string" || !topping.name.trim()
+            || topping.name.length > 100) {
+          throw new AppHttpError(502, "COMMERCE_RECEIPT_TOTAL_MISMATCH",
+            "Invalid topping identity in frozen receipt");
+        }
+        seenToppings.add(topping.toppingId);
+        const amount = receiptCents(topping.price);
+        if (amount === null) {
+          throw new AppHttpError(502, "COMMERCE_RECEIPT_TOTAL_MISMATCH",
+            "Invalid topping amount in frozen receipt");
+        }
+        toppingsTotal += amount;
+      }
+      if (basePrice === null || basePrice + toppingsTotal !== unitPrice
+          || (line.base_unit_price == null && rawToppings.length)) {
+        throw new AppHttpError(502, "COMMERCE_RECEIPT_TOTAL_MISMATCH",
+          "Frozen topping unit price does not reconcile");
+      }
+      verifiedLines.push({
+        name: line.item_name, quantity: line.quantity,
+        unitPrice: line.unit_price, baseUnitPrice: line.base_unit_price ?? line.unit_price,
+        toppings: rawToppings, lineTotal: line.line_total
+      });
       itemsSubtotal += lineAmount;
     }
     if ([subtotal, discount, tax, total, paymentAmount].some(value => value === null)
@@ -171,12 +210,7 @@ export async function handle(req, res, deps = {}) {
         subtotal: order.subtotal,
         discountTotal: order.discount_total,
         taxTotal: order.tax_total,
-        items: lines.map(line => ({
-          name: line.item_name,
-          quantity: line.quantity,
-          unitPrice: line.unit_price,
-          lineTotal: line.line_total
-        })),
+        items: verifiedLines,
         payment: {
           method: payments[0].method,
           amount: payments[0].amount,

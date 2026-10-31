@@ -81,6 +81,13 @@
             </label>
           </div>
           <div id="menuCatalog" class="menu-catalog" aria-live="polite"></div>
+          <section id="posToppingPicker" class="commerce-form hidden" aria-label="Select toppings">
+            <h3 id="posToppingTitle">Chọn topping</h3>
+            <p class="muted">Giá topping hiển thị chỉ để tham khảo. Server xác nhận tổng tiền trước Payment.</p>
+            <div id="posToppingOptions" class="menu-admin-list"></div>
+            <button id="addConfiguredItem" type="button">Thêm món và topping</button>
+            <button id="cancelPosToppings" class="secondary" type="button">Hủy</button>
+          </section>
         </section>
 
         <aside class="cart-panel">
@@ -173,7 +180,7 @@
       <div id="menuAdminList" class="menu-admin-list"></div>
       <section id="toppingAdminPanel" class="commerce-form hidden" aria-label="Topping catalog manager">
         <h3>Topping theo món · Catalog</h3>
-        <p class="muted">Topping chỉ mới được cấu hình trong Menu. POS chưa hỗ trợ tính tiền topping; không cộng giá thủ công vào đơn.</p>
+        <p class="muted">Topping được tính tiền khi cashier chọn trong POS; PostgreSQL chốt giá. không cộng giá thủ công.</p>
         <button id="loadToppingsButton" class="secondary" type="button">Tải topping</button>
         <form id="toppingForm" class="commerce-form">
           <label class="field-group">Món<select id="toppingItem" required></select></label>
@@ -293,6 +300,9 @@ let toppingState = [];
 let toppingLoaded = false;
 let toppingReadSerial = 0;
 let editingToppingId = null;
+let posToppingItemId = null;
+let posToppingOptions = [];
+let posToppingRequestSerial = 0;
 let paidReceiptState = null;
 let receiptReadSerial = 0;
 const cartState = new Map();
@@ -638,7 +648,7 @@ async function loadMenu() {
   // an unresolved checkout, keep the cart frozen for server-side recovery.
   if (!hasUnfinishedCheckout()) {
     for (const [id, row] of cartState) {
-      const latest = menuState.items.find(item => item.id === id);
+      const latest = menuState.items.find(item => item.id === row.item.id);
       if (!latest || latest.active === false) cartState.delete(id);
       else row.item = latest;
     }
@@ -695,6 +705,13 @@ function renderMenu() {
     button.append(name, value);
     button.addEventListener("click", () => addToCart(item.id));
     catalog.append(button);
+    const extras = document.createElement("button");
+    extras.type = "button";
+    extras.className = "secondary";
+    extras.textContent = "Chọn topping";
+    extras.disabled = !canWriteCommerce();
+    extras.addEventListener("click", () => guarded(() => openPosToppings(item.id)));
+    catalog.append(extras);
   }
 
   const categorySelect = el("itemCategory");
@@ -759,19 +776,75 @@ function renderMenu() {
   }
 }
 
-function addToCart(menuItemId) {
+async function openPosToppings(itemId) {
+  if (!canWriteCommerce() || hasUnfinishedCheckout()) return;
+  const item = menuState.items.find(row => row.id === itemId && row.active !== false);
+  if (!item) throw new Error("Món đã ngừng bán, hãy tải lại Menu.");
+  const serial = ++posToppingRequestSerial;
+  const epoch = viewEpoch, tenant = currentTenantId, token = sessionToken;
+  const data = await appFetch("/api/app/commerce-toppings");
+  if (serial !== posToppingRequestSerial || epoch !== viewEpoch
+      || tenant !== currentTenantId || token !== sessionToken) return;
+  posToppingItemId = itemId;
+  posToppingOptions = (data.toppings || []).filter(t => t.menu_item_id === itemId && t.active);
+  el("posToppingTitle").textContent = item.name + " · Topping";
+  const choices = el("posToppingOptions");
+  choices.replaceChildren();
+  for (const topping of posToppingOptions) {
+    const label = document.createElement("label");
+    label.className = "field-group";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = topping.id;
+    const desc = document.createElement("span");
+    desc.textContent = topping.name + " · " + money(topping.price) + " (tham khảo)";
+    label.append(input, desc);
+    choices.append(label);
+  }
+  el("posToppingPicker").classList.remove("hidden");
+}
+function cancelPosToppings() {
+  ++posToppingRequestSerial;
+  posToppingItemId = null;
+  posToppingOptions = [];
+  el("posToppingPicker").classList.add("hidden");
+  el("posToppingOptions").replaceChildren();
+}
+function addConfiguredItem() {
+  if (!posToppingItemId || hasUnfinishedCheckout()) return;
+  const ids = [];
+  for (const label of el("posToppingOptions").children) {
+    const input = label.children[0];
+    if (input.checked) ids.push(input.value);
+  }
+  if (ids.length > 8) throw new Error("Một dòng món chỉ hỗ trợ tối đa 8 topping.");
+  const selected = ids.map(id => posToppingOptions.find(t => t.id === id));
+  if (selected.some(t => !t)) throw new Error("Topping đã thay đổi, tải lại trước khi bán.");
+  addToCart(posToppingItemId, selected);
+  cancelPosToppings();
+}
+
+function addToCart(menuItemId, selectedToppings = []) {
   const item = menuState.items.find(row => row.id === menuItemId);
   if (!item || item.active === false || !canWriteCommerce()
       || currentOrder || pendingOrderSubmission || orderSubmitInFlight) return;
-  if (!cartState.has(menuItemId) && cartState.size >= MAX_POS_ORDER_LINES) {
+  const toppings = [...selectedToppings].sort((a,b) => a.id.localeCompare(b.id));
+  const toppingIds = toppings.map(t => t.id);
+  if (toppingIds.length > 8 || new Set(toppingIds).size !== toppingIds.length) {
+    throw new Error("Tối đa 8 topping khác nhau cho một dòng món.");
+  }
+  const variantKey = toppingIds.length ? menuItemId + "|" + toppingIds.join("|") : menuItemId;
+  if (!cartState.has(variantKey) && cartState.size >= MAX_POS_ORDER_LINES) {
     setStatus("Một đơn chỉ hỗ trợ tối đa 100 món khác nhau. Bớt món hoặc tạo đơn riêng.", "error");
     return;
   }
-  const current = cartState.get(menuItemId) || { item, quantity: 0 };
+  const current = cartState.get(variantKey) || {
+    item, quantity: 0, toppingIds, toppingNames: toppings.map(t => t.name)
+  };
   if (current.quantity >= 1000) return;
   current.quantity += 1;
   clearPaidReceipt();
-  cartState.set(menuItemId, current);
+  cartState.set(variantKey, current);
   renderCart();
 }
 
@@ -807,6 +880,13 @@ function renderCart() {
     price.className = "muted";
     price.textContent = money(row.item.price) + " / item";
     detail.append(title, price);
+    if (row.toppingNames?.length) {
+      const selected = document.createElement("div");
+      selected.className = "muted";
+      selected.textContent = "+ " + row.toppingNames.join(", ")
+        + " · Server sẽ tính lại giá trước Payment";
+      detail.append(selected);
+    }
 
     const controls = document.createElement("div");
     controls.className = "quantity-controls";
@@ -891,7 +971,11 @@ async function loadPaidReceipt(orderId) {
       row.className = "receipt-line";
       const title = document.createElement("span");
       title.textContent = line.name + " × " + line.quantity
-        + " · " + money(line.unitPrice);
+        + " · " + money(line.unitPrice)
+        + (line.toppings?.length
+          ? " (gốc " + money(line.baseUnitPrice) + " + "
+            + line.toppings.map(t => t.name + " " + money(t.price)).join(", ") + ")"
+          : "");
       const total = document.createElement("strong");
       total.textContent = money(line.lineTotal);
       row.append(title, total);
@@ -971,7 +1055,8 @@ async function submitOrder() {
       channel: el("channel").value,
       items: [...cartState.values()].map(row => ({
         menuItemId: row.item.id,
-        quantity: row.quantity
+        quantity: row.quantity,
+        ...(row.toppingIds?.length ? { toppingIds: [...row.toppingIds] } : {})
       }))
     };
   }
@@ -1355,6 +1440,11 @@ function clearToppingState() {
   toppingState = [];
   toppingLoaded = false;
   editingToppingId = null;
+  ++posToppingRequestSerial;
+  posToppingItemId = null;
+  posToppingOptions = [];
+  el("posToppingPicker").classList.add("hidden");
+  el("posToppingOptions").replaceChildren();
   el("toppingList").replaceChildren();
   el("toppingForm").reset?.();
   el("toppingActiveField").classList.add("hidden");
@@ -1485,7 +1575,7 @@ async function saveTopping(event) {
       // One authorized read is allowed while this *same* writer owns
       // menuWriteInFlight. External requests remain blocked until finally.
       await loadToppings({ allowDuringWrite: true });
-      setStatus("Đã lưu topping. POS chưa tính giá topping.", "ok");
+      setStatus("Đã lưu topping. Giá mới chỉ áp dụng cho các đơn tiếp theo.", "ok");
     } catch {
       toppingLoaded = false;
       toppingState = [];
@@ -1973,6 +2063,8 @@ el("cancelEditCategoryButton").addEventListener("click", cancelEditCategory);
 el("loadToppingsButton").addEventListener("click", () => guarded(loadToppings));
 el("toppingForm").addEventListener("submit", event => guarded(() => saveTopping(event)));
 el("cancelToppingButton").addEventListener("click", cancelToppingEdit);
+el("addConfiguredItem").addEventListener("click", () => guarded(addConfiguredItem));
+el("cancelPosToppings").addEventListener("click", cancelPosToppings);
 el("editItemForm").addEventListener("submit", event => guarded(() => saveEditItem(event)));
 el("cancelEditItemButton").addEventListener("click", cancelEditItem);
 el("closeDay").addEventListener("click", () => guarded(closeBusinessDay));

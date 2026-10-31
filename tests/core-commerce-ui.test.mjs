@@ -970,17 +970,17 @@ test("cashier can search POS menu by name/SKU and filter category without mutati
     ];
   `, context);
   runInContext("renderMenu()", context);
-  assert.equal(elem("menuCatalog").children.length, 3);
+  assert.equal(elem("menuCatalog").children.filter(node => node.className === "menu-item-button").length, 3);
 
   elem("posMenuSearch").value = "lat-02";
   runInContext("renderMenu()", context);
-  assert.equal(elem("menuCatalog").children.length, 1);
+  assert.equal(elem("menuCatalog").children.filter(node => node.className === "menu-item-button").length, 1);
   assert.equal(elem("menuCatalog").children[0].children[0].textContent, "Latte");
 
   elem("posMenuSearch").value = "";
   elem("posMenuCategory").value = "tea";
   runInContext("renderMenu()", context);
-  assert.equal(elem("menuCatalog").children.length, 1);
+  assert.equal(elem("menuCatalog").children.filter(node => node.className === "menu-item-button").length, 1);
   assert.equal(elem("menuCatalog").children[0].children[0].textContent, "Trà đào");
   assert.equal(elem("posMenuCategory").value, "tea");
 
@@ -994,7 +994,7 @@ test("cashier can search POS menu by name/SKU and filter category without mutati
   elem("posMenuSearch").value = "";
   runInContext("renderMenu()", context);
   assert.equal(elem("posMenuCategory").value, "");
-  assert.equal(elem("menuCatalog").children.length, 3);
+  assert.equal(elem("menuCatalog").children.filter(node => node.className === "menu-item-button").length, 3);
 });
 
 
@@ -2054,7 +2054,7 @@ test("Menu lifecycle keeps archived items out of cashier catalog while manager c
   runInContext('menuState.categories=[{id:"coffee",name:"Coffee"}]',ctx);
   runInContext('menuState.items=[{id:"active",name:"Latte",sku:"LAT",category_id:"coffee",price:35000,active:true},{id:"hidden",name:"Old Latte",sku:null,category_id:"coffee",price:25000,active:false}]',ctx);
   runInContext('renderMenu()',ctx);
-  assert.equal(el("menuCatalog").children.length,1);
+  assert.equal(el("menuCatalog").children.filter(node => node.className === "menu-item-button").length,1);
   assert.equal(el("menuAdminList").children.length,2);
   assert.match(el("menuAdminList").children[1].children[0].children[1].textContent,/TẠM NGỪNG BÁN/);
   runInContext('startEditItem("hidden")',ctx);
@@ -2091,7 +2091,7 @@ test("category lifecycle keeps items sellable under All when their group is arch
  runInContext('menuState.categories=[{id:"coffee",name:"Coffee",sort_order:0,active:true},{id:"old",name:"Old Coffee",sort_order:1,active:false}]',ctx);
  runInContext('menuState.items=[{id:"olditem",name:"Legacy Latte",sku:null,category_id:"old",price:35000,active:true}]',ctx);
  runInContext('renderMenu()',ctx);
- assert.equal(el("menuCatalog").children.length,1,"active item remains sellable under all");
+ assert.equal(el("menuCatalog").children.filter(node => node.className === "menu-item-button").length,1,"active item remains sellable under all");
  assert.equal(el("posMenuCategory").children.length,2,"archived group absent from cashier filter");
  assert.equal(el("itemCategory").children.length,2,"archived group absent from new item assignment");
  assert.equal(el("categoryAdminList").children.length,2,"manager sees archived group");
@@ -2119,13 +2119,13 @@ test("cashier cannot edit archived category and manager cannot edit during unset
  assert.throws(()=>runInContext('startEditCategory("old")',ctx),/Hoàn tất đơn/);
 });
 
-test("topping manager catalog is a separate nonbillable workflow, never client-owned POS price",async()=>{
+test("topping manager catalog configures server-priced options, never client-owned POS total",async()=>{
  const html=await readFile(new URL("../public/app.html",import.meta.url),"utf8");
  for(const id of ["toppingAdminPanel","loadToppingsButton","toppingForm","toppingItem","toppingName",
   "toppingPrice","toppingSort","toppingActive","toppingList","saveToppingButton"]) {
   assert.ok(html.includes('id="'+id+'"'));
  }
- assert.match(html,/POS chưa hỗ trợ tính tiền topping/);
+ assert.match(html,/PostgreSQL chốt giá/);
  assert.match(html,/không cộng giá thủ công/);
  const {ctx,el,runInContext}=await menuMutationHarness();
  runInContext('menuState.items=[{id:"item-1",name:"Latte",price:30000,active:true}]',ctx);
@@ -2159,4 +2159,25 @@ test("topping editing rejects cashiers and unconfirmed checkout; sign-out clears
  assert.equal(runInContext('toppingLoaded',ctx),false);
  assert.equal(runInContext('toppingState.length',ctx),0);
  assert.equal(el("toppingList").children.length,0);
+});
+
+test("POS variants preserve distinct topping combinations and never put client total in order intent",async()=>{
+  const {ctx,el,runInContext}=await menuMutationHarness();
+  const t1={id:"14000000-0000-4000-8000-000000000001",name:"Cream",price:5000};
+  const t2={id:"14000000-0000-4000-8000-000000000002",name:"Pearls",price:3000};
+  ctx.t1=t1;ctx.t2=t2;
+  runInContext('menuState.items=[{id:"a",name:"Latte",price:35000,active:true}];',ctx);
+  runInContext('addToCart("a")',ctx);
+  runInContext('addToCart("a",[t2,t1])',ctx);
+  runInContext('addToCart("a",[t1,t2])',ctx);
+  assert.equal(runInContext('cartState.size',ctx),2);
+  assert.equal(runInContext('cartState.get("a").quantity',ctx),1);
+  assert.equal(runInContext('cartState.get("a|"+t1.id+"|"+t2.id).quantity',ctx),2);
+  assert.equal(runInContext('cartState.get("a|"+t1.id+"|"+t2.id).toppingIds.length',ctx),2);
+  const html=await readFile(new URL("../public/app.html",import.meta.url),"utf8");
+  assert.match(html,/row\.toppingIds\?\.length/);
+  assert.match(html,/toppingIds: \[\.\.\.row\.toppingIds\]/);
+  assert.match(html,/Server sẽ tính lại giá trước Payment/);
+  assert.doesNotMatch(html.slice(html.indexOf('<section id="posWorkspace"'),
+    html.indexOf('<section id="menuWorkspace"')),/<input[^>]+(?:price|total)/i);
 });

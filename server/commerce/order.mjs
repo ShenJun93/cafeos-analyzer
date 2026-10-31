@@ -27,7 +27,7 @@ function normalizeItems(value) {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
       throw new AppHttpError(400, "COMMERCE_ITEMS_INVALID", "Order items are invalid");
     }
-    strictFields(item, new Set(["menuItemId", "quantity"]));
+    strictFields(item, new Set(["menuItemId", "quantity", "toppingIds"]));
     const menuItemId = typeof item.menuItemId === "string" ? item.menuItemId.trim() : "";
     // Match the trusted RPC's numeric(12,3) quantity contract before any
     // Number() coercion (true, arrays, exponents and excess precision must
@@ -47,7 +47,22 @@ function normalizeItems(value) {
     }
     // The database UUID cast returns lowercase; preserve one canonical form
     // for idempotency fingerprints and line-by-line response reconciliation.
-    return { menuItemId: menuItemId.toLowerCase(), quantity };
+    // Only a bounded set of distinct topping IDs may be selected; canonical
+    // ordering is part of the exact idempotency request fingerprint.
+    let toppingIds;
+    if (Object.hasOwn(item, "toppingIds")) {
+      if (!Array.isArray(item.toppingIds) || item.toppingIds.length > 8
+          || item.toppingIds.some(id => typeof id !== "string"
+            || !UUID_RE.test(id.trim()))) {
+        throw new AppHttpError(400, "COMMERCE_TOPPINGS_INVALID", "Invalid selected toppings");
+      }
+      toppingIds = item.toppingIds.map(id => id.trim().toLowerCase()).sort();
+      if (new Set(toppingIds).size !== toppingIds.length) {
+        throw new AppHttpError(400, "COMMERCE_TOPPINGS_DUPLICATE", "Duplicate selected topping");
+      }
+    }
+    return { menuItemId: menuItemId.toLowerCase(), quantity,
+      ...(toppingIds?.length ? { toppingIds } : {}) };
   });
 }
 
@@ -71,7 +86,8 @@ function returnedItemsSnapshotCents(returned, requested) {
   for (const item of requested) {
     const quantity = quantityMilli(item.quantity);
     if (quantity === null) return null;
-    const key = item.menuItemId + ":" + quantity;
+    const key = item.menuItemId + ":" + quantity + ":"
+      + (item.toppingIds ?? []).join(",");
     remaining.set(key, (remaining.get(key) ?? 0) + 1);
   }
   let subtotal = 0n;
@@ -88,7 +104,33 @@ function returnedItemsSnapshotCents(returned, requested) {
     const lineTotal = commerceReturnedCents(item.lineTotal);
     if (quantity === null || price === null || lineTotal === null
         || (price * BigInt(quantity) + 500n) / 1000n !== lineTotal) return null;
-    const key = item.menuItemId + ":" + quantity;
+    // Financial evidence for each new topping-bearing line must be present
+    // and consistent with immutable base and per-topping price snapshots.
+    const extra = item.toppings;
+    if (extra !== undefined && (!Array.isArray(extra) || extra.length > 8)) return null;
+    if (extra === undefined && item.baseUnitPrice !== undefined) return null;
+    if (extra !== undefined && item.baseUnitPrice === undefined) return null;
+    let toppingIds = [];
+    if (extra !== undefined) {
+      const base = commerceReturnedCents(item.baseUnitPrice);
+      if (base === null) return null;
+      const seen = new Set();
+      let toppingCents = 0n;
+      for (const topping of extra) {
+        if (!topping || typeof topping !== "object" || Array.isArray(topping)
+            || !UUID_RE.test(topping.toppingId ?? "")
+            || seen.has(topping.toppingId)
+            || typeof topping.name !== "string" || !topping.name.trim()) return null;
+        const cents = commerceReturnedCents(topping.price);
+        if (cents === null) return null;
+        seen.add(topping.toppingId);
+        toppingIds.push(topping.toppingId);
+        toppingCents += cents;
+      }
+      toppingIds.sort();
+      if (base + toppingCents !== price) return null;
+    }
+    const key = item.menuItemId + ":" + quantity + ":" + toppingIds.join(",");
     const remainingCount = remaining.get(key) ?? 0;
     if (remainingCount === 0) return null;
     if (remainingCount === 1) remaining.delete(key);

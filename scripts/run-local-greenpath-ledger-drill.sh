@@ -5,7 +5,7 @@ readonly DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 readonly HISTORICAL_LAST="20261025094352"
 readonly -a HISTORICAL=(20260921005530 20260921005532 20260921100900 20260921164500 20260921170000 20260921201000 20260921203000 20261025094352)
 readonly -a LEGACY=(20260921100732 20260921103432 20260921105352 20260921133428 20260921141814 20260921151006 20261025103648)
-readonly -a FULL=( "${HISTORICAL[@]}" 20261025130000 20261025140000 20261031190000 20261031203000 20261031214500 )
+readonly -a FULL=( "${HISTORICAL[@]}" 20261025130000 20261025140000 20261031190000 20261031203000 20261031214500 20261031220000 )
 command -v supabase >/dev/null
 command -v psql >/dev/null
 command -v pg_isready >/dev/null
@@ -108,6 +108,19 @@ toppings_ready="$(psql "$DB_URL" -Atq -c "
   and exists(select 1 from pg_trigger where tgrelid='public.menu_toppings'::regclass
        and tgname='commerce_menu_topping_updated_at' and tgenabled='O')")"
 [[ "$toppings_ready" == "t" ]] || { echo "Toppings catalog RLS missing" >&2; exit 1; }
+billable_ready="$(psql "$DB_URL" -Atq -c "
+ select exists(select 1 from information_schema.columns
+   where table_schema='public' and table_name='pos_order_items'
+     and column_name='base_unit_price')
+ and exists(select 1 from information_schema.columns
+   where table_schema='public' and table_name='pos_order_items'
+     and column_name='toppings_snapshot')
+ and position('COMMERCE_TOPPING_NOT_FOUND' in pg_get_functiondef(
+   'public.commerce_create_order(uuid,uuid,text,text,jsonb)'::regprocedure))>0
+ and not has_column_privilege('authenticated','public.pos_order_items',
+   'toppings_snapshot','UPDATE')")"
+[[ "$billable_ready" == "t" ]] || { echo "Billable topping snapshots or RPC guard missing" >&2; exit 1; }
+
 
 
 negative_phase="$(psql "$DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
@@ -127,4 +140,4 @@ bad_subtotals="$(psql "$DB_URL" -X -q -A -t -v ON_ERROR_STOP=1   -f scripts/sql/
 [[ "$(post_guard_phase)" == "POST_GUARDS_NOT_READY_REVIEW" ]]
 supabase test db
 [[ "$(post_guard_phase)" == "POST_GUARDS_NOT_READY_REVIEW" ]]
-echo "CAFEOS_LOCAL_GREENPATH_PASS: pre=8 legacy=7 reconciled=8 guarded=13 staging_classifier=NO_GO_REVIEW_REQUIRED"
+echo "CAFEOS_LOCAL_GREENPATH_PASS: pre=8 legacy=7 reconciled=8 guarded=14 staging_classifier=NO_GO_REVIEW_REQUIRED"
