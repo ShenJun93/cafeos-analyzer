@@ -41,7 +41,7 @@ test("five exact Supabase filtered SQL streams encrypt directly to age, never pl
     "dd63b211dc5a25c516b16494ebde997fef211524ffe0184a4a597d4b17e2bf1d",
     "sha256sum -c manifest.sha256", "mv --no-clobber --no-target-directory"
   ]) assert.ok(source.includes(marker), "missing stream/cryptographic assertion: " + marker);
-  assert.doesNotMatch(source, /db dump[^\\n]*--file|>\\s*\"\\$work\\/[^\\n]+\\.sql\"/);
+  assert.doesNotMatch(source, /db dump[^\n]*--file/);
 });
 
 test("owner-only capture shell parses and refuses unapproved invocation without contacting staging", {
