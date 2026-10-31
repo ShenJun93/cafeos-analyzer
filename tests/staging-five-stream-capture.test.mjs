@@ -64,7 +64,8 @@ test("read-only drift gate inventories exactly 17 public tables plus Auth, Stora
   const path = fileURLToPath(
     new URL("../scripts/sql/cafeos-staging-capture-counts-readonly.sql", import.meta.url)
   );
-  const sql = await readFile(path, "utf8");
+  const sql = (await readFile(path, "utf8")).split("\n")
+    .filter(line => !line.trim().startsWith("--")).join("\n");
   const names = [
     "auth_users", "auth_identities", "storage_buckets", "storage_objects",
     "vault_secrets", "migration_receipts", "tenants", "tenant_members",
