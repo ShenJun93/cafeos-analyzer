@@ -405,3 +405,14 @@ textarea{min-height:110px;resize:vertical}
   .hq-filters .field-group,.hq-filters button{flex:1 1 100%}
   .hq-store-row strong{white-space:normal}
 }
+
+/* Manager-only POS cancellation evidence; not a payment or refund. */
+.void-controls{display:grid;gap:10px;margin-top:15px;padding:16px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface)}
+.void-controls.hidden{display:none}
+.void-controls button{justify-self:start}
+
+/* Manager audit: always distinguish read-only outcome review from mutation. */
+.void-history{display:grid;gap:10px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.void-history.hidden{display:none}
+.void-audit-item{display:grid;gap:4px;overflow-wrap:anywhere;padding:10px 0;border-bottom:1px solid var(--line)}
+.void-audit-item strong{font-weight:650}

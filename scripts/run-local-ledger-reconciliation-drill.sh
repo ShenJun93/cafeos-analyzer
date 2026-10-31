@@ -53,7 +53,12 @@ data_hash() {
     (select count(*) from public.daily_closes)::text"
 }
 
-# The exact 10-version local stack must already have both guards installed.
+# Isolate the additional VOID migration receipt while rehearsing the historical
+# seven-to-eight-to-ten transition. All commands are pinned to 127.0.0.1.
+# The VOID SQL is already present; this changes only the disposable ledger.
+readonly VOID_VERSION="20261028130000"
+assert_versions "${CANONICAL[@]}" "$VOID_VERSION"
+supabase migration repair --db-url "$DB_URL" --status reverted "$VOID_VERSION"
 assert_versions "${CANONICAL[@]}"
 [[ "$(psql "$DB_URL" -Atq -c \
  "select position('COMMERCE_CLOSE_FUTURE_DATE' in pg_get_functiondef(
@@ -109,4 +114,7 @@ supabase migration repair --db-url "$DB_URL" --status applied 20261025130000 202
 assert_versions "${CANONICAL[@]}"
 [[ "$(schema_hash)" == "$before_schema" ]]
 [[ "$(data_hash)" == "$before_data" ]]
-echo "CAFEOS_LOCAL_LEDGER_REPAIR_DRILL_PASS old=7 historical=8 canonical=10"
+# Put the candidate feature receipt back exactly as it was, without SQL replay.
+supabase migration repair --db-url "$DB_URL" --status applied "$VOID_VERSION"
+assert_versions "${CANONICAL[@]}" "$VOID_VERSION"
+echo "CAFEOS_LOCAL_LEDGER_REPAIR_DRILL_PASS old=7 historical=8 canonical=10 candidate_void=11"

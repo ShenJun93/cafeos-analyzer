@@ -96,6 +96,11 @@
             <button id="browsePaidOrders" class="secondary" type="button">Tra cứu / in lại hóa đơn</button>
             <div id="paidOrderList" class="open-order-list" aria-live="polite"></div>
           </section>
+          <section id="voidHistorySection" class="void-history hidden">
+            <div class="section-label">Lịch sử đơn đã hủy · Manager only</div>
+            <button id="voidHistory" type="button" class="secondary">Xem biên nhận hủy</button>
+            <div id="voidHistoryList" class="open-order-list" aria-live="polite"></div>
+          </section>
 
           <section id="paymentPanel" class="payment-panel hidden">
             <div class="section-label">Settlement record</div>
@@ -113,6 +118,14 @@
               <input id="paymentReference" maxlength="500">
             </label>
             <button id="capturePayment" type="button">Record Payment</button>
+             <div id="voidControls" class="void-controls hidden">
+               <label class="field-group">Lý do hủy đơn chưa thanh toán
+                 <input id="voidReason" maxlength="240" placeholder="Ví dụ: Khách đổi ý trước thanh toán">
+               </label>
+               <button id="voidOrder" type="button" class="secondary">Hủy đơn (Manager)</button>
+               <button id="checkVoidResult" type="button" class="secondary hidden" disabled>Kiểm tra trạng thái hủy (chỉ đọc)</button>
+               <p class="muted">Chỉ hủy đơn OPEN chưa thanh toán. Hệ thống ghi người hủy và lý do; không phải hoàn tiền.</p>
+             </div>
             <p class="muted">Payment record only — not payment acquiring or card processing.</p>
           </section>
           <section id="paidReceipt" class="paid-receipt hidden" aria-live="polite">
@@ -232,6 +245,10 @@ let currentDashboard = null;
 let pendingOrderSubmission = null;
 let orderSubmitInFlight = false;
 let paymentSubmitInFlight = false;
+let voidSubmitInFlight = false;
+let pendingVoidIntent = null;
+let voidHistorySerial = 0;
+let voidHistoryInFlight = false;
 let closeSubmitInFlight = false;
 let menuWriteInFlight = false;
 // Increment whenever the authenticated Tenant/Store view is reset. Results
@@ -359,6 +376,8 @@ function renderRoleControls() {
   el("menuWriteControls").classList.toggle("hidden", !manager);
   el("menuReadOnlyNotice").classList.toggle("hidden", manager);
   el("closeManagerNotice").classList.toggle("hidden", manager);
+  el("voidControls").classList.toggle("hidden", !manager);
+  el("voidHistorySection").classList.toggle("hidden", !manager);
   el("hqNav").classList.toggle("hidden", !manager);
   el("hqRefresh").disabled = !manager || hqLoadInFlight;
   el("closeDay").disabled = !manager || !currentDashboard || menuWriteInFlight
@@ -367,7 +386,8 @@ function renderRoleControls() {
 }
 
 function hasUnfinishedCheckout() {
-  return Boolean(pendingOrderSubmission || currentOrder || orderSubmitInFlight || paymentSubmitInFlight);
+  return Boolean(pendingOrderSubmission || currentOrder || orderSubmitInFlight
+    || paymentSubmitInFlight || voidSubmitInFlight || pendingVoidIntent);
 }
 
 // Never let old authenticated Tenant/Store HQ data survive a context reset.
@@ -388,7 +408,7 @@ function preventUnsafeContextReset() {
     setStatus("Đang lưu Menu. Không đổi Tenant/Store hoặc Refresh trước khi xác nhận.", "error");
     return true;
   }
-  if (closeSubmitInFlight) {
+  if (closeSubmitInFlight || voidSubmitInFlight) {
     el("tenant").value = currentTenantId || "";
     el("store").value = currentStoreId || "";
     setStatus("Daily Close đang xử lý. Không đổi Tenant/Store cho tới khi có kết quả.", "error");
@@ -417,8 +437,10 @@ function clearSessionState() {
   currentOrder = null;
   currentDashboard = null;
   pendingOrderSubmission = null;
+  pendingVoidIntent = null;
   orderSubmitInFlight = false;
   paymentSubmitInFlight = false;
+  voidSubmitInFlight = false;
   closeSubmitInFlight = false;
   menuWriteInFlight = false;
   el("createCategoryButton").disabled = false;
@@ -427,6 +449,7 @@ function clearSessionState() {
   menuState = { categories: [], items: [] };
   invalidateOpenOrderReads();
   invalidatePaidOrderReads();
+  invalidateVoidHistory();
   invalidateHQ();
   clearPaidReceipt();
   for (const id of ["menuCatalog", "menuAdminList", "commerceMetrics", "paymentMix", "controlBrief"]) {
@@ -442,7 +465,8 @@ function clearSessionState() {
 }
 
 function signOut() {
-  if (orderSubmitInFlight || paymentSubmitInFlight || closeSubmitInFlight || menuWriteInFlight) {
+  if (orderSubmitInFlight || paymentSubmitInFlight || voidSubmitInFlight || closeSubmitInFlight
+      || menuWriteInFlight) {
     return setStatus("Yêu cầu POS/Menu/Daily Close đang xử lý; không đăng xuất khi chưa có kết quả.", "error");
   }
   if (hasUnfinishedCheckout() && !window.confirm(
@@ -483,11 +507,14 @@ async function loadTenant() {
   currentOrder = null;
   currentDashboard = null;
   pendingOrderSubmission = null;
+  pendingVoidIntent = null;
   orderSubmitInFlight = false;
   paymentSubmitInFlight = false;
+  voidSubmitInFlight = false;
   cartState.clear();
   invalidateOpenOrderReads();
   invalidatePaidOrderReads();
+  invalidateVoidHistory();
   invalidateHQ();
   menuState = { categories: [], items: [] };
   el("menuCatalog").replaceChildren();
@@ -527,11 +554,13 @@ async function refreshStore() {
   el("menuAdminList").replaceChildren();
   currentOrder = null;
   pendingOrderSubmission = null;
+  pendingVoidIntent = null;
   cartState.clear();
   el("posMenuSearch").value = "";
   el("posMenuCategory").value = "";
   invalidateOpenOrderReads();
   invalidatePaidOrderReads();
+  invalidateVoidHistory();
   invalidateHQ();
   // Control Tower reports on imported facts and must not block first-party sales.
   // Menu and daily dashboard remain required; their failures still fail closed.
@@ -723,7 +752,15 @@ function renderCart() {
   el("submitOrder").disabled = !canWriteCommerce() || !currentStoreId || !cartState.size
     || cartState.size > MAX_POS_ORDER_LINES || Boolean(currentOrder || orderSubmitInFlight);
   el("capturePayment").disabled = !canWriteCommerce() || paymentSubmitInFlight
+    || voidSubmitInFlight || pendingVoidIntent
     || !currentOrder || currentOrder.status !== "open";
+  el("voidOrder").disabled = !canManageCommerce() || paymentSubmitInFlight
+    || voidSubmitInFlight || Boolean(pendingVoidIntent?.terminalPaid)
+    || !currentOrder || currentOrder.status !== "open";
+  el("voidReason").disabled = Boolean(pendingVoidIntent || voidSubmitInFlight);
+  el("checkVoidResult").classList.toggle("hidden", !canManageCommerce() || !pendingVoidIntent);
+  el("checkVoidResult").disabled = !canManageCommerce() || !pendingVoidIntent
+    || voidSubmitInFlight || paymentSubmitInFlight;
   el("recoverOpenOrders").disabled = !canWriteCommerce() || hasUnfinishedCheckout();
   el("paymentPanel").classList.toggle("hidden", !currentOrder || currentOrder.status !== "open");
   if (currentOrder) {
@@ -884,6 +921,13 @@ async function submitOrder() {
     });
     currentOrder = payload.order;
     pendingOrderSubmission = null;
+    if (currentOrder.status === "voided") {
+      cartState.clear();
+      currentOrder = null;
+      renderCart();
+      await refreshDashboardAfterSale("Server xác nhận đơn đã hủy từ trước.");
+      return;
+    }
     if (currentOrder.status === "paid") {
       invalidatePaidOrderReads();
       const paidNumber = currentOrder.orderNumber;
@@ -923,8 +967,194 @@ function paymentCents(value) {
   return cents > 0n && cents <= 100000000000000n ? cents : null;
 }
 
+async function finishConfirmedVoid(confirmation) {
+  pendingVoidIntent = null;
+  currentOrder = null;
+  cartState.clear();
+  el("voidReason").value = "";
+  invalidateOpenOrderReads();
+  invalidateVoidHistory();
+  renderCart();
+  invalidateCloseDashboard();
+  try {
+    await loadDashboard();
+    if (!currentDashboard) throw new Error("Chưa xác minh Dashboard");
+    setStatus(confirmation, "ok");
+  } catch {
+    invalidateCloseDashboard();
+    setStatus(confirmation + " Dashboard chưa cập nhật; làm mới trước khi đóng ngày.", "warning");
+  }
+}
+
+// A lost void response might follow a committed write. Keep the original order
+// and reason immutable until an exact idempotent retry confirms the audit row.
+async function voidCurrentOrder() {
+  if (!canManageCommerce() || !currentOrder || currentOrder.status !== "open"
+      || voidSubmitInFlight || paymentSubmitInFlight || orderSubmitInFlight) return;
+  if (pendingVoidIntent?.terminalPaid) {
+    throw new Error("Server đã xác nhận đơn được thanh toán. Không retry Hủy; kiểm tra hóa đơn.");
+  }
+  if (!pendingVoidIntent) {
+    const reason = el("voidReason").value.trim();
+    if (reason.length < 5 || reason.length > 240) {
+      throw new Error("Lý do hủy phải dài 5–240 ký tự.");
+    }
+    if (!window.confirm("Xác nhận HỦY đơn " + (currentOrder.orderNumber || currentOrder.id)
+      + " chưa thanh toán? Ghi audit người hủy và lý do; không thể hoàn tác.")) return;
+    pendingVoidIntent = { orderId: currentOrder.id, storeId: currentStoreId, reason };
+  }
+  const intent = pendingVoidIntent;
+  voidSubmitInFlight = true;
+  el("capturePayment").disabled = true;
+  el("voidOrder").disabled = true;
+  el("closeDay").disabled = true;
+  setStatus("Đang ghi biên nhận hủy đơn…");
+  try {
+    const result = await appFetch("/api/app/commerce-void-order", {
+      method: "POST",
+      body: { orderId: intent.orderId, storeId: intent.storeId, reason: intent.reason }
+    });
+    if (result?.void?.status !== "voided"
+        || result.void.orderId !== intent.orderId
+        || result.void.storeId !== intent.storeId
+        || result.void.reason !== intent.reason) {
+      throw new Error("Biên nhận hủy không khớp; chưa xác minh trạng thái.");
+    }
+    await finishConfirmedVoid("Đã hủy đơn chưa thanh toán và lưu lý do, người thực hiện.");
+  } catch (error) {
+    throw new Error("Chưa xác nhận được hủy đơn. Chỉ retry Hủy với CÙNG lý do; "
+      + "không ghi Payment cho đơn này khi chưa rõ trạng thái. " + error.message);
+  } finally {
+    voidSubmitInFlight = false;
+    renderCart();
+    renderClosePreview();
+  }
+}
+
+// A void can have committed even if its POST acknowledgement was lost.
+// Reconcile by reading BOTH the order state and manager-only immutable audit.
+async function reconcilePendingVoid() {
+  if (!canManageCommerce() || !pendingVoidIntent || voidSubmitInFlight || paymentSubmitInFlight) return;
+  const intent = pendingVoidIntent;
+  if (!currentOrder || currentOrder.id !== intent.orderId || currentStoreId !== intent.storeId) {
+    throw new Error("Ngữ cảnh đơn hủy đã thay đổi, không thể xác minh.");
+  }
+  const epoch = viewEpoch, token = sessionToken, tenant = currentTenantId;
+  voidSubmitInFlight = true;
+  renderCart();
+  try {
+    const payload = await appFetch(
+      "/api/app/commerce-void-history?storeId=" + encodeURIComponent(intent.storeId)
+      + "&orderId=" + encodeURIComponent(intent.orderId)
+    );
+    if (viewEpoch !== epoch || sessionToken !== token || currentTenantId !== tenant
+      || currentStoreId !== intent.storeId || pendingVoidIntent !== intent) return;
+    const order = payload?.order;
+    if (!order || order.orderId !== intent.orderId || order.storeId !== intent.storeId
+        || !["open", "paid", "voided"].includes(order.status)) {
+      throw new Error("Bằng chứng trạng thái đơn không hợp lệ.");
+    }
+    if (order.status === "voided") {
+      const audit = payload.receipt;
+      if (!audit || audit.orderId !== intent.orderId || audit.storeId !== intent.storeId
+          || !audit.voidedByUserId || !audit.voidedAt || !audit.reason) {
+        throw new Error("Đơn đã hủy nhưng thiếu biên nhận kiểm toán xác thực.");
+      }
+      const origin = audit.reason === intent.reason
+        ? "Đã xác minh đơn được hủy: " : "Người khác đã hủy đơn với lý do khác: ";
+      await finishConfirmedVoid(origin + audit.reason + " · User " + audit.voidedByUserId + ".");
+    } else if (order.status === "paid") {
+      if (payload.receipt !== null) throw new Error("Đơn thanh toán có audit hủy bất thường.");
+      // A verified PAID receipt is required before discarding the pending void.
+      intent.terminalPaid = true;
+      await loadPaidReceipt(intent.orderId);
+      if (!paidReceiptState || paidReceiptState.orderId !== intent.orderId
+          || paidReceiptState.storeId !== intent.storeId || paidReceiptState.status !== "paid") {
+        throw new Error("Server báo đơn PAID nhưng hóa đơn chưa xác minh. Giữ khóa hủy/thanh toán.");
+      }
+      pendingVoidIntent = null;
+      currentOrder = null;
+      cartState.clear();
+      invalidateOpenOrderReads();
+      invalidateCloseDashboard();
+      renderCart();
+      setStatus("Đơn đã thanh toán ở một phiên khác; đã xác minh hóa đơn, không thực hiện hủy.", "warning");
+    } else {
+      if (payload.receipt !== null) throw new Error("Đơn OPEN có biên nhận hủy bất thường.");
+      setStatus("Đơn vẫn OPEN tại thời điểm kiểm tra. Giữ nguyên lý do cũ để retry Hủy; không ghi Payment khi chưa rõ yêu cầu trước.", "warning");
+    }
+  } finally {
+    voidSubmitInFlight = false;
+    renderCart();
+    renderClosePreview();
+  }
+}
+
+function invalidateVoidHistory() {
+  ++voidHistorySerial;
+  voidHistoryInFlight = false;
+  el("voidHistoryList").replaceChildren();
+}
+
+async function browseVoidHistory(offset = 0) {
+  if (!canManageCommerce() || !sessionToken || !currentStoreId || voidHistoryInFlight) return;
+  const serial = ++voidHistorySerial;
+  const epoch = viewEpoch, tenant = currentTenantId, store = currentStoreId, token = sessionToken;
+  const stillCurrent = () => serial === voidHistorySerial && epoch === viewEpoch
+    && tenant === currentTenantId && store === currentStoreId && token === sessionToken;
+  voidHistoryInFlight = true;
+  el("voidHistory").disabled = true;
+  const root = el("voidHistoryList");
+  try {
+    const data = await appFetch("/api/app/commerce-void-history?storeId="
+      + encodeURIComponent(store) + "&offset=" + offset);
+    if (!stillCurrent()) return;
+    if (!Array.isArray(data?.receipts) || data.receipts.length > 20
+      || data.receipts.some(r => !r?.orderId || r.storeId !== store
+        || !r.businessDate || !r.voidedByUserId || !r.voidedAt || !r.reason)
+      || (data.nextOffset !== null && data.nextOffset !== undefined
+        && (!Number.isInteger(data.nextOffset) || data.nextOffset !== offset + 20
+          || data.nextOffset > 10020))) {
+      throw new Error("Lịch sử hủy trả về dữ liệu không hợp lệ.");
+    }
+    if (!offset) root.replaceChildren();
+    else {
+      const more = root.querySelector(".void-history-more");
+      if (more) more.remove();
+    }
+    for (const r of data.receipts) {
+      const item = document.createElement("div");
+      item.className = "void-audit-item";
+      const title = document.createElement("strong");
+      title.textContent = "Đơn " + r.orderId + " · " + r.businessDate;
+      const reason = document.createElement("span");
+      reason.textContent = "Lý do: " + r.reason;
+      const actor = document.createElement("span");
+      actor.textContent = "User: " + r.voidedByUserId + " · " + r.voidedAt;
+      item.append(title, reason, actor);
+      root.append(item);
+    }
+    if (!data.receipts.length && offset === 0) root.textContent = "Chưa có đơn hủy tại Store này.";
+    if (data.nextOffset !== null && data.nextOffset !== undefined) {
+      const more = document.createElement("button");
+      more.type = "button"; more.className = "secondary void-history-more";
+      more.textContent = "Xem thêm lịch sử hủy";
+      more.addEventListener("click", () => guarded(() => browseVoidHistory(data.nextOffset)));
+      root.append(more);
+    }
+  } catch (error) {
+    if (stillCurrent()) throw error;
+  } finally {
+    if (serial === voidHistorySerial) {
+      voidHistoryInFlight = false;
+      el("voidHistory").disabled = false;
+    }
+  }
+}
+
 async function capturePayment() {
-  if (!canWriteCommerce() || !currentOrder || currentOrder.status !== "open" || paymentSubmitInFlight) return;
+  if (!canWriteCommerce() || !currentOrder || currentOrder.status !== "open"
+      || paymentSubmitInFlight || voidSubmitInFlight || pendingVoidIntent) return;
   paymentSubmitInFlight = true;
   el("capturePayment").disabled = true;
   el("closeDay").disabled = true;
@@ -1395,7 +1625,7 @@ function renderClosePreview() {
     (currentDashboard.closed ? " · CLOSED" : " · OPEN") +
     (Number(currentDashboard.openOrderCount) > 0
       ? " · ĐÓNG NGÀY BỊ CHẶN: sang POS → Khôi phục đơn chưa thanh toán để xác minh. "
-        + "CafeOS v1 chưa hỗ trợ hủy đơn; không ghi thanh toán giả để đóng ngày."
+        + "Manager có thể hủy đơn chưa thanh toán kèm lý do; không ghi thanh toán giả để đóng ngày."
       : "");
   el("closeDay").disabled = !canManageCommerce() || closeSubmitInFlight
     || menuWriteInFlight || hasUnfinishedCheckout()
@@ -1539,6 +1769,9 @@ el("posMenuSearch").addEventListener("input", renderMenu);
 el("posMenuCategory").addEventListener("change", renderMenu);
 el("submitOrder").addEventListener("click", () => guarded(submitOrder));
 el("capturePayment").addEventListener("click", () => guarded(capturePayment));
+el("voidOrder").addEventListener("click", () => guarded(voidCurrentOrder));
+el("checkVoidResult").addEventListener("click", () => guarded(reconcilePendingVoid));
+el("voidHistory").addEventListener("click", () => guarded(() => browseVoidHistory()));
 el("printPaidReceipt").addEventListener("click", printPaidReceipt);
 el("recoverOpenOrders").addEventListener("click", () => guarded(() => loadOpenOrdersForRecovery()));
 el("browsePaidOrders").addEventListener("click", () => guarded(() => browsePaidOrders()));

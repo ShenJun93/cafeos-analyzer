@@ -51,7 +51,9 @@ export function commerceUpstreamError({ payload }) {
     "COMMERCE_IDEMPOTENCY_CONFLICT",
     "COMMERCE_DAY_CLOSED",
     "COMMERCE_ORDER_NOT_OPEN",
-    "COMMERCE_CLOSE_OPEN_ORDERS"
+    "COMMERCE_CLOSE_OPEN_ORDERS",
+    "COMMERCE_VOID_CONFLICT",
+    "COMMERCE_ORDER_HAS_PAYMENT"
   ].includes(code)) {
     return new AppHttpError(409, code, "Commerce state conflict");
   }

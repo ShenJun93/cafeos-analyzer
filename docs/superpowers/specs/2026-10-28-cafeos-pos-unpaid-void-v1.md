@@ -1,0 +1,47 @@
+# CafeOS POS — audited unpaid-order void (incremental candidate)
+
+**Status:** implementation candidate on `feat/cafeos-pos-void-v1`, built against Core Commerce v1 at `75d06fb`. Does not change staging or authorize release.
+
+## Merchant job
+
+An open POS order may be impossible to settle (customer leaves, cashier mistake). Daily Close refuses any open orders. Staff must not invent payment evidence merely to close the day. This slice adds manager-approved irreversible **VOID**, never a refund.
+
+## Trusted system of record
+
+- `pos_orders` status changes `open → voided` with `voided_at`.
+- New `pos_order_voids` stores exactly one tenant-scoped audit receipt per order: Store, business date, reason (5–240 chars), authenticated manager actor, timestamp. Raw write grants are unavailable to browsers; RLS and SELECT are tenant-scoped.
+- Narrow atomic `public.commerce_void_order(tenant,order,reason)` runs with checked `auth.uid()` and `private.has_tenant_role` for owner/admin/manager. The function serializes with Daily Close via the exact Store/business-date advisory transaction lock, then takes the order row lock used by payment. It refuses paid/nonexistent orders, closes and any recorded payment; it never deletes order lines or payment records.
+- Same actor + same reason repeated invocation is idempotent; conflicting second void is rejected. Never treat absence of an HTTP reply as rollback. Browser keeps exact intent on uncertainty and refuses payment until resolved.
+- App route `POST /api/app/commerce-void-order` validates strict body, manager role, trusted RPC receipt, exact reason and audit actor. Cashier can still retrieve open orders and pay; only manager sees cancellation controls.
+- No new Vercel function source; existing workflow dispatcher used. Offline data capture is not claimed.
+
+## Tests and migration boundaries
+
+Incremental contract `db/contracts/core_commerce_void_order.sql` mirrors migration `20261028130000_core_commerce_void_order.sql`. The migration file follows repository ordering and is intended for **disposable localhost validation only**, not to be applied to `cafeos-staging` before original-ledger repair/backup/approval.
+
+Original 7→8→10 migration release read-only classifiers stay **unchanged**. CI historical drills isolate the new 11th receipt temporarily while testing the original guards, then restore/apply the feature migration after the milestone. An 11-version stack is NOT classified as the prior 10-version staging release PASS.
+
+Acceptance must include blank local DB tests, paid-order refusal, audit immutability and tenant isolation, authenticated HTTP, cashier/manager browser behavior, and independent staging/backup/JWT gates before any real merchant rollout.
+
+## Membership revocation and historical actor custody
+
+A cross-module lifecycle bug was found on 2026-10-31: Core Commerce originally used `ON DELETE RESTRICT` foreign keys from Order, Payment and Daily Close actor UUIDs to **active** `tenant_members`. The new void audit had the same coupling. The existing `scripts/operator-offboard-tenant.mjs` prepare phase revokes tenant memberships by deleting those rows, which would fail for any staff member who ever created an order or recorded a payment/close/void. The observed live staging Commerce fact tables remain empty at this checkpoint; this is a **schema-level** defect, not a live merchant incident.
+
+This **still-unapplied Draft void migration** now drops the three legacy actor-to-membership FKs and does not create a fourth void actor FK. The four immutable actor UUIDs remain stored as historical snapshots; they are **not** inferred from an active membership join. All four authorized Commerce RPCs independently check `auth.uid()` and `private.has_tenant_role` **at the time of each write**, so revoking membership prevents future writes without deleting financial/audit history. Browser DML remains restricted. SQL pgTAP demonstrates revocation of the owner and cashier *after* orders, payment, close and void, retention of all four actor snapshot types and rejection of privileged void after revocation.
+
+This design does **not** authorize hard deletion of a Tenant with existing Commerce facts. The earlier operator hard-delete graph/count logic predates Commerce and needs its own data-retention, export, legal-hold, dependency and zero-residue acceptance before merchant deployment. Do not silently claim `operator-offboard-tenant` hard-delete is Commerce-aware. Do not edit the previously applied `20261025094352_core_commerce_v1.sql` migration or use repair/db push to deploy the fix. Both SQL contract and incremental void migration must match exactly; staging acceptance still blocked by owner-controlled recovery and history gates.
+
+## Explicit exclusions
+
+No void of paid orders, refunds, card acquiring, partial/split payments, silent deletion, retroactive Daily Close edits, or background retry mutation. `age` off-host recovery stays postponed for development only; real data deployment remains blocked.
+
+
+## Operational completion: read-only reconciliation and manager audit history
+
+- `GET /api/app/commerce-void-history?storeId=...&orderId=...` reads and validates both the original `pos_orders` state and the immutable `pos_order_voids` receipt. The result distinguishes `open`, `paid`, and `voided`, and fails closed if status, Store, Tenant, date, or timestamp disagree.
+- A lost void POST acknowledgement is not proof of rollback. Manager uses **Kiểm tra trạng thái hủy** (GET only), retaining the exact original order and reason until independent evidence is available. A verified VOID — including one performed by another manager — ends the pending void safely and identifies its actor/reason. OPEN retains the pending retry intent; PAID requires the existing server-confirmed paid receipt before releasing that pending state. No background writes or payment creation.
+- `GET /api/app/commerce-void-history?storeId=...&offset=...` returns paginated validated audit records (maximum 20/page + 21st-row lookahead), with client-side stale Store/Tenant/session invalidation. The POS manager panel renders order UUID, business date, exact reason, actor user UUID, and UTC timestamp as text only; no invented employee display names.
+- Raw `public.pos_order_voids` SELECT RLS is **manager-only** by `private.has_tenant_role(tenant_id, ['owner','admin','manager'])`; browser-facing GET also requires the same role. Cashiers can use standard order status/settlement reads but cannot inspect manager void reasons. RLS tests prove cashier cannot read the audit table while owner can. Raw INSERT/UPDATE/DELETE stay unavailable to authenticated users.
+- Tests for new API, source-boundary behavior, and Chromium manager lost-ack recovery + audit history at 390px and 1200px supplement the original SQL and POS tests.
+
+This is a draft-local implementation amendment, not approval to use live staging/prod, complete a merchant release, or claim offline transaction processing.

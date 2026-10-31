@@ -1668,7 +1668,7 @@ test("Daily Close cannot start while local POS or Menu operations are unsettled"
   assert.equal(node("closeDay").disabled, true, "two open orders must block closing day");
   assert.match(node("closePreview").textContent, /ĐÓNG NGÀY BỊ CHẶN/);
   assert.match(node("closePreview").textContent, /Khôi phục đơn chưa thanh toán/);
-  assert.match(node("closePreview").textContent, /chưa hỗ trợ hủy đơn/);
+  assert.match(node("closePreview").textContent, /Manager có thể hủy đơn chưa thanh toán kèm lý do/);
   assert.match(node("closePreview").textContent, /không ghi thanh toán giả/);
   await runInContext("closeBusinessDay()", ctx);
   assert.equal(runInContext("closeWrites", ctx), 0, "blocked close cannot write");
@@ -2037,4 +2037,38 @@ test("HQ Overview exposes manager-only, date-scoped first-party multi-store evid
     && x.destination === "/api/app/workflow?route=commerce-hq"));
   assert.match(preview, /'\/api\/app\/commerce-hq', 'commerce-hq'/);
   assert.doesNotMatch(html, /localStorage|sessionStorage|indexedDB/);
+});
+
+test("POS manager void UI is deliberately gated and never calls a payment or refund endpoint", async () => {
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  assert.match(html, /id="voidControls" class="void-controls hidden"/);
+  assert.match(html, /id="voidReason" maxlength="240"/);
+  assert.match(html, /id="voidOrder"/);
+  assert.match(html, /voidControls"\)\.classList\.toggle\("hidden", !manager\)/);
+  assert.match(html, /let pendingVoidIntent = null/);
+  assert.match(html, /voidSubmitInFlight/);
+  assert.match(html, /if \(!pendingVoidIntent\)/);
+  assert.match(html, /\/api\/app\/commerce-void-order/);
+  assert.match(html, /currentOrder = null;[\s\S]*invalidateOpenOrderReads\(\)/);
+  assert.match(html, /pendingVoidIntent[\s\S]*không ghi Payment/i);
+  assert.doesNotMatch(html, /localStorage|sessionStorage|indexedDB/);
+});
+
+test("void reconciliation and history use manager-only read-only API plus stable receipt evidence", async () => {
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  const api = await readFile(new URL("../server/commerce/void-history.mjs", import.meta.url), "utf8");
+  const vercel = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
+  assert.match(html, /id="checkVoidResult"/);
+  assert.match(html, /id="voidHistory"/);
+  assert.match(html, /id="voidHistoryList"/);
+  assert.match(html, /voidHistorySection"\)\.classList\.toggle\("hidden", !manager\)/);
+  assert.match(html, /\/api\/app\/commerce-void-history\?storeId=/);
+  assert.match(html, /async function reconcilePendingVoid\(/);
+  assert.match(html, /async function browseVoidHistory\(/);
+  assert.match(api, /requireCommerceManagerRole\(/);
+  assert.doesNotMatch(api, /onlyPost\(|method:\s*["']POST["']/);
+  assert.match(html, /pendingVoidIntent/);
+  assert.match(html, /audit\.reason|r\.reason/);
+  assert.ok(vercel.rewrites.some(x => x.source === "/api/app/commerce-void-history"
+    && x.destination === "/api/app/workflow?route=commerce-void-history"));
 });
