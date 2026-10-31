@@ -11,6 +11,8 @@ on:
       - "scripts/run-local-ledger-reconciliation-drill.sh"
       - "scripts/run-local-greenpath-ledger-drill.sh"
       - "scripts/run-local-age-backup-drill.sh"
+      - "scripts/run-local-supabase-cli-age-stream-drill.sh"
+      - "scripts/run-local-auth-history-age-restore-drill.sh"
       - "scripts/backup-cafeos-staging-age.sh"
       - "scripts/verify-cafeos-staging-age-archive.sh"
       - "scripts/verify-cafeos-age-recovery-offhost.sh"
@@ -31,6 +33,8 @@ on:
       - "scripts/run-local-ledger-reconciliation-drill.sh"
       - "scripts/run-local-greenpath-ledger-drill.sh"
       - "scripts/run-local-age-backup-drill.sh"
+      - "scripts/run-local-supabase-cli-age-stream-drill.sh"
+      - "scripts/run-local-auth-history-age-restore-drill.sh"
       - "scripts/backup-cafeos-staging-age.sh"
       - "scripts/verify-cafeos-staging-age-archive.sh"
       - "scripts/verify-cafeos-age-recovery-offhost.sh"
@@ -108,8 +112,14 @@ jobs:
           sudo apt-get install -y -qq postgresql-client-17
           echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
 
+      - name: Prove Supabase-compatible local roles/schema/data/history encrypted stdout streams
+        run: bash scripts/run-local-supabase-cli-age-stream-drill.sh
+
       - name: Prove off-host recovery cryptography with disposable age identities and negative controls
         run: bash scripts/run-local-age-offhost-recovery-drill.sh
+
+      - name: Restore synthetic Auth identity and migration history from age into a second disposable DB
+        run: bash scripts/run-local-auth-history-age-restore-drill.sh
 
       - name: Restore age-encrypted synthetic PostgreSQL backup to a separate local database
         run: bash scripts/run-local-age-backup-drill.sh

@@ -1,0 +1,40 @@
+name: CafeOS CLI TLS Routing
+
+on:
+  push:
+    paths:
+      - "scripts/run-ci-cafeos-cli-tls-routing.sh"
+      - "scripts/check-cafeos-cli-db-url-routing-local.sh"
+      - ".github/workflows/cafeos-cli-tls-routing.yml"
+  pull_request:
+    paths:
+      - "scripts/run-ci-cafeos-cli-tls-routing.sh"
+      - "scripts/check-cafeos-cli-db-url-routing-local.sh"
+      - ".github/workflows/cafeos-cli-tls-routing.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  ssl-route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_USE_SLIM_IMAGES: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.122.0
+      - name: Initialize disposable local Supabase
+        run: |
+          set -euo pipefail
+          test "$(supabase --version)" = "2.122.0"
+          supabase init
+      - name: Start disposable SSL-off Supabase stack
+        run: supabase start
+      - name: Prove local versus remote TLS-required behavior
+        run: bash scripts/run-ci-cafeos-cli-tls-routing.sh
+      - name: Stop disposable Supabase stack
+        if: always()
+        run: supabase stop --no-backup || true

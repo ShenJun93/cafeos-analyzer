@@ -499,3 +499,190 @@ test("staging recovery scope is a single non-secret SELECT-only inventory with a
   assert.doesNotMatch(sql, /\bselect\s+\*\s+from\s+(?:auth|storage|vault|public)\./i);
   assert.doesNotMatch(sql, /\b(?:current_setting\(['"]request\.jwt|auth\.jwt\(\)|auth\.uid\(\))/i);
 });
+
+
+test("staging source VERIFYFULL gate uses explicit READ ONLY and refuses credentials/receipt drift", async () => {
+  const source = await readFile(
+    new URL("../scripts/check-cafeos-staging-readonly-verifyfull.sh", import.meta.url),
+    "utf8"
+  );
+  assert.match(source, /set -euo pipefail/);
+  assert.match(source, /wjatnyvdygvblirggdcm/);
+  assert.match(source, /PGSSLMODE=verify-full/);
+  assert.match(source, /PGSSLROOTCERT/);
+  assert.match(source, /PGPASSFILE/);
+  assert.match(source, /PGCONNECT_TIMEOUT=8/);
+  assert.match(source, /BEGIN TRANSACTION READ ONLY;/);
+  assert.match(source, /unset PGOPTIONS PGPASSWORD/);
+  assert.match(source, /cafeos-staging-receipt-fingerprint\.sql/);
+  assert.match(source, /fa57902e637543dde1082d4ff307aabda1a9e223a3b0a354780948da8bb34eb3/);
+  assert.match(source, /CAFEOS_STAGING_SEVEN_ORIGINAL_RECEIPTS_PASS/);
+  assert.match(source, /EXPORT_AND_RESTORE_NOT_AUTHORIZED/);
+  assert.doesNotMatch(source, /(?:pg_dump|pg_dumpall|supabase db dump|supabase db push|supabase migration|migration repair|\bpg_restore\b|service_role|sb_secret_)/i);
+  assert.doesNotMatch(source, /(?:\bINSERT\s+INTO\b|\bUPDATE\s+\w+\s+SET\b|\bDELETE\s+FROM\b|\bDROP\s+TABLE\b)/i);
+});
+
+test("staging source VERIFYFULL gate parses and fails closed without protected owner files", posixShellOnly, () => {
+  const script = fileURLToPath(new URL("../scripts/check-cafeos-staging-readonly-verifyfull.sh", import.meta.url));
+  const syntax = spawnSync("bash", ["-n", script], { encoding: "utf8", timeout: 6000 });
+  assert.equal(syntax.status, 0, syntax.stderr);
+  const attempt = spawnSync("bash", [script], {
+    env: { PATH: process.env.PATH, HOME: "/nonexistent-cafeos-owner-fixture" },
+    encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(attempt.status, 0, "must refuse to run without protected real owner files");
+  assert.match(attempt.stdout + attempt.stderr, /STOP_STAGING_CONFIG_DIRECTORY/);
+});
+
+
+test("synthetic Auth/history age restore refuses any remote source and preserves plaintext-free pipes", async () => {
+  const source = await readFile(
+    new URL("../scripts/run-local-auth-history-age-restore-drill.sh", import.meta.url),
+    "utf8"
+  );
+  const workflow = await readFile(new URL("../.github/workflows/supabase-db.yml", import.meta.url), "utf8");
+  for (const key of [
+    "GITHUB_ACTIONS", "CI", "127.0.0.1:54322",
+    "cafeos_ci_auth_hist_src", "cafeos_ci_auth_hist_dst",
+    "auth.users", "auth.identities", "supabase_migrations.schema_migrations",
+    "--no-owner --no-acl", "age -R", "age -d -i",
+    "SET LOCAL session_replication_role=replica",
+    "dropdb --maintenance-db=", "trap cleanup EXIT",
+    "CAFEOS_SYNTHETIC_DISTINCT_DB_AUTH_HISTORY_AGE_RESTORE_PASS",
+    "SAME_LOCAL_POSTGRES_SERVER_NOT_REAL_SUPABASE_RESTORE_NOT_OFFHOST"
+  ]) assert.ok(source.includes(key), key);
+  assert.match(workflow, /run: bash scripts\/run-local-auth-history-age-restore-drill\.sh/);
+  assert.doesNotMatch(source, /wjatnyvdygvblirggdcm|supabase\.co|--linked|supabase link|supabase db push|supabase migration repair|PGPASSFILE|PGSSLROOTCERT|service_role|sb_secret_/i);
+  assert.doesNotMatch(source, /supabase db reset|supabase stop|rm -rf.*\/mnt\/e/i);
+});
+
+test("synthetic Auth/history age restore is CI-only and shell-parses", posixShellOnly, () => {
+  const path = fileURLToPath(new URL("../scripts/run-local-auth-history-age-restore-drill.sh", import.meta.url));
+  const syntax = spawnSync("bash", ["-n", path], { encoding: "utf8", timeout: 6000 });
+  assert.equal(syntax.status, 0, syntax.stderr);
+  const attempt = spawnSync("bash", [path], {
+    env: { PATH: process.env.PATH, CI: "", GITHUB_ACTIONS: "" },
+    encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(attempt.status, 0);
+  assert.match(attempt.stderr, /STOP: disposable GitHub Actions environment required/);
+});
+
+
+test("real TLS Supabase CLI fixture proves correct CA acceptance and wrong CA rejection without staging", async () => {
+  const source = await readFile(
+    new URL("../scripts/check-cafeos-cli-dump-tls-negative-local.sh", import.meta.url), "utf8"
+  );
+  const research = await readFile(
+    new URL("../docs/research/2026-10-29-cafeos-cli-dump-tls-no-go.md", import.meta.url), "utf8"
+  );
+  for (const marker of [
+    "set -euo pipefail", "127.0.0.1", "55433", "cafeos-cleanroom-20261029",
+    "cafeos-tls-fixture-20261029", "POSTGRES_DB=postgres",
+    "hostnossl all all 0.0.0.0/0 reject", "show ssl",
+    "pg_stat_ssl", "PGPASSFILE=", "PGSSLMODE=verify-full",
+    "sslmode=verify-full", "sslrootcert=",
+    "CAFEOS_PSQL_GOOD_CA_VERIFYFULL_PASS", "CAFEOS_PSQL_BAD_CA_REJECTED",
+    "CAFEOS_CLI_GOOD_CA_ACCEPTED", "CAFEOS_CLI_BAD_CA_REJECTED_ON_TLS_SERVER",
+    "STOP_CAFEOS_CLI_BAD_CA_ACCEPTED_ON_TLS_SERVER", "exit 42",
+    "CAFEOS_LOCAL_TLS_CERT_TEST_PASS_ONLY_SYNTHETIC", "NO_STAGING_SOURCE_ACCESSED",
+  ]) assert.ok(source.includes(marker), "missing local TLS marker: " + marker);
+  assert.doesNotMatch(source, /wjatnyvdygvblirggdcm|aws-0-ap-southeast-1\.pooler|supabase db push|--linked|supabase link|migration repair|sb_secret_/i);
+  assert.match(research, /TLS-ENABLED CA POSITIVE\/NEGATIVE TEST = \*\*PASS\*\*/);
+  assert.match(research, /SSL-OFF \*\*REMOTE-ROUTE\*\* REQUIRED-TLS REJECTION = \*\*PASS\*\*/);
+  assert.match(research, /STAGING BACKUP = \*\*NOT AUTHORIZED \/ NOT RUN\*\*/);
+  assert.match(research, /RELEASE NO-GO/);
+});
+
+test("real TLS Supabase CLI fixture parses and fails closed if local cleanroom absent", posixShellOnly, () => {
+  const path = fileURLToPath(new URL("../scripts/check-cafeos-cli-dump-tls-negative-local.sh", import.meta.url));
+  const syntax = spawnSync("bash", ["-n", path], { encoding: "utf8", timeout: 6000 });
+  assert.equal(syntax.status, 0, syntax.stderr);
+  const attempt = spawnSync("bash", [path], {
+    env: { PATH: process.env.PATH, HOME: "/nonexistent-cafeos-local-cli-fixture" },
+    encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(attempt.status, 0);
+  assert.match(attempt.stdout + attempt.stderr, /STOP: pinned CLI absent/);
+});
+
+
+test("explicit SSL-off downgrade negative gate rejects strict TLS fallback and never reaches staging", async () => {
+  const script = await readFile(
+    new URL("../scripts/check-cafeos-cli-ssl-downgrade-local.sh", import.meta.url), "utf8"
+  );
+  for (const marker of [
+    "set -euo pipefail", "127.0.0.1:54322", "cafeos-cleanroom-20261029",
+    "supabase_db_cafeos-cleanroom-20261029", "show ssl",
+    "require verify-ca verify-full", "PGPASSFILE",
+    "STOP_CAFEOS_CLI_SSL_OFF_DOWNGRADE_", "STOP_CAFEOS_CLI_TLS_DOWNGRADE_GATE_FAILED",
+    "CAFEOS_CLI_TLS_NO_DOWNGRADE_LOCAL_GATE_PASS", "exit 42",
+    "SYNTHETIC_LOCAL_ONLY_STAGING_NOT_AUTHORIZED",
+  ]) assert.ok(script.includes(marker), "missing anti-downgrade guard: " + marker);
+  assert.doesNotMatch(script, /wjatnyvdygvblirggdcm|aws-0-ap-southeast-1\.pooler|--linked|supabase db push|migration repair|PGPASSWORD=/i);
+});
+
+test("explicit SSL-off downgrade negative gate shell-parses and refuses missing cleanroom", posixShellOnly, () => {
+  const path = fileURLToPath(new URL("../scripts/check-cafeos-cli-ssl-downgrade-local.sh", import.meta.url));
+  const syntax = spawnSync("bash", ["-n", path], { encoding: "utf8", timeout: 6000 });
+  assert.equal(syntax.status, 0, syntax.stderr);
+  const attempt = spawnSync("bash", [path], {
+    env: { PATH: process.env.PATH, HOME: "/nonexistent-cafeos-fixture" },
+    encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(attempt.status, 0);
+  assert.match(attempt.stdout + attempt.stderr, /STOP_PINNED_LOCAL_CLI_MISSING/);
+});
+
+
+test("CLI route-discrimination regression protects exact local versus remote SSL-off matrix", async () => {
+  const script = await readFile(
+    new URL("../scripts/check-cafeos-cli-db-url-routing-local.sh", import.meta.url), "utf8"
+  );
+  const ciScript = await readFile(
+    new URL("../scripts/run-ci-cafeos-cli-tls-routing.sh", import.meta.url), "utf8"
+  );
+  const workflow = await readFile(
+    new URL("../.github/workflows/cafeos-cli-tls-routing.yml", import.meta.url), "utf8"
+  );
+  for (const marker of [
+    "set -euo pipefail", "127.0.0.1", "localhost",
+    "54322", "show ssl", "auth.users", "PGPASSFILE=",
+    "check '127.0.0.1' 'verify-full'",
+    "check 'localhost' 'disable'",
+    "check 'localhost' 'require'",
+    "check 'localhost' 'verify-ca'",
+    "check 'localhost' 'verify-full'",
+    "STOP_REMOTE_PATH_FAILED_TO_REQUIRE_TLS_",
+    "CAFEOS_CLI_2_122_0_LOCAL_REMOTE_TLS_ROUTE_PASS",
+  ]) assert.ok(script.includes(marker), "missing local CLI route marker: " + marker);
+  for (const marker of [
+    "GITHUB_ACTIONS", "CI", "127.0.0.1", "localhost",
+    "supabase --version", "2.122.0", "PGPASSFILE=",
+    "STOP_REMOTE_TLS_DOWNGRADE_", "STOP_NOT_REMOTE_ROUTE_",
+    "CAFEOS_CLI_2_122_0_ROUTE_TLS_CI_PASS",
+    "LOCAL_DISPOSABLE_ONLY_STAGING_NOT_ACCESSED",
+  ]) assert.ok(ciScript.includes(marker), "missing CI CLI route marker: " + marker);
+  assert.match(workflow, /version: 2\.122\.0/);
+  assert.match(workflow, /run: bash scripts\/run-ci-cafeos-cli-tls-routing\.sh/);
+  assert.match(workflow, /supabase stop --no-backup/);
+  assert.doesNotMatch(script + ciScript + workflow, /wjatnyvdygvblirggdcm|aws-0-ap-southeast-1\.pooler|supabase link|supabase db push|migration repair|sb_secret_/i);
+});
+
+test("CLI route-discrimination scripts parse and deny execution outside their authorized fixture", posixShellOnly, () => {
+  for (const script of [
+    "../scripts/check-cafeos-cli-db-url-routing-local.sh",
+    "../scripts/run-ci-cafeos-cli-tls-routing.sh",
+  ]) {
+    const path = fileURLToPath(new URL(script, import.meta.url));
+    const syntax = spawnSync("bash", ["-n", path], { encoding: "utf8", timeout: 6000 });
+    assert.equal(syntax.status, 0, syntax.stderr);
+  }
+  const path = fileURLToPath(new URL("../scripts/run-ci-cafeos-cli-tls-routing.sh", import.meta.url));
+  const denied = spawnSync("bash", [path], {
+    env: { PATH: process.env.PATH, GITHUB_ACTIONS: "", CI: "" },
+    encoding: "utf8", timeout: 6000
+  });
+  assert.notEqual(denied.status, 0);
+  assert.match(denied.stderr, /STOP_GITHUB_ACTIONS_ONLY/);
+});
