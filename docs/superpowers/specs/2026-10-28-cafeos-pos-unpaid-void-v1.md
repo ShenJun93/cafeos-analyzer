@@ -23,6 +23,14 @@ Original 7→8→10 migration release read-only classifiers stay **unchanged**. 
 
 Acceptance must include blank local DB tests, paid-order refusal, audit immutability and tenant isolation, authenticated HTTP, cashier/manager browser behavior, and independent staging/backup/JWT gates before any real merchant rollout.
 
+## Membership revocation and historical actor custody
+
+A cross-module lifecycle bug was found on 2026-10-31: Core Commerce originally used `ON DELETE RESTRICT` foreign keys from Order, Payment and Daily Close actor UUIDs to **active** `tenant_members`. The new void audit had the same coupling. The existing `scripts/operator-offboard-tenant.mjs` prepare phase revokes tenant memberships by deleting those rows, which would fail for any staff member who ever created an order or recorded a payment/close/void. The observed live staging Commerce fact tables remain empty at this checkpoint; this is a **schema-level** defect, not a live merchant incident.
+
+This **still-unapplied Draft void migration** now drops the three legacy actor-to-membership FKs and does not create a fourth void actor FK. The four immutable actor UUIDs remain stored as historical snapshots; they are **not** inferred from an active membership join. All four authorized Commerce RPCs independently check `auth.uid()` and `private.has_tenant_role` **at the time of each write**, so revoking membership prevents future writes without deleting financial/audit history. Browser DML remains restricted. SQL pgTAP demonstrates revocation of the owner and cashier *after* orders, payment, close and void, retention of all four actor snapshot types and rejection of privileged void after revocation.
+
+This design does **not** authorize hard deletion of a Tenant with existing Commerce facts. The earlier operator hard-delete graph/count logic predates Commerce and needs its own data-retention, export, legal-hold, dependency and zero-residue acceptance before merchant deployment. Do not silently claim `operator-offboard-tenant` hard-delete is Commerce-aware. Do not edit the previously applied `20261025094352_core_commerce_v1.sql` migration or use repair/db push to deploy the fix. Both SQL contract and incremental void migration must match exactly; staging acceptance still blocked by owner-controlled recovery and history gates.
+
 ## Explicit exclusions
 
 No void of paid orders, refunds, card acquiring, partial/split payments, silent deletion, retroactive Daily Close edits, or background retry mutation. `age` off-host recovery stays postponed for development only; real data deployment remains blocked.
