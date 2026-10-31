@@ -1,0 +1,80 @@
+name: CafeOS Signed GoTrue JWT E2E (synthetic)
+
+on:
+  push:
+    branches:
+      - test/cafeos-signed-jwt-local-e2e-v1
+    paths:
+      - ".github/workflows/cafeos-signed-jwt-e2e.yml"
+      - "scripts/run-local-cafeos-signed-jwt-e2e.py"
+      - "tests/signed-jwt-local-e2e.test.mjs"
+      - "supabase/migrations/**"
+  pull_request:
+    paths:
+      - ".github/workflows/cafeos-signed-jwt-e2e.yml"
+      - "scripts/run-local-cafeos-signed-jwt-e2e.py"
+      - "tests/signed-jwt-local-e2e.test.mjs"
+      - "supabase/migrations/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-jwt-e2e:
+    name: GoTrue-issued JWT + RLS + POS (disposable localhost)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      SUPABASE_USE_SLIM_IMAGES: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.117.0
+
+      - name: Validate test boundaries and source syntax
+        run: node --test tests/signed-jwt-local-e2e.test.mjs
+
+      - name: Configure a blank local Supabase fixture (no links or remote credentials)
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase init
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("supabase/config.toml")
+          s=p.read_text()
+          s=s.replace("# auto_expose_new_tables = true", "auto_expose_new_tables = false")
+          s=s.replace("[db.seed]\n# If enabled, seeds the database after migrations during a db reset.\nenabled = true",
+                      "[db.seed]\n# If enabled, seeds the database after migrations during a db reset.\nenabled = false")
+          p.write_text(s)
+          PY
+
+      - name: Start disposable local Supabase and apply committed migrations
+        run: supabase start
+
+      - name: Run independent GoTrue-issued JWT tenant isolation and POS E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t dbs < <(docker ps --format '{{.Names}}' | grep -E '^supabase_db_[a-zA-Z0-9_-]+$')
+          mapfile -t kongs < <(docker ps --format '{{.Names}}' | grep -E '^supabase_kong_[a-zA-Z0-9_-]+$')
+          [[ ${#dbs[@]} -eq 1 && ${#kongs[@]} -eq 1 ]] || {
+            echo 'STOP: expected exactly one local Supabase DB and gateway'
+            exit 12
+          }
+          export CAFEOS_E2E_MODE=CI_LOCAL
+          export CAFEOS_E2E_DB="${dbs[0]}"
+          export CAFEOS_E2E_KONG="${kongs[0]}"
+          python3 scripts/run-local-cafeos-signed-jwt-e2e.py
+
+      - name: Stop and discard the disposable Supabase CI fixture
+        if: always()
+        shell: bash
+        run: supabase stop --no-backup || true
