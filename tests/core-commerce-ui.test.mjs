@@ -2075,3 +2075,41 @@ test("Menu lifecycle denies cashier editor and blocks manager edits during an un
   runInContext('currentTenantRole="manager";pendingOrderSubmission={clientOrderKey:"unsent"}',ctx);
   assert.throws(()=>runInContext('startEditItem("a")',ctx),/Hoàn tất đơn/);
 });
+
+test("category lifecycle keeps items sellable under All when their group is archived",async()=>{
+ const html=await readFile(new URL("../public/app.html",import.meta.url),"utf8");
+ for(const id of ["categoryAdminList","editCategoryForm","editCategoryName","editCategorySort",
+   "editCategoryActive","saveEditCategoryButton","cancelEditCategoryButton"]){
+   assert.ok(html.includes('id="'+id+'"'));
+ }
+ const {ctx,el,runInContext}=await menuMutationHarness();
+ runInContext('menuState.categories=[{id:"coffee",name:"Coffee",sort_order:0,active:true},{id:"old",name:"Old Coffee",sort_order:1,active:false}]',ctx);
+ runInContext('menuState.items=[{id:"olditem",name:"Legacy Latte",sku:null,category_id:"old",price:35000,active:true}]',ctx);
+ runInContext('renderMenu()',ctx);
+ assert.equal(el("menuCatalog").children.length,1,"active item remains sellable under all");
+ assert.equal(el("posMenuCategory").children.length,2,"archived group absent from cashier filter");
+ assert.equal(el("itemCategory").children.length,2,"archived group absent from new item assignment");
+ assert.equal(el("categoryAdminList").children.length,2,"manager sees archived group");
+ runInContext('startEditCategory("old")',ctx);
+ assert.equal(el("editCategoryName").value,"Old Coffee");
+ assert.equal(el("editCategoryActive").value,"false");
+ el("editCategoryName").value="Tea";
+ el("editCategorySort").value="6";
+ el("editCategoryActive").value="true";
+ runInContext('appFetch=async(path,options)=>{if(path!=="/api/app/commerce-menu"||options.method!=="PATCH")throw Error("unexpected");globalThis.savedCategory=options.body;return {category:{id:"old"}}}',ctx);
+ runInContext('loadMenu=async()=>{}',ctx);
+ await runInContext('saveEditCategory({preventDefault(){}})',ctx);
+ assert.equal(ctx.savedCategory.categoryId,"old");
+ assert.equal(ctx.savedCategory.sortOrder,6);
+ assert.equal(ctx.savedCategory.active,true);
+ assert.equal(runInContext("editingMenuCategoryId",ctx),null);
+});
+
+test("cashier cannot edit archived category and manager cannot edit during unsettled checkout",async()=>{
+ const {ctx,runInContext}=await menuMutationHarness();
+ runInContext('menuState.categories=[{id:"old",name:"Coffee",sort_order:0,active:true}]',ctx);
+ runInContext('currentTenantRole="cashier"',ctx);
+ assert.throws(()=>runInContext('startEditCategory("old")',ctx),/Manager role/);
+ runInContext('currentTenantRole="manager";pendingOrderSubmission={clientOrderKey:"unsent"}',ctx);
+ assert.throws(()=>runInContext('startEditCategory("old")',ctx),/Hoàn tất đơn/);
+});

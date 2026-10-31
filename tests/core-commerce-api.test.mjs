@@ -1887,3 +1887,85 @@ test("Menu PATCH rejects smuggled columns, invalid values, stale or cross-tenant
   assert.equal(out.statusCode,status);
  }
 });
+
+test("Menu category lifecycle GET hides archived groups for cashiers, retains active items", async () => {
+  const active = { id: CATEGORY_A, tenant_id: TENANT_A, name: "Coffee", sort_order: 0, active: true };
+  const archived = { ...active, id: "17000000-0000-4000-8000-000000000002", name: "Old coffee", active: false };
+  const sellable = { id: ITEM_A, tenant_id: TENANT_A, category_id: archived.id,
+    name: "Archived category latte", sku: null, price: 35000, active: true };
+  for(const [role,includeInactive] of [["cashier",false],["manager",true]]) {
+    const out=res();let catFilter;
+    await menuHandle(req(authHeaders,"GET","/api/app/commerce-menu"+(includeInactive?"?includeInactive=true":"")),out,{
+      env,fetchImpl:authFetch(role,(url)=>{
+        if(url.pathname==="/rest/v1/menu_categories"){
+          catFilter=url.searchParams.get("active");
+          return jsonResponse(includeInactive?[active,archived]:[active]);
+        }
+        if(url.pathname==="/rest/v1/menu_items")return jsonResponse([sellable]);
+        return jsonResponse({},500);
+      })
+    });
+    assert.equal(out.statusCode,200);
+    assert.equal(parsed(out).categories.length,includeInactive?2:1);
+    assert.equal(parsed(out).items[0].id,ITEM_A,"category archive cannot disable an otherwise active POS item");
+    assert.equal(catFilter,includeInactive?null:"eq.true");
+  }
+});
+
+test("Menu category PATCH uses manager role, tenant/item scope and exact updated acknowledgment",async()=>{
+ const body={kind:"category",categoryId:CATEGORY_A,name:"Espresso",sortOrder:-5,active:false};
+ let captured;
+ const out=res();
+ await menuHandle(req(authHeaders,"PATCH","/api/app/commerce-menu",body),out,{
+  env,fetchImpl:authFetch("manager",(url,init)=>{
+   if(init.method!=="PATCH")throw Error("unexpected");
+   assert.equal(url.pathname,"/rest/v1/menu_categories");
+   assert.equal(url.searchParams.get("tenant_id"),"eq."+TENANT_A);
+   assert.equal(url.searchParams.get("id"),"eq."+CATEGORY_A);
+   assert.equal(init.headers.Prefer,"return=representation");
+   captured=JSON.parse(init.body);
+   return jsonResponse([{id:CATEGORY_A,tenant_id:TENANT_A,...captured}]);
+  })
+ });
+ assert.equal(out.statusCode,200);
+ assert.deepEqual(captured,{name:"Espresso",sort_order:-5,active:false});
+ const denied=res();
+ await menuHandle(req(authHeaders,"PATCH","/api/app/commerce-menu",body),denied,{
+  env,fetchImpl:authFetch("cashier")
+ });
+ assert.equal(denied.statusCode,403);
+});
+
+test("Menu category PATCH rejects smuggled fields and uncertain commit evidence",async()=>{
+ const body={kind:"category",categoryId:CATEGORY_A,name:"Coffee",sortOrder:0,active:true};
+ let writes=0;
+ const deps={env,fetchImpl:authFetch("manager",(url,init)=>{if(init.method==="PATCH")writes++;return jsonResponse([])})};
+ for(const [value,code] of [
+  [{...body,tenant_id:TENANT_A},"BODY_FIELD_FORBIDDEN"],
+  [{...body,categoryId:["wrong"]},"MENU_CATEGORY_ID_INVALID"],
+  [{...body,name:123},"MENU_CATEGORY_NAME_INVALID"],
+  [{...body,sortOrder:0.25},"MENU_CATEGORY_SORT_INVALID"],
+  [{...body,sortOrder:100001},"MENU_CATEGORY_SORT_INVALID"],
+  [{...body,active:"false"},"MENU_CATEGORY_ACTIVE_INVALID"],
+  [{...body,active:null},"MENU_CATEGORY_ACTIVE_INVALID"],
+  [{...body,price:0},"BODY_FIELD_FORBIDDEN"]
+ ]){
+  const out=res();
+  await menuHandle(req(authHeaders,"PATCH","/api/app/commerce-menu",value),out,deps);
+  assert.equal(out.statusCode,400);
+  assert.equal(parsed(out).error.code,code);
+ }
+ assert.equal(writes,0);
+ const row={id:CATEGORY_A,tenant_id:TENANT_A,name:"Coffee",sort_order:0,active:true};
+ for(const [response,status] of [
+  [[],404],[[{...row,tenant_id:STORE_A}],502],
+  [[{...row,sort_order:1}],502],[[{...row,active:false}],502],
+  [{one:"object"},502]
+ ]){
+  const out=res();
+  await menuHandle(req(authHeaders,"PATCH","/api/app/commerce-menu",body),out,{
+   env,fetchImpl:authFetch("manager",()=>jsonResponse(response))
+  });
+  assert.equal(out.statusCode,status);
+ }
+});

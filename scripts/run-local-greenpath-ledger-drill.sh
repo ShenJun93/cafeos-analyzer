@@ -5,7 +5,7 @@ readonly DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 readonly HISTORICAL_LAST="20261025094352"
 readonly -a HISTORICAL=(20260921005530 20260921005532 20260921100900 20260921164500 20260921170000 20260921201000 20260921203000 20261025094352)
 readonly -a LEGACY=(20260921100732 20260921103432 20260921105352 20260921133428 20260921141814 20260921151006 20261025103648)
-readonly -a FULL=( "${HISTORICAL[@]}" 20261025130000 20261025140000 20261031190000 )
+readonly -a FULL=( "${HISTORICAL[@]}" 20261025130000 20261025140000 20261031190000 20261031203000 )
 command -v supabase >/dev/null
 command -v psql >/dev/null
 command -v pg_isready >/dev/null
@@ -88,6 +88,16 @@ menu_ready="$(psql "$DB_URL" -Atq -c "
   and exists(select 1 from pg_trigger where tgrelid='public.menu_items'::regclass
        and tgname='commerce_menu_item_updated_at' and tgenabled='O')")"
 [[ "$menu_ready" == "t" ]] || { echo "Menu lifecycle RLS missing" >&2; exit 1; }
+category_ready="$(psql "$DB_URL" -Atq -c "
+ select has_column_privilege('authenticated','public.menu_categories','name','UPDATE')
+  and has_column_privilege('authenticated','public.menu_categories','active','UPDATE')
+  and not has_column_privilege('authenticated','public.menu_categories','tenant_id','UPDATE')
+  and exists(select 1 from pg_policy where polrelid='public.menu_categories'::regclass
+       and polname='menu_categories_manager_update' and polcmd='w')
+  and exists(select 1 from pg_trigger where tgrelid='public.menu_categories'::regclass
+       and tgname='commerce_menu_category_updated_at' and tgenabled='O')")"
+[[ "$category_ready" == "t" ]] || { echo "Category lifecycle RLS missing" >&2; exit 1; }
+
 negative_phase="$(psql "$DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
   -f scripts/sql/cafeos-local-postguards-negative-fixture.sql | awk -F '|' 'NF { print $NF }' | tail -n 1)"
 [[ "$negative_phase" == "POST_GUARDS_NOT_READY_REVIEW" ]] || {
@@ -105,4 +115,4 @@ bad_subtotals="$(psql "$DB_URL" -X -q -A -t -v ON_ERROR_STOP=1   -f scripts/sql/
 [[ "$(post_guard_phase)" == "POST_GUARDS_NOT_READY_REVIEW" ]]
 supabase test db
 [[ "$(post_guard_phase)" == "POST_GUARDS_NOT_READY_REVIEW" ]]
-echo "CAFEOS_LOCAL_GREENPATH_PASS: pre=8 legacy=7 reconciled=8 guarded=11 staging_classifier=NO_GO_REVIEW_REQUIRED"
+echo "CAFEOS_LOCAL_GREENPATH_PASS: pre=8 legacy=7 reconciled=8 guarded=12 staging_classifier=NO_GO_REVIEW_REQUIRED"
