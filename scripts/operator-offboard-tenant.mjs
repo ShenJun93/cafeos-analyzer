@@ -132,7 +132,7 @@ async function countRows({ base, secretKey, table, tenantId, fetchImpl }) {
   // safety precondition: require an exact HEAD count, not an estimated count
   // or a truncated/unparseable range.
   const range = response.headers.get("content-range");
-  const match = /^(\\*|0-0)\/(0|[1-9][0-9]*)$/.exec(range ?? "");
+  const match = /^(\*|0-0)\/(0|[1-9][0-9]*)$/.exec(range ?? "");
   const total = match ? Number(match[2]) : NaN;
   if (!match || !Number.isSafeInteger(total) ||
       (total === 0 && match[1] !== "*") ||
