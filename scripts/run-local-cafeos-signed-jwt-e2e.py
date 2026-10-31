@@ -101,6 +101,18 @@ try:
     pg(sql);seeded=True
     assert_check(count_snapshot().split(',')[4]=='2','SYNTHETIC_TENANTS_SEEDED')
 
+    # Verify genuine signature validation end-to-end: alter a middle byte of
+    # the *issued* JWT signature without touching its signed claims.
+    segments=actors['owner_a']['token'].split('.')
+    assert len(segments)==3 and len(segments[2])>=12,'SIGNED_JWT_SIGNATURE_SHAPE'
+    index=len(segments[2])//2
+    signature=segments[2][:index]+('A' if segments[2][index]!='A' else 'B')+segments[2][index+1:]
+    tampered='.'.join((segments[0],segments[1],signature))
+    status,_=api('GET','/auth/v1/user',tampered)
+    assert_check(status in (401,403),'GOTRUE_REJECTS_TAMPERED_SIGNED_JWT')
+    status,_=api('GET','/rest/v1/tenants?select=id',tampered)
+    assert_check(status in (401,403),'POSTGREST_REJECTS_TAMPERED_SIGNED_JWT')
+
     for role,visible in [('owner_a',a),('owner_b',b),('cashier_a',a),('viewer_a',a)]:
         status,rows=api('GET','/rest/v1/tenants?select=id',actors[role]['token'])
         assert_check(status==200 and isinstance(rows,list) and {r.get('id') for r in rows}=={visible},'RLS_TENANT_VISIBILITY_'+role)
