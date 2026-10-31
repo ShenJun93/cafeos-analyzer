@@ -125,6 +125,8 @@ test("greenpath reconciliation acceptance never targets staging or production", 
   assert.match(script, /20261031190000/);
   assert.match(script, /20261031203000/);
   assert.match(script, /20261031214500/);
+  assert.match(script, /20261031220000/);
+  assert.match(script, /COMMERCE_TOPPING_NOT_FOUND/);
   assert.match(script, /menu_toppings_manager_update/);
   assert.match(script, /menu_categories_manager_update/);
   assert.match(script, /menu_items_manager_update/);
