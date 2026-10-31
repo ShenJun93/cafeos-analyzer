@@ -135,6 +135,29 @@ test("prepare execution revokes memberships and verifies zero", async () => {
   assert.ok(verifyIndex > deleteIndex);
 });
 
+test("emergency prepare remains available before optional Commerce/Void tables exist", async () => {
+  const fixture = operatorFixture({ tenant_members: 2, pos_orders: 3 });
+  const fetchImpl = async (url, options) => {
+    const p = new URL(url).pathname;
+    if (options?.method === "HEAD" && (p === "/rest/v1/pos_orders" || p === "/rest/v1/pos_order_voids"))
+      return new Response(JSON.stringify({ code: "PGRST205" }), { status: 404 });
+    return fixture.fetchImpl(url, options);
+  };
+  const result = await offboardTenant({
+    supabaseUrl: BASE, secretKey: SECRET, tenantId: TENANT_ID,
+    confirmTenantId: TENANT_ID, execute: true, fetchImpl
+  });
+  assert.equal(result.result, "prepared");
+  assert.equal(fixture.counts.tenant_members, 0);
+  assert.equal(fixture.counts.pos_orders, 3);
+  const scanned = fixture.calls.filter(c => c.method === "HEAD").map(c => c.pathname);
+  assert.deepEqual(scanned, [
+    "/rest/v1/tenants", "/rest/v1/tenant_members", "/rest/v1/tenant_members"
+  ]);
+  assert.deepEqual(fixture.calls.filter(c => c.method === "DELETE").map(c => c.pathname),
+    ["/rest/v1/tenant_members"]);
+});
+
 test("hard-delete refuses to run while tenant memberships remain", async () => {
   const { calls, fetchImpl } = operatorFixture();
   await assert.rejects(
