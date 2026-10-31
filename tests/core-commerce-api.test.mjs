@@ -1801,3 +1801,89 @@ test("paid-order browsing denies unauthorized callers and fails closed on malfor
     assert.equal(parsed(response).error.code, "SUPABASE_UPSTREAM");
   }
 });
+
+test("Menu manager GET includes archived items while cashier remains active-only", async () => {
+ const category={id:CATEGORY_A,tenant_id:TENANT_A,name:"Coffee",sort_order:0,active:true};
+ const active={id:ITEM_A,tenant_id:TENANT_A,category_id:CATEGORY_A,sku:null,name:"Latte",price:35000,active:true};
+ const archived={...active,id:ITEM_B,active:false};
+ for (const [role,archivedRequested] of [["cashier",false],["manager",true]]) {
+   let activeFilter;
+   const result=res();
+   await menuHandle(req(authHeaders,"GET","/api/app/commerce-menu"+(archivedRequested?"?includeInactive=true":"")),result,{
+     env,fetchImpl:authFetch(role,(url)=>{
+       if(url.pathname==="/rest/v1/menu_categories") return jsonResponse([category]);
+       if(url.pathname==="/rest/v1/menu_items"){
+         activeFilter=url.searchParams.get("active");
+         return jsonResponse(archivedRequested?[active,archived]:[active]);
+       }
+       return jsonResponse([],500);
+     })
+   });
+   assert.equal(result.statusCode,200);
+   assert.equal(parsed(result).items.length,archivedRequested?2:1);
+   assert.equal(activeFilter,archivedRequested?null:"eq.true");
+ }
+ const denied=res();
+ await menuHandle(req(authHeaders,"GET","/api/app/commerce-menu?includeInactive=true"),denied,{env,fetchImpl:authFetch("cashier")});
+ assert.equal(denied.statusCode,403);
+});
+
+test("Menu PATCH uses strict manager role, tenant/item scoped update and exact returned row", async () => {
+ const body={kind:"item",itemId:ITEM_A,name:"Latte Large",categoryId:CATEGORY_A,sku:"LAT-02",price:"55000.25",active:false};
+ let called=0;
+ const response=res();
+ await menuHandle(req(authHeaders,"PATCH","/api/app/commerce-menu",body),response,{
+   env,fetchImpl:authFetch("manager",(url,init)=>{
+     if(init.method!=="PATCH")return jsonResponse({},500);
+     called++;
+     assert.equal(url.pathname,"/rest/v1/menu_items");
+     assert.equal(url.searchParams.get("tenant_id"),"eq."+TENANT_A);
+     assert.equal(url.searchParams.get("id"),"eq."+ITEM_A);
+     assert.equal(init.headers.Prefer,"return=representation");
+     const data=JSON.parse(init.body);
+     assert.deepEqual(Object.keys(data).sort(),["active","category_id","name","price","sku"]);
+     return jsonResponse([{id:ITEM_A,tenant_id:TENANT_A,...data}]);
+   })
+ });
+ assert.equal(response.statusCode,200);
+ assert.equal(called,1);
+ assert.equal(parsed(response).item.active,false);
+ const cashier=res();
+ await menuHandle(req(authHeaders,"PATCH","/api/app/commerce-menu",body),cashier,{env,fetchImpl:authFetch("cashier")});
+ assert.equal(cashier.statusCode,403);
+});
+
+test("Menu PATCH rejects smuggled columns, invalid values, stale or cross-tenant acknowledgments",async()=>{
+ const valid={kind:"item",itemId:ITEM_A,name:"Latte",categoryId:CATEGORY_A,sku:null,price:35000,active:true};
+ let wrote=0;
+ const deps={env,fetchImpl:authFetch("manager",(url,init)=>{if(init.method==="PATCH")wrote++;return jsonResponse([])})};
+ for(const [body,code] of [
+  [{...valid,tenant_id:TENANT_A},"BODY_FIELD_FORBIDDEN"],
+  [{...valid,price:-1},"MENU_ITEM_PRICE_INVALID"],
+  [{...valid,price:"35000.001"},"MENU_ITEM_PRICE_INVALID"],
+  [{...valid,active:"false"},"MENU_ITEM_ACTIVE_INVALID"],
+  [{...valid,active:undefined},"MENU_ITEM_ACTIVE_INVALID"],
+  [{...valid,itemId:["bad"]},"MENU_ITEM_ID_INVALID"],
+  [{...valid,categoryId:["bad"]},"MENU_CATEGORY_INVALID"],
+  [{...valid,name:false},"MENU_ITEM_NAME_INVALID"]
+ ]){
+  const out=res();await menuHandle(req(authHeaders,"PATCH","/api/app/commerce-menu",body),out,deps);
+  assert.equal(out.statusCode,400);
+  assert.equal(parsed(out).error.code,code);
+ }
+ assert.equal(wrote,0);
+ const base={id:ITEM_A,tenant_id:TENANT_A,category_id:CATEGORY_A,sku:null,name:"Latte",price:35000,active:true};
+ for(const [rows,status] of [
+  [[],404],
+  [[{...base,tenant_id:STORE_A}],502],
+  [[{...base,price:"35000.01"}],502],
+  [[{...base,active:false}],502],
+  [{one:"not-array"},502]
+ ]){
+  const out=res();
+  await menuHandle(req(authHeaders,"PATCH","/api/app/commerce-menu",valid),out,{
+   env,fetchImpl:authFetch("manager",()=>jsonResponse(rows))
+  });
+  assert.equal(out.statusCode,status);
+ }
+});

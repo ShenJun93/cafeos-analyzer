@@ -7,10 +7,11 @@ import {
   requireCommerceManagerRole,
   supabaseJson
 } from "../../api/_app-auth.mjs";
-import { UUID_RE, strictFields, parseCommerceMoney, commerceReturnedCents } from "./_shared.mjs";
+import { UUID_RE, requiredUuid, strictFields, parseCommerceMoney, commerceReturnedCents } from "./_shared.mjs";
 
 const CATEGORY_FIELDS = new Set(["kind", "name", "sortOrder"]);
 const ITEM_FIELDS = new Set(["kind", "categoryId", "sku", "name", "price"]);
+const ITEM_UPDATE_FIELDS = new Set(["kind", "itemId", "categoryId", "sku", "name", "price", "active"]);
 
 // PostgreSQL returns category sort_order as int4 and optional item SKU as
 // text/null. These are exposed to the cashier's category filter and SKU
@@ -91,6 +92,36 @@ function confirmedMenuItem(rows, requested) {
   return row;
 }
 
+function updatedItemBody(body) {
+  strictFields(body, ITEM_UPDATE_FIELDS);
+  const id = requiredUuid(body.itemId, "MENU_ITEM_ID_INVALID", "Invalid Menu item");
+  const data = itemBody({
+    kind: "item", name: body.name, sku: body.sku,
+    categoryId: body.categoryId, price: body.price
+  }, null);
+  if (typeof body.active !== "boolean") {
+    throw new AppHttpError(400, "MENU_ITEM_ACTIVE_INVALID", "Menu item active state must be boolean");
+  }
+  // Only update columns granted to authenticated managers. Never trust
+  // tenant_id, created_at, updated_at or an incoming order price snapshot.
+  return { id, data: {
+    category_id: data.category_id, sku: data.sku, name: data.name,
+    price: data.price, active: body.active
+  } };
+}
+
+function confirmedUpdatedItem(rows, expected, tenantId, id) {
+  if (!Array.isArray(rows) || rows.length !== 1) return false;
+  const row = rows[0];
+  return !!row && typeof row === "object" && !Array.isArray(row)
+    && row.id === id && row.tenant_id === tenantId
+    && row.category_id === expected.category_id
+    && row.sku === expected.sku && row.name === expected.name
+    && row.active === expected.active
+    && commerceReturnedCents(row.price) !== null
+    && commerceReturnedCents(row.price) === commerceReturnedCents(expected.price);
+}
+
 function itemBody(body, tenantId) {
   strictFields(body, ITEM_FIELDS);
   const name = boundedText(body.name, {
@@ -123,6 +154,12 @@ export async function handle(req, res, deps = {}) {
   try {
     if (req.method === "GET") {
       const ctx = await appContext(req, deps);
+      const url = new URL(req.url ?? "/api/app/commerce-menu", "http://localhost");
+      const includeInactive = url.searchParams.get("includeInactive");
+      if (includeInactive !== null && includeInactive !== "true") {
+        throw new AppHttpError(400, "MENU_READ_OPTION_INVALID", "Invalid Menu read option");
+      }
+      if (includeInactive === "true") requireCommerceManagerRole(ctx);
       const categoryParams = new URLSearchParams({
         select: "id,tenant_id,name,sort_order,active,created_at,updated_at",
         tenant_id: "eq." + ctx.tenant.id,
@@ -133,7 +170,7 @@ export async function handle(req, res, deps = {}) {
       const itemParams = new URLSearchParams({
         select: "id,tenant_id,category_id,sku,name,price,active,created_at,updated_at",
         tenant_id: "eq." + ctx.tenant.id,
-        active: "eq.true",
+        ...(includeInactive === "true" ? {} : { active: "eq.true" }),
         order: "name.asc",
         limit: "1000"
       });
@@ -164,7 +201,9 @@ export async function handle(req, res, deps = {}) {
               && (typeof row.category_id !== "string" || !UUID_RE.test(row.category_id)))
             || typeof row.name !== "string" || !row.name.trim() || row.name.length > 300
             || !validReadSku(row.sku)
-            || row.active !== true || !validReadPrice(row.price))
+            || (includeInactive === "true"
+              ? typeof row.active !== "boolean" : row.active !== true)
+            || !validReadPrice(row.price))
           || new Set(categories.map(row => row.id)).size !== categories.length
           || new Set(items.map(row => row.id)).size !== items.length) {
         throw new AppHttpError(502, "COMMERCE_MENU_UPSTREAM_INVALID",
@@ -173,6 +212,28 @@ export async function handle(req, res, deps = {}) {
       return appJson(res, 200, {
         tenant: ctx.tenant, categories, items
       });
+    }
+
+    if (req.method === "PATCH") {
+      const ctx = requireCommerceManagerRole(await appContext(req, deps));
+      const { id, data } = updatedItemBody(requestJsonObject(req));
+      const params = new URLSearchParams({
+        tenant_id: "eq." + ctx.tenant.id,
+        id: "eq." + id,
+        select: "id,tenant_id,category_id,sku,name,price,active,created_at,updated_at"
+      });
+      const rows = await supabaseJson("/rest/v1/menu_items?" + params, {
+        token: ctx.token, method: "PATCH", body: data,
+        headers: { Prefer: "return=representation" }, ...deps
+      });
+      if (Array.isArray(rows) && rows.length === 0) {
+        throw new AppHttpError(404, "MENU_ITEM_NOT_FOUND", "Menu item was not found in this tenant");
+      }
+      if (!confirmedUpdatedItem(rows, data, ctx.tenant.id, id)) {
+        throw new AppHttpError(502, "COMMERCE_MENU_WRITE_UNCONFIRMED",
+          "Menu update has uncertain commit evidence; inspect Menu before retry");
+      }
+      return appJson(res, 200, { tenant: ctx.tenant, item: rows[0] });
     }
 
     if (req.method === "POST") {
@@ -216,7 +277,7 @@ export async function handle(req, res, deps = {}) {
       throw new AppHttpError(400, "MENU_KIND_INVALID", "Menu write kind must be category or item");
     }
 
-    res.setHeader("allow", "GET, POST");
+    res.setHeader("allow", "GET, POST, PATCH");
     return appJson(res, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed" } });
   } catch (error) {
     return appError(res, error);

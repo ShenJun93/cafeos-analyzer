@@ -158,6 +158,20 @@
       </div>
 
       <div id="menuAdminList" class="menu-admin-list"></div>
+      <form id="editItemForm" class="commerce-form hidden" aria-label="Edit menu item">
+        <h3>Chỉnh sửa món</h3>
+        <p class="muted">Giá mới chỉ áp dụng cho đơn tiếp theo. Hóa đơn cũ vẫn giữ giá chốt lúc bán.</p>
+        <label class="field-group">Tên món<input id="editItemName" maxlength="300" required></label>
+        <label class="field-group">SKU<input id="editItemSku" maxlength="100"></label>
+        <label class="field-group">Nhóm<select id="editItemCategory"><option value="">Không phân nhóm</option></select></label>
+        <label class="field-group">Giá mới<input id="editItemAmount" type="number" min="0" max="1000000000" step="0.01" required></label>
+        <label class="field-group">Trạng thái<select id="editItemActive">
+          <option value="true">Đang bán</option>
+          <option value="false">Tạm ngừng bán</option>
+        </select></label>
+        <button id="saveEditItemButton" type="submit">Lưu thay đổi</button>
+        <button id="cancelEditItemButton" class="secondary" type="button">Hủy chỉnh sửa</button>
+      </form>
     </section>
 
     <section id="dashboardWorkspace" class="app-workspace hidden">
@@ -243,6 +257,7 @@ let controlReadSerial = 0;
 let hqReadSerial = 0;
 let hqLoadInFlight = false;
 let menuState = { categories: [], items: [] };
+let editingMenuItemId = null;
 let paidReceiptState = null;
 let receiptReadSerial = 0;
 const cartState = new Map();
@@ -358,6 +373,7 @@ function renderRoleControls() {
   const manager = canManageCommerce();
   el("menuWriteControls").classList.toggle("hidden", !manager);
   el("menuReadOnlyNotice").classList.toggle("hidden", manager);
+  if (!manager) cancelEditItem();
   el("closeManagerNotice").classList.toggle("hidden", manager);
   el("hqNav").classList.toggle("hidden", !manager);
   el("hqRefresh").disabled = !manager || hqLoadInFlight;
@@ -561,14 +577,29 @@ async function loadMenu() {
   const requestedEpoch = viewEpoch;
   const requestedTenant = currentTenantId;
   const requestedToken = sessionToken;
-  const payload = await appFetch("/api/app/commerce-menu");
+  const payload = await appFetch("/api/app/commerce-menu"
+    + (canManageCommerce() ? "?includeInactive=true" : ""));
   if (requestedSerial !== menuReadSerial || requestedEpoch !== viewEpoch
       || requestedTenant !== currentTenantId || requestedToken !== sessionToken) return;
   menuState = {
     categories: payload.categories || [],
     items: payload.items || []
   };
+  // A newer catalog invalidates an edit selection made against an old read.
+  if (editingMenuItemId && !menuState.items.some(item => item.id === editingMenuItemId)) {
+    cancelEditItem();
+  }
+  // Never show stale client prices after the Menu has been refreshed. During
+  // an unresolved checkout, keep the cart frozen for server-side recovery.
+  if (!hasUnfinishedCheckout()) {
+    for (const [id, row] of cartState) {
+      const latest = menuState.items.find(item => item.id === id);
+      if (!latest || latest.active === false) cartState.delete(id);
+      else row.item = latest;
+    }
+  }
   renderMenu();
+  renderCart();
 }
 
 function renderMenu() {
@@ -594,6 +625,7 @@ function renderMenu() {
     ? selectedCategory : "";
   const query = el("posMenuSearch").value.trim().toLocaleLowerCase("vi-VN");
   const visibleItems = menuState.items.filter(item => {
+    if (item.active === false) return false;
     if (categoryFilter.value && item.category_id !== categoryFilter.value) return false;
     return !query || String(item.name ?? "").toLocaleLowerCase("vi-VN").includes(query)
       || String(item.sku ?? "").toLocaleLowerCase("vi-VN").includes(query);
@@ -642,18 +674,29 @@ function renderMenu() {
     title.textContent = item.name;
     const meta = document.createElement("div");
     meta.className = "muted";
-    meta.textContent = item.sku ? "SKU " + item.sku : "No SKU";
+    meta.textContent = (item.sku ? "SKU " + item.sku : "No SKU")
+      + (item.active === false ? " · TẠM NGỪNG BÁN" : " · Đang bán");
     left.append(title, meta);
     const value = document.createElement("strong");
     value.textContent = money(item.price);
     row.append(left, value);
+    if (canManageCommerce()) {
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "secondary";
+      edit.textContent = "Sửa";
+      edit.disabled = menuWriteInFlight;
+      edit.addEventListener("click", () => guarded(() => startEditItem(item.id)));
+      row.append(edit);
+    }
     admin.append(row);
   }
 }
 
 function addToCart(menuItemId) {
   const item = menuState.items.find(row => row.id === menuItemId);
-  if (!item || !canWriteCommerce() || currentOrder || pendingOrderSubmission || orderSubmitInFlight) return;
+  if (!item || item.active === false || !canWriteCommerce()
+      || currentOrder || pendingOrderSubmission || orderSubmitInFlight) return;
   if (!cartState.has(menuItemId) && cartState.size >= MAX_POS_ORDER_LINES) {
     setStatus("Một đơn chỉ hỗ trợ tối đa 100 món khác nhau. Bớt món hoặc tạo đơn riêng.", "error");
     return;
@@ -1200,6 +1243,8 @@ function setMenuWriteInFlight(busy) {
   menuWriteInFlight = busy;
   el("createCategoryButton").disabled = busy;
   el("createItemButton").disabled = busy;
+  el("saveEditItemButton").disabled = busy;
+  el("cancelEditItemButton").disabled = busy;
   // Do not close while a Menu write is still awaiting server confirmation.
   renderClosePreview();
 }
@@ -1228,6 +1273,91 @@ async function writeMenuRecord(body, formId, successMessage) {
       menuState = { categories: [], items: [] };
       renderMenu();
       setStatus(successMessage + " Danh sách Menu chưa tải lại được; Refresh để kiểm tra, không tạo lại.", "warning");
+    }
+  } finally {
+    setMenuWriteInFlight(false);
+  }
+}
+
+function cancelEditItem() {
+  if (menuWriteInFlight || editingMenuItemId === null) return;
+  editingMenuItemId = null;
+  el("editItemForm").classList.add("hidden");
+  el("editItemForm").reset?.();
+}
+
+function startEditItem(id) {
+  if (!canManageCommerce() || menuWriteInFlight) throw new Error("Manager role required to edit Menu");
+  const item = menuState.items.find(row => row.id === id);
+  if (!item) throw new Error("Món không còn trong Menu, tải lại trước khi sửa.");
+  if (hasUnfinishedCheckout()) throw new Error("Hoàn tất đơn POS đang xử lý trước khi sửa Menu.");
+  editingMenuItemId = id;
+  const categories = el("editItemCategory");
+  categories.replaceChildren();
+  const noCategory = document.createElement("option");
+  noCategory.value = "";
+  noCategory.textContent = "Không phân nhóm";
+  categories.append(noCategory);
+  for (const category of menuState.categories) {
+    const option = document.createElement("option");
+    option.value = category.id;
+    option.textContent = category.name;
+    categories.append(option);
+  }
+  if (item.category_id && !menuState.categories.some(cat => cat.id === item.category_id)) {
+    const archivedCategory = document.createElement("option");
+    archivedCategory.value = item.category_id;
+    archivedCategory.textContent = "Nhóm đã ẩn";
+    categories.append(archivedCategory);
+  }
+  el("editItemName").value = item.name;
+  el("editItemSku").value = item.sku || "";
+  el("editItemCategory").value = item.category_id || "";
+  el("editItemAmount").value = String(item.price);
+  el("editItemActive").value = item.active === false ? "false" : "true";
+  el("editItemForm").classList.remove("hidden");
+  el("editItemName").focus?.();
+}
+
+async function saveEditItem(event) {
+  event.preventDefault();
+  if (!canManageCommerce() || menuWriteInFlight) return;
+  const itemId = editingMenuItemId;
+  if (!itemId || !menuState.items.some(item => item.id === itemId)) {
+    throw new Error("Chọn một món hợp lệ để sửa.");
+  }
+  if (hasUnfinishedCheckout()) throw new Error("Hoàn tất đơn đang xử lý trước khi sửa Menu.");
+  const tenant = currentTenantId;
+  const epoch = viewEpoch;
+  const token = sessionToken;
+  const body = {
+    kind: "item", itemId,
+    name: el("editItemName").value.trim(),
+    sku: el("editItemSku").value.trim() || null,
+    categoryId: el("editItemCategory").value || null,
+    price: Number(el("editItemAmount").value),
+    active: el("editItemActive").value === "true"
+  };
+  setMenuWriteInFlight(true);
+  setStatus("Đang cập nhật Menu…");
+  try {
+    try {
+      await appFetch("/api/app/commerce-menu", { method: "PATCH", body });
+    } catch (error) {
+      // PATCH may already have committed if its HTTP response was lost.
+      throw new Error("Chưa xác nhận cập nhật Menu. Refresh để kiểm tra trước khi thử lại. " + error.message);
+    }
+    if (tenant !== currentTenantId || epoch !== viewEpoch || token !== sessionToken) return;
+    editingMenuItemId = null;
+    el("editItemForm").classList.add("hidden");
+    el("editItemForm").reset();
+    try {
+      await loadMenu();
+      setStatus("Đã cập nhật món. Đơn cũ giữ nguyên giá chốt.", "ok");
+    } catch {
+      menuState = { categories: [], items: [] };
+      renderMenu();
+      setStatus("Đã cập nhật món, nhưng không tải lại được Menu. Refresh trước khi tạo đơn mới.", "warning");
     }
   } finally {
     setMenuWriteInFlight(false);
@@ -1553,6 +1683,8 @@ el("hqBusinessDate").addEventListener("change", () => {
 });
 el("categoryForm").addEventListener("submit", event => guarded(() => createCategory(event)));
 el("itemForm").addEventListener("submit", event => guarded(() => createItem(event)));
+el("editItemForm").addEventListener("submit", event => guarded(() => saveEditItem(event)));
+el("cancelEditItemButton").addEventListener("click", cancelEditItem);
 el("closeDay").addEventListener("click", () => guarded(closeBusinessDay));
 for (const button of document.querySelectorAll(".app-nav-item")) {
   button.addEventListener("click", () => showWorkspace(button.dataset.view));
