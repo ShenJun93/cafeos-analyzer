@@ -2136,9 +2136,11 @@ test("topping manager catalog is a separate nonbillable workflow, never client-o
  el("toppingName").value="Trân châu";
  el("toppingPrice").value="5000";
  el("toppingSort").value="0";
- runInContext('appFetch=async(path,options)=>{if(path!=="/api/app/commerce-toppings"||options.method!=="POST")throw Error("unexpected");globalThis.savedTopping=options.body;return {topping:{id:"t1"}}}',ctx);
- runInContext('loadToppings=async()=>{}',ctx);
+ runInContext('globalThis.toppingRefreshReads=0;appFetch=async(path,options)=>{if(path==="/api/app/commerce-toppings"&&options?.method==="POST"){globalThis.savedTopping=options.body;return {topping:{id:"t1"}}}if(path==="/api/app/commerce-toppings?includeInactive=true"){globalThis.toppingRefreshReads++;return {toppings:[{id:"t1",menu_item_id:"item-1",name:"Trân châu",price:5000,sort_order:0,active:true}]}}throw Error("unexpected")}',ctx);
  await runInContext('saveTopping({preventDefault(){}})',ctx);
+ assert.equal(ctx.toppingRefreshReads,1,"confirmed topping write triggers one fresh catalog read");
+ assert.equal(runInContext("toppingState.length",ctx),1);
+ assert.equal(runInContext("toppingLoaded",ctx),true);
  assert.equal(ctx.savedTopping.menuItemId,"item-1");
  assert.equal(ctx.savedTopping.price,5000);
  assert.equal(ctx.savedTopping.sortOrder,0);

@@ -1406,8 +1406,8 @@ function renderToppings() {
     list.append(row);
   }
 }
-async function loadToppings() {
-  if (!canManageCommerce() || menuWriteInFlight) return;
+async function loadToppings({ allowDuringWrite = false } = {}) {
+  if (!canManageCommerce() || (menuWriteInFlight && !allowDuringWrite)) return;
   const serial = ++toppingReadSerial;
   const epoch = viewEpoch, tenant = currentTenantId, token = sessionToken;
   const result = await appFetch("/api/app/commerce-toppings?includeInactive=true");
@@ -1482,7 +1482,9 @@ async function saveTopping(event) {
     el("cancelToppingButton").classList.add("hidden");
     el("saveToppingButton").textContent = "Thêm topping";
     try {
-      await loadToppings();
+      // One authorized read is allowed while this *same* writer owns
+      // menuWriteInFlight. External requests remain blocked until finally.
+      await loadToppings({ allowDuringWrite: true });
       setStatus("Đã lưu topping. POS chưa tính giá topping.", "ok");
     } catch {
       toppingLoaded = false;
