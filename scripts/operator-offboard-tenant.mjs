@@ -13,8 +13,26 @@ const GRAPH_TABLES = [
   "attention_items",
   "actions",
   "action_status_history",
-  "measurement_windows"
+  "measurement_windows",
+  // Core Commerce v1 + manager-void: hard-delete must not silently cascade away
+  // financial or audited history introduced after the original Analyzer graph.
+  "menu_categories",
+  "menu_items",
+  "pos_orders",
+  "pos_order_items",
+  "pos_payments",
+  "daily_closes",
+  "pos_order_voids"
 ];
+
+const COMMERCE_HISTORY_TABLES = Object.freeze([
+  "pos_orders", "pos_order_items", "pos_payments", "daily_closes", "pos_order_voids"
+]);
+
+const COUNT_COLUMN = Object.freeze({
+  tenant_members: "user_id",
+  pos_order_voids: "order_id"
+});
 
 function requireUuid(value, name) {
   const raw = String(value ?? "").trim();
@@ -95,7 +113,7 @@ function tableFilter(table, tenantId) {
 async function countRows({ base, secretKey, table, tenantId, fetchImpl }) {
   const [field, value] = tableFilter(table, tenantId);
   const params = new URLSearchParams({
-    select: "id",
+    select: COUNT_COLUMN[table] ?? "id",
     [field]: `eq.${value}`
   });
   const { response } = await expectResponse(
@@ -110,17 +128,23 @@ async function countRows({ base, secretKey, table, tenantId, fetchImpl }) {
     },
     [200, 206]
   );
-  const range = response.headers.get("content-range") ?? "*/0";
-  const total = Number(range.split("/").at(-1));
-  if (!Number.isInteger(total) || total < 0) {
-    throw new Error(`Unable to determine row count for ${table}`);
+  // A missing Content-Range is NOT proof of zero rows. This is a deletion
+  // safety precondition: require an exact HEAD count, not an estimated count
+  // or a truncated/unparseable range.
+  const range = response.headers.get("content-range");
+  const match = /^(\*|0-0)\/(0|[1-9][0-9]*)$/.exec(range ?? "");
+  const total = match ? Number(match[2]) : NaN;
+  if (!match || !Number.isSafeInteger(total) ||
+      (total === 0 && match[1] !== "*") ||
+      (total > 0 && match[1] !== "0-0")) {
+    throw new Error(`Unable to verify exact row count for ${table}`);
   }
   return total;
 }
 
-async function graphCounts({ base, secretKey, tenantId, fetchImpl }) {
+async function graphCounts({ base, secretKey, tenantId, fetchImpl, tables = GRAPH_TABLES }) {
   const counts = {};
-  for (const table of GRAPH_TABLES) {
+  for (const table of tables) {
     counts[table] = await countRows({ base, secretKey, table, tenantId, fetchImpl });
   }
   return counts;
@@ -175,11 +199,14 @@ export async function offboardTenant({
 
   const started = now();
   const ref = tenantRef(targetTenantId);
+  // Emergency membership revocation must not depend on later Commerce schema
+  // availability; destructive hard-delete requires the complete known graph.
   const countsBefore = await graphCounts({
     base,
     secretKey: secret,
     tenantId: targetTenantId,
-    fetchImpl
+    fetchImpl,
+    tables: phase === "prepare" ? ["tenants", "tenant_members"] : GRAPH_TABLES
   });
   const tenantExists = countsBefore.tenants === 1;
   if (countsBefore.tenants > 1) throw new Error("Tenant preflight returned more than one row");
@@ -247,7 +274,9 @@ export async function offboardTenant({
     deadlineReached,
     earlyDeleteApproved: Boolean(earlyDeleteApproved),
     exportCleared: Boolean(exportCleared),
-    legalHoldCleared: Boolean(legalHoldCleared)
+    legalHoldCleared: Boolean(legalHoldCleared),
+    commerceHistoryTables: COMMERCE_HISTORY_TABLES.filter(table => countsBefore[table] > 0),
+    commerceHistoryRetentionHold: COMMERCE_HISTORY_TABLES.some(table => countsBefore[table] > 0)
   };
 
   if (!execute) {
@@ -262,6 +291,13 @@ export async function offboardTenant({
   }
   if (countsBefore.tenant_members !== 0) {
     throw new Error("Tenant still has memberships; run prepare phase first");
+  }
+  // No export/legal-hold flag permits deleting immutable sale, settlement,
+  // close or void evidence via a cascading Tenant DELETE. A fresh atomic
+  // retention/ingestion barrier is still required before merchant rollout.
+  if (plan.commerceHistoryRetentionHold) {
+    throw new Error("Tenant hard-delete blocked: Commerce history must be retained (" +
+      plan.commerceHistoryTables.join(",") + ")");
   }
 
   if (tenantExists) {
