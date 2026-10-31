@@ -63,7 +63,7 @@ try:
         email='cafeos-e2e-'+case+'-'+role+'@example.invalid'
         status,res=api('POST','/auth/v1/signup',body={'email':email,'password':secrets.token_urlsafe(26)})
         assert_check(status==200 and bool(res.get('access_token')) and bool(res.get('user',{}).get('id')),'GOTRUE_SIGNUP_'+role)
-        token=<REDACTED>'access_token']
+        token=res['access_token']
         parts=token.split('.')
         assert len(parts)==3,'INVALID_SIGNED_JWT_SHAPE'
         claims=json.loads(base64.urlsafe_b64decode(parts[1]+'=='))
