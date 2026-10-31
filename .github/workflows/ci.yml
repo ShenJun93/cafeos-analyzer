@@ -12,6 +12,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
+      # Field kit stays dependency-free. Install the pinned compiler only on CI.
+      - run: npm install --global --ignore-scripts --no-audit --no-fund typescript@5.8.3
       - run: npm run build
       - run: git diff --exit-code -- dist
       - run: npm run test:dist
