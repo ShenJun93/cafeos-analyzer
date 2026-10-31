@@ -2038,3 +2038,40 @@ test("HQ Overview exposes manager-only, date-scoped first-party multi-store evid
   assert.match(preview, /'\/api\/app\/commerce-hq', 'commerce-hq'/);
   assert.doesNotMatch(html, /localStorage|sessionStorage|indexedDB/);
 });
+
+test("Menu lifecycle keeps archived items out of cashier catalog while manager can reactivate", async () => {
+  const html = await readFile(new URL("../public/app.html", import.meta.url), "utf8");
+  for (const id of ["editItemForm","editItemName","editItemSku","editItemCategory",
+    "editItemAmount","editItemActive","saveEditItemButton","cancelEditItemButton"]) {
+    assert.ok(html.includes('id="' + id + '"'));
+  }
+  const { ctx, el, runInContext } = await menuMutationHarness();
+  runInContext('menuState.categories=[{id:"coffee",name:"Coffee"}]',ctx);
+  runInContext('menuState.items=[{id:"active",name:"Latte",sku:"LAT",category_id:"coffee",price:35000,active:true},{id:"hidden",name:"Old Latte",sku:null,category_id:"coffee",price:25000,active:false}]',ctx);
+  runInContext('renderMenu()',ctx);
+  assert.equal(el("menuCatalog").children.length,1);
+  assert.equal(el("menuAdminList").children.length,2);
+  assert.match(el("menuAdminList").children[1].children[0].children[1].textContent,/TẠM NGỪNG BÁN/);
+  runInContext('startEditItem("hidden")',ctx);
+  assert.equal(el("editItemName").value,"Old Latte");
+  assert.equal(el("editItemActive").value,"false");
+  el("editItemAmount").value="29000";
+  el("editItemActive").value="true";
+  runInContext('appFetch=async(path,options)=>{if(path!=="/api/app/commerce-menu"||options.method!=="PATCH")throw Error("unexpected");globalThis.updatedItem=options.body;return {item:{id:"hidden"}}}',ctx);
+  runInContext('loadMenu=async()=>{}',ctx);
+  await runInContext('saveEditItem({preventDefault(){}})',ctx);
+  assert.equal(ctx.updatedItem.itemId,"hidden");
+  assert.equal(ctx.updatedItem.price,29000);
+  assert.equal(ctx.updatedItem.active,true);
+  assert.equal(runInContext("menuWriteInFlight",ctx),false);
+  assert.equal(runInContext("editingMenuItemId",ctx),null);
+});
+
+test("Menu lifecycle denies cashier editor and blocks manager edits during an unsettled checkout", async () => {
+  const {ctx,runInContext}=await menuMutationHarness();
+  runInContext('menuState.items=[{id:"a",name:"Latte",sku:null,category_id:null,price:35000,active:true}]',ctx);
+  runInContext('currentTenantRole="cashier"',ctx);
+  assert.throws(()=>runInContext('startEditItem("a")',ctx),/Manager role/);
+  runInContext('currentTenantRole="manager";pendingOrderSubmission={clientOrderKey:"unsent"}',ctx);
+  assert.throws(()=>runInContext('startEditItem("a")',ctx),/Hoàn tất đơn/);
+});
