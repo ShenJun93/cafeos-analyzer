@@ -119,6 +119,38 @@ function itemBody(body, tenantId) {
   return { tenant_id: tenantId, category_id: categoryId, sku, name, price, active: true };
 }
 
+// A requested limit is not evidence that all RLS-visible rows were returned:
+// PostgREST's max_rows can silently shorten BOTH catalog queries. The cashier
+// must never see an apparently complete, truncated Menu.
+function completeMenuPage(page, supportedLimit) {
+  const invalid = () => new AppHttpError(502, "COMMERCE_MENU_UPSTREAM_INVALID",
+    "Menu catalog completeness could not be verified");
+  const rows = page?.data;
+  if (!Array.isArray(rows)) throw invalid();
+  if (rows.length >= supportedLimit) {
+    throw new AppHttpError(503, "COMMERCE_MENU_CATALOG_LIMIT",
+      "Menu exceeds the current supported catalog size");
+  }
+  const range = page?.contentRange;
+  if (range === "*/0" && rows.length === 0) return rows;
+  const match = typeof range === "string"
+    ? /^([0-9]+)-([0-9]+)[/]([0-9]+)$/.exec(range) : null;
+  if (!match) throw invalid();
+  const [start, end, total] = match.slice(1).map(Number);
+  if (![start, end, total].every(Number.isSafeInteger)
+    || total >= supportedLimit) {
+    if (Number.isSafeInteger(total) && total >= supportedLimit) {
+      throw new AppHttpError(503, "COMMERCE_MENU_CATALOG_LIMIT",
+        "Menu exceeds the current supported catalog size");
+    }
+    throw invalid();
+  }
+  if (start !== 0 || end !== rows.length - 1 || total !== rows.length) {
+    throw invalid();
+  }
+  return rows;
+}
+
 export async function handle(req, res, deps = {}) {
   try {
     if (req.method === "GET") {
@@ -137,22 +169,19 @@ export async function handle(req, res, deps = {}) {
         order: "name.asc",
         limit: "1000"
       });
-      const [categories, items] = await Promise.all([
-        supabaseJson("/rest/v1/menu_categories?" + categoryParams, { token: ctx.token, ...deps }),
-        supabaseJson("/rest/v1/menu_items?" + itemParams, { token: ctx.token, ...deps })
+      const [categoryPage, itemPage] = await Promise.all([
+        supabaseJson("/rest/v1/menu_categories?" + categoryParams, {
+          token: ctx.token, ...deps,
+          headers: { prefer: "count=exact" }, includeResponseMeta: true
+        }),
+        supabaseJson("/rest/v1/menu_items?" + itemParams, {
+          token: ctx.token, ...deps,
+          headers: { prefer: "count=exact" }, includeResponseMeta: true
+        })
       ]);
-      // A broken read-model is NOT an empty Menu. A truncated Menu is also
-      // unsafe for cashiers: it can silently hide sellable items/categories.
-      // Supabase Data API can impose a project-level max_rows cap, so reject
-      // the boundary itself rather than assuming a full page was returned.
-      if (!Array.isArray(categories) || !Array.isArray(items)) {
-        throw new AppHttpError(502, "COMMERCE_MENU_UPSTREAM_INVALID",
-          "Menu data service returned an invalid catalog");
-      }
-      if (categories.length >= 200 || items.length >= 1000) {
-        throw new AppHttpError(503, "COMMERCE_MENU_CATALOG_LIMIT",
-          "Menu exceeds the current supported catalog size");
-      }
+      // Both exact RLS-visible totals are mandatory; never render a prefix.
+      const categories = completeMenuPage(categoryPage, 200);
+      const items = completeMenuPage(itemPage, 1000);
       if (categories.some(row => !row || row.tenant_id !== ctx.tenant.id
           || typeof row.id !== "string" || !UUID_RE.test(row.id)
           || typeof row.name !== "string" || !row.name.trim() || row.name.length > 200
