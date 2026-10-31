@@ -21,6 +21,38 @@
 | `auth`/`storage` RLS policies | 0 | Count-only; independently review managed-schema changes rather than inferring none |
 | Extensions | `pg_stat_statements@1.11`, `pgcrypto@1.3`, `plpgsql@1.0`, `supabase_vault@0.3.1`, `uuid-ossp@1.1` | Verify extension availability/configuration on isolated restore target |
 
+## 2026-10-31 follow-up — exact public data scope; PRE-BACKUP ONLY
+
+**Why amended:** the 2026-10-28 version of the scope query counted only 7 of the 17 persistent `public` tables and omitted imported facts and Control Tower state. The `Supabase list_tables` table-row estimates showed 0 for some populated tables; estimates MUST NOT substitute for SQL `count(*)`.
+
+**Direct, independently observed staging SELECT-only result**, on project `wjatnyvdygvblirggdcm`: the expanded `scripts/sql/cafeos-staging-recovery-scope-readonly.sql` counted all 17 catalog-listed `public` tables, and returned `public_table_count=17`, `public_scope_complete=true`. Its exact-name catalog guard returns false if the known public table set changes (and fails SQL execution if any required referenced relation disappears). This is a **scope gate**, not a database backup or evidence that all managed configuration can be recovered.
+
+| Public table | Exact rows |
+| --- | ---: |
+| tenants | 4 |
+| tenant_members | 4 |
+| stores | 4 |
+| imports | 3 |
+| transaction_line_items | 7 |
+| customers | 1 |
+| customer_identifiers | 0 |
+| attention_items | 5 |
+| actions | 2 |
+| action_status_history | 3 |
+| measurement_windows | 2 |
+| menu_categories | 0 |
+| menu_items | 0 |
+| pos_orders | 0 |
+| pos_order_items | 0 |
+| pos_payments | 0 |
+| daily_closes | 0 |
+
+Managed scope at this checkpoint: `auth.users=1`, `auth.identities=1`, `storage.buckets=0`, `storage.objects=0`, `vault.secrets=0`, `migration_receipts=7`; managed noninternal triggers=7 and managed RLS policies=0. Catalog set changes require refreshing inventory before any backup/export acceptance. These values are point-in-time counts, not proof of data origin or completeness of platform-held secrets.
+
+**Recovery acceptance update:** Restore validation must compare exact counts across **all 17 public tables**, preserving import lineage, Customer data and persistent Attention→Action→Measurement state, rather than only the Auth identity, four Store records and Commerce tables. Any nonempty count mismatch requires STOP and investigation; even matching counts do not substitute for contents, constraints, JWT/RLS behavior, migration statements and managed Auth state validation.
+
+**Safety / provenance:** This section records a direct SELECT-only observation (no Auth identities or business row contents fetched), with code/test changes confined to this Draft branch. There was no export, permission change, staging mutation, merge or deployment. `RELEASE NO-GO`.
+
 **Unchanged live blockers:** staging receipt ledger is 7 historical versions versus canonical Git history; future-close and price snapshot SQL guards are absent; manager void SQL is not deployed; three intentional Commerce `SECURITY DEFINER` advisor findings and leaked-password protection advisory remain open. The existing independent `scripts/sql/cafeos-staging-post-repair-readonly-gate.sql` produced `PRE_REPAIR_NO_GO` this date.
 
 ## Supported recovery work order — still **NOT RUN**
