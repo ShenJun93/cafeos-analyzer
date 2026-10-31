@@ -7,16 +7,16 @@ umask 077
 stop(){ echo "STOP_CAFEOS_FIVE_STREAM_$1" >&2; exit 42; }
 
 [[ $# -eq 0 && "$(id -u)" != 0 ]] || stop OWNER_ONLY
-[[ "$CAFEOS_REAL_STAGING_EXPORT_APPROVAL" == 'OWNER_AUTHORIZES_ENCRYPTED_CAPTURE_ONLY' ]] || stop OWNER_EXPORT_APPROVAL_MISSING
-[[ "$CAFEOS_SOURCE_WRITE_FREEZE_APPROVAL" == 'OWNER_ATTESTS_STAGING_QUIESCENT' ]] || stop OWNER_WRITE_FREEZE_MISSING
-[[ "$CAFEOS_OFFHOST_CUSTODY_APPROVAL" == 'OWNER_ATTESTS_INDEPENDENT_CUSTODY' ]] || stop OWNER_CUSTODY_APPROVAL_MISSING
-[[ "$CI" != true && "$GITHUB_ACTIONS" != true ]] || stop NEVER_IN_CI
-[[ -n "$CAFEOS_OWNER_APPROVAL_FILE" && -n "$CAFEOS_COMPATIBLE_BACKUP_DIR" ]] || stop APPROVAL_OR_OUTPUT_MISSING
+[[ "${CAFEOS_REAL_STAGING_EXPORT_APPROVAL:-}" == 'OWNER_AUTHORIZES_ENCRYPTED_CAPTURE_ONLY' ]] || stop OWNER_EXPORT_APPROVAL_MISSING
+[[ "${CAFEOS_SOURCE_WRITE_FREEZE_APPROVAL:-}" == 'OWNER_ATTESTS_STAGING_QUIESCENT' ]] || stop OWNER_WRITE_FREEZE_MISSING
+[[ "${CAFEOS_OFFHOST_CUSTODY_APPROVAL:-}" == 'OWNER_ATTESTS_INDEPENDENT_CUSTODY' ]] || stop OWNER_CUSTODY_APPROVAL_MISSING
+[[ "${CI:-}" != true && "${GITHUB_ACTIONS:-}" != true ]] || stop NEVER_IN_CI
+[[ -n "${CAFEOS_OWNER_APPROVAL_FILE:-}" && -n "${CAFEOS_COMPATIBLE_BACKUP_DIR:-}" ]] || stop APPROVAL_OR_OUTPUT_MISSING
 
 root="$(cd -- "$(dirname -- "$0")" && pwd)"
 home="$(realpath -e -- "$HOME")"
-approved="$(realpath -e -- "$CAFEOS_OWNER_APPROVAL_FILE")" || stop RECEIPT_MISSING
-dest="$(realpath -e -- "$CAFEOS_COMPATIBLE_BACKUP_DIR")" || stop DEST_MISSING
+approved="$(realpath -e -- "${CAFEOS_OWNER_APPROVAL_FILE:-}")" || stop RECEIPT_MISSING
+dest="$(realpath -e -- "${CAFEOS_COMPATIBLE_BACKUP_DIR:-}")" || stop DEST_MISSING
 src="$home/.local/share/cafeos-staging-backup"
 esc="$home/.local/share/cafeos-staging-recovery-escrow"
 key="$src/identity.txt"
@@ -45,7 +45,7 @@ done
 grep -qxE '^OWNER_SIGNOFF_DATE_UTC=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' "$approved" || stop OWNER_DATE_MISSING
 # The owner receipt is a recorded assertion, not an independently proven
 # device custody or a machine-enforced PostgreSQL write freeze.
-[[ -z "$PGPASSWORD" && -z "$SUPABASE_ACCESS_TOKEN" && -z "$PGOPTIONS" ]] || stop UNSAFE_ENVIRONMENT
+[[ -z "${PGPASSWORD:-}" && -z "${SUPABASE_ACCESS_TOKEN:-}" && -z "${PGOPTIONS:-}" ]] || stop UNSAFE_ENVIRONMENT
 [[ -x "$cli" && "$("$cli" --version)" == 2.122.0 ]] || stop CLI_NOT_PINNED
 export CAFEOS_STAGING_READONLY_PREFLIGHT_ACK=SOURCE_READONLY_ONLY
 bash "$root/check-cafeos-staging-capture-readiness.sh" >/dev/null || stop SOURCE_PREFLIGHT_FAILED
