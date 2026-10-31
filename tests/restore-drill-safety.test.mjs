@@ -451,3 +451,51 @@ test("independent age recovery verifier rejects escrow-only trust and never mate
   assert.match(drill, /CAFEOS_SYNTHETIC_OFFHOST_RECOVERY_DRILL_PASS/);
   assert.doesNotMatch(drill, /wjatnyvdygvblirggdcm|PGHOST=|SUPABASE_ACCESS_TOKEN|service_role/i);
 });
+
+// Recovery scope probe may read aggregate counts/catalog names ONLY; it is not
+// a database dump, Auth export or a substitute for an actual isolated restore.
+test("staging recovery scope is a single non-secret SELECT-only inventory with a permanent NO-GO label", async () => {
+  const source = await readFile(
+    new URL("../scripts/sql/cafeos-staging-recovery-scope-readonly.sql", import.meta.url),
+    "utf8"
+  );
+  const sql = source.split("\n").filter(line => !/^\s*--/.test(line)).join("\n").trim();
+  assert.match(sql, /^with\s+/i);
+  assert.equal((sql.match(/;/g) || []).length, 1);
+  assert.match(sql, /SCOPE_INVENTORY_ONLY_BACKUP_AND_RESTORE_NOT_PROVEN/);
+  for (const path of [
+    "auth.users", "auth.identities", "storage.buckets", "storage.objects",
+    "vault.secrets", "supabase_migrations.schema_migrations",
+    "public.tenants", "public.tenant_members", "public.stores",
+    "public.imports", "public.transaction_line_items",
+    "public.customers", "public.customer_identifiers",
+    "public.attention_items", "public.actions", "public.action_status_history",
+    "public.measurement_windows", "public.menu_categories", "public.menu_items",
+    "public.pos_orders", "public.pos_order_items", "public.pos_payments",
+    "public.daily_closes", "pg_extension", "pg_trigger", "pg_policies"
+  ]) assert.ok(sql.includes(path), "missing aggregate scope: " + path);
+
+  // Reject silent omission of currently persistent public tables from a backup
+  // scope report. A newly deployed public table must force an inventory review.
+  assert.match(sql, /public_table_catalog/);
+  assert.match(sql, /public_table_count/);
+  assert.match(sql, /public_scope_complete/);
+  assert.match(sql, /array_agg\(c\.relname::text order by c\.relname\)/);
+  const expectedTables = [
+    "action_status_history", "actions", "attention_items", "customer_identifiers",
+    "customers", "daily_closes", "imports", "measurement_windows",
+    "menu_categories", "menu_items", "pos_order_items", "pos_orders",
+    "pos_payments", "stores", "tenant_members", "tenants",
+    "transaction_line_items"
+  ];
+  const guard = sql.match(/public_table_catalog\.names\s*=\s*array\[([\s\S]*?)\]::text\[\]/i);
+  assert.ok(guard, "missing exact public catalog coverage guard");
+  const catalogNames = [...guard[1].matchAll(/'([a-z_]+)'/g)].map(match => match[1]);
+  assert.deepEqual(catalogNames, expectedTables, "inventory guard must pin all 17 public table names");
+
+  assert.doesNotMatch(sql, /\b(?:insert|update|delete|create|alter|drop|truncate|grant|revoke|call|execute|copy)\b/i);
+  assert.doesNotMatch(sql, /(?:pg_read_file|pg_ls_dir|lo_import|dblink|http_post|net\.http)/i);
+  assert.doesNotMatch(sql, /\b(?:password|secret_key|service_role|access_token|refresh_token|raw_user_meta_data)\b/i);
+  assert.doesNotMatch(sql, /\bselect\s+\*\s+from\s+(?:auth|storage|vault|public)\./i);
+  assert.doesNotMatch(sql, /\b(?:current_setting\(['"]request\.jwt|auth\.jwt\(\)|auth\.uid\(\))/i);
+});
