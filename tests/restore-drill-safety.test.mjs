@@ -467,9 +467,31 @@ test("staging recovery scope is a single non-secret SELECT-only inventory with a
     "auth.users", "auth.identities", "storage.buckets", "storage.objects",
     "vault.secrets", "supabase_migrations.schema_migrations",
     "public.tenants", "public.tenant_members", "public.stores",
-    "public.menu_items", "public.pos_orders", "public.pos_payments",
+    "public.imports", "public.transaction_line_items",
+    "public.customers", "public.customer_identifiers",
+    "public.attention_items", "public.actions", "public.action_status_history",
+    "public.measurement_windows", "public.menu_categories", "public.menu_items",
+    "public.pos_orders", "public.pos_order_items", "public.pos_payments",
     "public.daily_closes", "pg_extension", "pg_trigger", "pg_policies"
   ]) assert.ok(sql.includes(path), "missing aggregate scope: " + path);
+
+  // Reject silent omission of currently persistent public tables from a backup
+  // scope report. A newly deployed public table must force an inventory review.
+  assert.match(sql, /public_table_catalog/);
+  assert.match(sql, /public_table_count/);
+  assert.match(sql, /public_scope_complete/);
+  assert.match(sql, /array_agg\(c\.relname::text order by c\.relname\)/);
+  const expectedTables = [
+    "action_status_history", "actions", "attention_items", "customer_identifiers",
+    "customers", "daily_closes", "imports", "measurement_windows",
+    "menu_categories", "menu_items", "pos_order_items", "pos_orders",
+    "pos_payments", "stores", "tenant_members", "tenants",
+    "transaction_line_items"
+  ];
+  const guard = sql.match(/public_table_catalog\.names\s*=\s*array\[([\s\S]*?)\]::text\[\]/i);
+  assert.ok(guard, "missing exact public catalog coverage guard");
+  const catalogNames = [...guard[1].matchAll(/'([a-z_]+)'/g)].map(match => match[1]);
+  assert.deepEqual(catalogNames, expectedTables, "inventory guard must pin all 17 public table names");
 
   assert.doesNotMatch(sql, /\b(?:insert|update|delete|create|alter|drop|truncate|grant|revoke|call|execute|copy)\b/i);
   assert.doesNotMatch(sql, /(?:pg_read_file|pg_ls_dir|lo_import|dblink|http_post|net\.http)/i);
