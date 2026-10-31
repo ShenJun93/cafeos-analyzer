@@ -39,6 +39,7 @@ const workflowRoutes = new Map([
   ['/api/app/measurement-window', 'measurement-window'],
   ['/api/app/action-detail', 'action-detail'],
   ['/api/app/commerce-menu', 'commerce-menu'],
+  ['/api/app/commerce-toppings', 'commerce-toppings'],
   ['/api/app/commerce-order', 'commerce-order'],
   ['/api/app/commerce-payment', 'commerce-payment'],
   ['/api/app/commerce-order-status', 'commerce-order-status'],

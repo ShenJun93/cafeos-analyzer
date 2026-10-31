@@ -171,6 +171,23 @@
         <button id="cancelEditCategoryButton" class="secondary" type="button">Hủy chỉnh sửa nhóm</button>
       </form>
       <div id="menuAdminList" class="menu-admin-list"></div>
+      <section id="toppingAdminPanel" class="commerce-form hidden" aria-label="Topping catalog manager">
+        <h3>Topping theo món · Catalog</h3>
+        <p class="muted">Topping chỉ mới được cấu hình trong Menu. POS chưa hỗ trợ tính tiền topping; không cộng giá thủ công vào đơn.</p>
+        <button id="loadToppingsButton" class="secondary" type="button">Tải topping</button>
+        <form id="toppingForm" class="commerce-form">
+          <label class="field-group">Món<select id="toppingItem" required></select></label>
+          <label class="field-group">Tên topping<input id="toppingName" maxlength="100" required></label>
+          <label class="field-group">Giá cấu hình<input id="toppingPrice" type="number" min="0" max="1000000" step="0.01" required></label>
+          <label class="field-group">Thứ tự<input id="toppingSort" type="number" min="-100000" max="100000" step="1" value="0" required></label>
+          <label class="field-group hidden" id="toppingActiveField">Trạng thái
+            <select id="toppingActive"><option value="true">Đang bật</option><option value="false">Ngừng bán</option></select>
+          </label>
+          <button id="saveToppingButton" type="submit">Thêm topping</button>
+          <button id="cancelToppingButton" class="secondary hidden" type="button">Hủy sửa</button>
+        </form>
+        <div id="toppingList" class="menu-admin-list"></div>
+      </section>
       <form id="editItemForm" class="commerce-form hidden" aria-label="Edit menu item">
         <h3>Chỉnh sửa món</h3>
         <p class="muted">Giá mới chỉ áp dụng cho đơn tiếp theo. Hóa đơn cũ vẫn giữ giá chốt lúc bán.</p>
@@ -272,6 +289,10 @@ let hqLoadInFlight = false;
 let menuState = { categories: [], items: [] };
 let editingMenuItemId = null;
 let editingMenuCategoryId = null;
+let toppingState = [];
+let toppingLoaded = false;
+let toppingReadSerial = 0;
+let editingToppingId = null;
 let paidReceiptState = null;
 let receiptReadSerial = 0;
 const cartState = new Map();
@@ -391,6 +412,7 @@ function renderRoleControls() {
     cancelEditItem();
     cancelEditCategory();
   }
+  el("toppingAdminPanel").classList.toggle("hidden", !manager);
   el("closeManagerNotice").classList.toggle("hidden", manager);
   el("hqNav").classList.toggle("hidden", !manager);
   el("hqRefresh").disabled = !manager || hqLoadInFlight;
@@ -458,6 +480,7 @@ function clearSessionState() {
   el("createItemButton").disabled = false;
   cartState.clear();
   menuState = { categories: [], items: [] };
+  clearToppingState();
   invalidateOpenOrderReads();
   invalidatePaidOrderReads();
   invalidateHQ();
@@ -523,6 +546,7 @@ async function loadTenant() {
   invalidatePaidOrderReads();
   invalidateHQ();
   menuState = { categories: [], items: [] };
+  clearToppingState();
   el("menuCatalog").replaceChildren();
   el("menuAdminList").replaceChildren();
   el("commerceMetrics").replaceChildren();
@@ -556,6 +580,7 @@ async function refreshStore() {
   el("closeDay").disabled = true;
   clearPaidReceipt();
   menuState = { categories: [], items: [] };
+  clearToppingState();
   el("menuCatalog").replaceChildren();
   el("menuAdminList").replaceChildren();
   currentOrder = null;
@@ -619,6 +644,7 @@ async function loadMenu() {
     }
   }
   renderMenu();
+  renderToppingItems();
   renderCart();
 }
 
@@ -1287,6 +1313,9 @@ function setMenuWriteInFlight(busy) {
   el("cancelEditItemButton").disabled = busy;
   el("saveEditCategoryButton").disabled = busy;
   el("cancelEditCategoryButton").disabled = busy;
+  el("saveToppingButton").disabled = busy;
+  el("cancelToppingButton").disabled = busy;
+  el("loadToppingsButton").disabled = busy;
   // Do not close while a Menu write is still awaiting server confirmation.
   renderClosePreview();
 }
@@ -1317,6 +1346,152 @@ async function writeMenuRecord(body, formId, successMessage) {
       setStatus(successMessage + " Danh sách Menu chưa tải lại được; Refresh để kiểm tra, không tạo lại.", "warning");
     }
   } finally {
+    setMenuWriteInFlight(false);
+  }
+}
+
+function clearToppingState() {
+  ++toppingReadSerial;
+  toppingState = [];
+  toppingLoaded = false;
+  editingToppingId = null;
+  el("toppingList").replaceChildren();
+  el("toppingForm").reset?.();
+  el("toppingActiveField").classList.add("hidden");
+  el("cancelToppingButton").classList.add("hidden");
+  el("saveToppingButton").textContent = "Thêm topping";
+}
+function renderToppingItems() {
+  const select = el("toppingItem");
+  const previous = select.value;
+  select.replaceChildren();
+  for (const item of menuState.items) {
+    const option = document.createElement("option");
+    option.value = item.id;
+    option.textContent = item.name + (item.active === false ? " (món ngừng bán)" : "");
+    select.append(option);
+  }
+  if (menuState.items.some(item => item.id === previous)) select.value = previous;
+  if (editingToppingId) select.disabled = true;
+  else select.disabled = false;
+}
+function cancelToppingEdit() {
+  if (menuWriteInFlight) return;
+  editingToppingId = null;
+  el("toppingForm").reset?.();
+  el("toppingActiveField").classList.add("hidden");
+  el("cancelToppingButton").classList.add("hidden");
+  el("saveToppingButton").textContent = "Thêm topping";
+  renderToppingItems();
+}
+function renderToppings() {
+  const list = el("toppingList");
+  list.replaceChildren();
+  if (!toppingLoaded || !canManageCommerce()) return;
+  for (const topping of toppingState) {
+    const row = document.createElement("div");
+    row.className = "evidence-row";
+    const title = document.createElement("span");
+    const item = menuState.items.find(i => i.id === topping.menu_item_id);
+    title.textContent = (item?.name ?? "Món chưa tải") + " · " + topping.name
+      + " · " + money(topping.price)
+      + (topping.active ? "" : " · NGỪNG BÁN");
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "secondary";
+    edit.textContent = "Sửa";
+    edit.disabled = menuWriteInFlight;
+    edit.addEventListener("click", () => guarded(() => editTopping(topping.id)));
+    row.append(title, edit);
+    list.append(row);
+  }
+}
+async function loadToppings() {
+  if (!canManageCommerce() || menuWriteInFlight) return;
+  const serial = ++toppingReadSerial;
+  const epoch = viewEpoch, tenant = currentTenantId, token = sessionToken;
+  const result = await appFetch("/api/app/commerce-toppings?includeInactive=true");
+  if (serial !== toppingReadSerial || epoch !== viewEpoch
+      || tenant !== currentTenantId || token !== sessionToken) return;
+  toppingState = result.toppings || [];
+  toppingLoaded = true;
+  renderToppingItems();
+  renderToppings();
+}
+function editTopping(id) {
+  if (!canManageCommerce() || menuWriteInFlight || hasUnfinishedCheckout()) {
+    throw new Error("Manager phải hoàn tất đơn POS trước khi sửa topping.");
+  }
+  const topping = toppingState.find(t => t.id === id);
+  if (!topping) throw new Error("Topping không còn trong catalog; hãy tải lại.");
+  editingToppingId = id;
+  renderToppingItems();
+  el("toppingItem").value = topping.menu_item_id;
+  el("toppingItem").disabled = true;
+  el("toppingName").value = topping.name;
+  el("toppingPrice").value = String(topping.price);
+  el("toppingSort").value = String(topping.sort_order);
+  el("toppingActive").value = topping.active ? "true" : "false";
+  el("toppingActiveField").classList.remove("hidden");
+  el("cancelToppingButton").classList.remove("hidden");
+  el("saveToppingButton").textContent = "Lưu topping";
+}
+async function saveTopping(event) {
+  event.preventDefault();
+  if (!canManageCommerce() || menuWriteInFlight) return;
+  if (hasUnfinishedCheckout()) {
+    throw new Error("Hoàn tất đơn POS đang xử lý trước khi sửa topping.");
+  }
+  if (!toppingLoaded) throw new Error("Tải catalog topping trước khi lưu.");
+  const epoch = viewEpoch, tenant = currentTenantId, token = sessionToken;
+  const itemId = el("toppingItem").value;
+  if (!menuState.items.some(item => item.id === itemId)) {
+    throw new Error("Chọn món hợp lệ để gắn topping.");
+  }
+  const body = {
+    name: el("toppingName").value.trim(),
+    price: Number(el("toppingPrice").value),
+    sortOrder: Number(el("toppingSort").value)
+  };
+  const editing = editingToppingId;
+  if (editing) {
+    body.toppingId = editing;
+    body.active = el("toppingActive").value === "true";
+  } else {
+    body.menuItemId = itemId;
+  }
+  menuWriteInFlight = true;
+  setMenuWriteInFlight(true);
+  setStatus("Đang lưu topping…");
+  try {
+    try {
+      await appFetch("/api/app/commerce-toppings", {
+        method: editing ? "PATCH" : "POST", body
+      });
+    } catch (error) {
+      ++toppingReadSerial;
+      toppingLoaded = false;
+      toppingState = [];
+      renderToppings();
+      throw new Error("Chưa xác nhận topping được lưu. Tải lại catalog trước khi thử lại. " + error.message);
+    }
+    if (epoch !== viewEpoch || tenant !== currentTenantId || token !== sessionToken) return;
+    editingToppingId = null;
+    el("toppingForm").reset?.();
+    el("toppingActiveField").classList.add("hidden");
+    el("cancelToppingButton").classList.add("hidden");
+    el("saveToppingButton").textContent = "Thêm topping";
+    try {
+      await loadToppings();
+      setStatus("Đã lưu topping. POS chưa tính giá topping.", "ok");
+    } catch {
+      toppingLoaded = false;
+      toppingState = [];
+      renderToppings();
+      setStatus("Topping đã lưu, nhưng chưa tải lại được danh sách. Refresh trước khi sửa tiếp.", "warning");
+    }
+  } finally {
+    menuWriteInFlight = false;
     setMenuWriteInFlight(false);
   }
 }
@@ -1793,6 +1968,9 @@ el("categoryForm").addEventListener("submit", event => guarded(() => createCateg
 el("itemForm").addEventListener("submit", event => guarded(() => createItem(event)));
 el("editCategoryForm").addEventListener("submit", event => guarded(() => saveEditCategory(event)));
 el("cancelEditCategoryButton").addEventListener("click", cancelEditCategory);
+el("loadToppingsButton").addEventListener("click", () => guarded(loadToppings));
+el("toppingForm").addEventListener("submit", event => guarded(() => saveTopping(event)));
+el("cancelToppingButton").addEventListener("click", cancelToppingEdit);
 el("editItemForm").addEventListener("submit", event => guarded(() => saveEditItem(event)));
 el("cancelEditItemButton").addEventListener("click", cancelEditItem);
 el("closeDay").addEventListener("click", () => guarded(closeBusinessDay));

@@ -5,6 +5,7 @@ import { handle as measurementWindowHandle } from '../../server/app/measurement-
 import { handle as actionDetailHandle } from '../../server/app/action-detail.mjs';
 import { handle as clientConfigHandle } from '../../server/commerce/client-config.mjs';
 import { handle as menuHandle } from '../../server/commerce/menu.mjs';
+import { handle as toppingsHandle } from '../../server/commerce/toppings.mjs';
 import { handle as orderHandle } from '../../server/commerce/order.mjs';
 import { handle as paymentHandle } from '../../server/commerce/payment.mjs';
 import { handle as orderStatusHandle } from '../../server/commerce/order-status.mjs';
@@ -22,6 +23,7 @@ export const WORKFLOW_ROUTES = Object.freeze({
   'action-detail': actionDetailHandle,
   'client-config': clientConfigHandle,
   'commerce-menu': menuHandle,
+  'commerce-toppings': toppingsHandle,
   'commerce-order': orderHandle,
   'commerce-payment': paymentHandle,
   'commerce-order-status': orderStatusHandle,
