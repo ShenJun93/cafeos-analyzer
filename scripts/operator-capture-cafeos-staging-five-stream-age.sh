@@ -74,13 +74,35 @@ ledger(){
 before="$(ledger)" || stop SOURCE_LEDGER_READ_FAILED
 [[ "$before" == fa57902e637543dde1082d4ff307aabda1a9e223a3b0a354780948da8bb34eb3 ]] || stop ORIGINAL_LEDGER_DRIFT
 
+counts_sql="$root/sql/cafeos-staging-capture-counts-readonly.sql"
+[[ -f "$counts_sql" && ! -L "$counts_sql" ]] || stop SOURCE_COUNTS_SQL_MISSING
+source_counts(){
+  { printf 'BEGIN TRANSACTION READ ONLY;\n'; cat -- "$counts_sql"; printf '\nCOMMIT;\n'; } |
+    timeout 35 psql -XwqAt -v ON_ERROR_STOP=1 2>/dev/null
+}
+validate_source_counts(){
+  printf '%s\n' "$1" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+expected="auth_users auth_identities storage_buckets storage_objects vault_secrets migration_receipts tenants tenant_members stores imports transaction_line_items customers customer_identifiers attention_items actions action_status_history measurement_windows menu_categories menu_items pos_orders pos_order_items pos_payments daily_closes".split()
+assert set(d)==set(expected), "Unexpected source count set"
+assert all(type(d[k]) is int and d[k]>=0 for k in expected), "Invalid count"
+assert d["auth_users"]>=1 and d["auth_identities"]>=1, "Auth unexpectedly empty"
+assert d["migration_receipts"]==7, "Original migration receipt count changed"
+' >/dev/null 2>&1 || stop SOURCE_COUNT_SHAPE_OR_BASELINE_INVALID
+}
+counts_before="$(source_counts)" || stop SOURCE_COUNTS_READ_FAILED
+validate_source_counts "$counts_before"
+# A pre/post full-table COUNT comparison detects cardinality drift only.
+# It does NOT detect same-count mutations or prove a shared DB snapshot.
+
 work="$(mktemp -d "$dest/.five-stream-XXXXXXXX")" || stop PRIVATE_TEMP_FAILED
 published=0
 cleanup(){
   code=$?
   trap - EXIT
   if [[ "$published" == 0 ]]; then
-    rm -f -- "$work"/{roles,schema,data,history-schema,history-data}.sql.age "$work"/{recipients.txt,manifest.sha256,source-ledger.sha256,NOTICE.txt} 2>/dev/null || :
+    rm -f -- "$work"/{roles,schema,data,history-schema,history-data}.sql.age "$work"/{recipients.txt,manifest.sha256,source-ledger.sha256,source-counts.sha256,NOTICE.txt} 2>/dev/null || :
     rmdir "$work" 2>/dev/null || :
   fi
   exit "$code"
@@ -95,7 +117,7 @@ capture(){
   case "$part" in
     roles) "$cli" db dump --db-url "$url" --role-only 2>/dev/null | age -R "$work/recipients.txt" -o "$out" ;;
     schema) "$cli" db dump --db-url "$url" 2>/dev/null | age -R "$work/recipients.txt" -o "$out" ;;
-    data) "$cli" db dump --db-url "$url" --data-only --use-copy 2>/dev/null | age -R "$work/recipients.txt" -o "$out" ;;
+    data) "$cli" db dump --db-url "$url" --data-only --use-copy --exclude "storage.buckets_vectors" --exclude "storage.vector_indexes" 2>/dev/null | age -R "$work/recipients.txt" -o "$out" ;;
     history-schema) "$cli" db dump --db-url "$url" --schema supabase_migrations 2>/dev/null | age -R "$work/recipients.txt" -o "$out" ;;
     history-data) "$cli" db dump --db-url "$url" --schema supabase_migrations --data-only --use-copy 2>/dev/null | age -R "$work/recipients.txt" -o "$out" ;;
     *) stop INVALID_COMPONENT ;;
@@ -116,9 +138,13 @@ age -d -i "$key" "$work/history-data.sql.age" 2>/dev/null |
   awk 'index($0,"20260921100732"){a=1} index($0,"20261025103648"){b=1} END{exit !(a&&b)}' || stop MIGRATION_HISTORY_SHAPE_MISSING
 after="$(ledger)" || stop SOURCE_LEDGER_RECHECK_FAILED
 [[ "$after" == "$before" ]] || stop SOURCE_LEDGER_CHANGED_DURING_CAPTURE
+counts_after="$(source_counts)" || stop SOURCE_COUNTS_RECHECK_FAILED
+validate_source_counts "$counts_after"
+[[ "$counts_after" == "$counts_before" ]] || stop SOURCE_CARDINALITY_DRIFT_DURING_CAPTURE
 printf '%s\n' "$before" > "$work/source-ledger.sha256"
+printf '%s\n' "$counts_before" | sha256sum | awk '{print $1}' > "$work/source-counts.sha256"
 printf '%s\n' 'CONFIDENTIAL: not restore certified; 5 dumps are not a proven shared snapshot; independent restore required; RELEASE NO-GO.' > "$work/NOTICE.txt"
-(cd "$work"; sha256sum roles.sql.age schema.sql.age data.sql.age history-schema.sql.age history-data.sql.age recipients.txt source-ledger.sha256 NOTICE.txt > manifest.sha256; sha256sum -c manifest.sha256 >/dev/null)
+(cd "$work"; sha256sum roles.sql.age schema.sql.age data.sql.age history-schema.sql.age history-data.sql.age recipients.txt source-ledger.sha256 source-counts.sha256 NOTICE.txt > manifest.sha256; sha256sum -c manifest.sha256 >/dev/null)
 final="$dest/cafeos-staging-five-stream-$(date -u +%Y%m%dT%H%M%SZ)"
 [[ ! -e "$final" && ! -L "$final" ]] || stop DEST_EXISTS
 mv --no-clobber --no-target-directory -- "$work" "$final" || stop ATOMIC_PUBLICATION_FAILED
@@ -126,6 +152,7 @@ published=1
 (cd "$final" && sha256sum -c manifest.sha256 >/dev/null) || stop PUBLISHED_CIPHERTEXT_MANIFEST_FAILED
 echo "CAFEOS_FIVE_STREAM_MANIFEST_SHA256=$(sha256sum "$final/manifest.sha256" | awk '{print $1}')"
 echo 'CAFEOS_STAGING_FIVE_COMPONENT_CIPHERTEXT_CREATED_NOT_RESTORED'
+echo 'CAFEOS_SOURCE_23_COUNT_FIELDS_PRE_POST_MATCH_ONLY'
 echo 'CAFEOS_MULTISTREAM_SNAPSHOT_CONSISTENCY_NOT_MACHINE_PROVEN'
 echo 'CAFEOS_INDEPENDENT_RESTORE_NOT_PROVEN'
 echo 'CAFEOS_RELEASE_NO_GO'
