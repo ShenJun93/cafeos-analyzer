@@ -5,7 +5,7 @@ readonly DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 readonly HISTORICAL_LAST="20261025094352"
 readonly -a HISTORICAL=(20260921005530 20260921005532 20260921100900 20260921164500 20260921170000 20260921201000 20260921203000 20261025094352)
 readonly -a LEGACY=(20260921100732 20260921103432 20260921105352 20260921133428 20260921141814 20260921151006 20261025103648)
-readonly -a FULL=( "${HISTORICAL[@]}" 20261025130000 20261025140000 )
+readonly -a FULL=( "${HISTORICAL[@]}" 20261025130000 20261025140000 20261031190000 )
 command -v supabase >/dev/null
 command -v psql >/dev/null
 command -v pg_isready >/dev/null
@@ -76,14 +76,33 @@ supabase migration up --db-url "$DB_URL"
 assert_versions "${FULL[@]}"
 [[ "$(guards_present)" == "t" ]]
 [[ "$(phase)" == "STOP_REVIEW_REQUIRED" ]]
-[[ "$(post_guard_phase)" == "POST_GUARDS_READY_FOR_AUTH_E2E" ]]
+# The old staging post-guards classifier is deliberately pinned to exactly
+# ten migrations. Never classify the new 11-version schema as staging READY.
+[[ "$(post_guard_phase)" == "POST_GUARDS_NOT_READY_REVIEW" ]]
+menu_ready="$(psql "$DB_URL" -Atq -c "
+ select has_column_privilege('authenticated','public.menu_items','price','UPDATE')
+  and has_column_privilege('authenticated','public.menu_items','active','UPDATE')
+  and not has_column_privilege('authenticated','public.menu_items','tenant_id','UPDATE')
+  and exists(select 1 from pg_policy where polrelid='public.menu_items'::regclass
+       and polname='menu_items_manager_update' and polcmd='w')
+  and exists(select 1 from pg_trigger where tgrelid='public.menu_items'::regclass
+       and tgname='commerce_menu_item_updated_at' and tgenabled='O')")"
+[[ "$menu_ready" == "t" ]] || { echo "Menu lifecycle RLS missing" >&2; exit 1; }
 negative_phase="$(psql "$DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
   -f scripts/sql/cafeos-local-postguards-negative-fixture.sql | awk -F '|' 'NF { print $NF }' | tail -n 1)"
 [[ "$negative_phase" == "POST_GUARDS_NOT_READY_REVIEW" ]] || {
-  echo "Financial audit did not reject intentionally inconsistent Order: $negative_phase" >&2
+  echo "Financial audit unexpectedly accepted inconsistent Order: $negative_phase" >&2
   exit 1
 }
-[[ "$(post_guard_phase)" == "POST_GUARDS_READY_FOR_AUTH_E2E" ]]
+# Check the actual bad_order_subtotals field, not just the version-based
+# legacy NO-GO label. The fixture transaction always rolls back.
+bad_subtotals="$(psql "$DB_URL" -X -q -A -t -v ON_ERROR_STOP=1   -f scripts/sql/cafeos-local-postguards-negative-fixture.sql |
+  awk -F '|' 'NF>9 && $(NF-3) ~ /^[0-9]+$/ {print $(NF-3)}' | tail -n 1)"
+[[ "$bad_subtotals" =~ ^[1-9][0-9]*$ ]] || {
+  echo "Financial negative fixture did not detect bad order subtotal" >&2
+  exit 1
+}
+[[ "$(post_guard_phase)" == "POST_GUARDS_NOT_READY_REVIEW" ]]
 supabase test db
-[[ "$(post_guard_phase)" == "POST_GUARDS_READY_FOR_AUTH_E2E" ]]
-echo "CAFEOS_LOCAL_GREENPATH_PASS: pre=8 legacy=7 reconciled=8 guarded=10"
+[[ "$(post_guard_phase)" == "POST_GUARDS_NOT_READY_REVIEW" ]]
+echo "CAFEOS_LOCAL_GREENPATH_PASS: pre=8 legacy=7 reconciled=8 guarded=11 staging_classifier=NO_GO_REVIEW_REQUIRED"

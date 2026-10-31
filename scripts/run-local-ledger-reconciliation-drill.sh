@@ -16,7 +16,7 @@ pg_isready -h 127.0.0.1 -p 54322 -U postgres -d postgres -q
 readonly -a CANONICAL=(
   20260921005530 20260921005532 20260921100900 20260921164500
   20260921170000 20260921201000 20260921203000 20261025094352
-  20261025130000 20261025140000
+  20261025130000 20261025140000 20261031190000
 )
 readonly -a HISTORICAL=(
   20260921005530 20260921005532 20260921100900 20260921164500
@@ -53,7 +53,7 @@ data_hash() {
     (select count(*) from public.daily_closes)::text"
 }
 
-# The exact 10-version local stack must already have both guards installed.
+# The exact 11-version local stack also contains the Menu lifecycle.
 assert_versions "${CANONICAL[@]}"
 [[ "$(psql "$DB_URL" -Atq -c \
  "select position('COMMERCE_CLOSE_FUTURE_DATE' in pg_get_functiondef(
@@ -105,8 +105,8 @@ phase="$(psql "$DB_URL" -Atq -f scripts/sql/cafeos-staging-post-repair-readonly-
 [[ "$(data_hash)" == "$before_data" ]]
 
 # Restore initial 10-version local ledger and prove data/functions unchanged.
-supabase migration repair --db-url "$DB_URL" --status applied 20261025130000 20261025140000
+supabase migration repair --db-url "$DB_URL" --status applied 20261025130000 20261025140000 20261031190000
 assert_versions "${CANONICAL[@]}"
 [[ "$(schema_hash)" == "$before_schema" ]]
 [[ "$(data_hash)" == "$before_data" ]]
-echo "CAFEOS_LOCAL_LEDGER_REPAIR_DRILL_PASS old=7 historical=8 canonical=10"
+echo "CAFEOS_LOCAL_LEDGER_REPAIR_DRILL_PASS old=7 historical=8 canonical=11"

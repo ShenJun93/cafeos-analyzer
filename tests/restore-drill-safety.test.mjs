@@ -112,12 +112,19 @@ test("greenpath reconciliation acceptance never targets staging or production", 
   assert.match(script, /PRE_REPAIR_NO_GO/);
   assert.match(script, /STOP_REVIEW_REQUIRED/);
   assert.match(script, /POST_GUARDS_NOT_READY_REVIEW/);
-  assert.match(script, /POST_GUARDS_READY_FOR_AUTH_E2E/);
+  // The previous ten-version staging classifier must NOT certify an
+  // unapproved eleventh Menu lifecycle migration as deployment-ready.
+  assert.doesNotMatch(script, /POST_GUARDS_READY_FOR_AUTH_E2E/);
   assert.match(script, /cafeos-staging-post-guards-readonly-gate\.sql/);
   assert.match(script, /cafeos-local-postguards-negative-fixture\.sql/);
   assert.match(script, /POST_GUARDS_NOT_READY_REVIEW/);
-  assert.match(script, /POST_GUARDS_READY_FOR_AUTH_E2E/);
+  // The previous ten-version staging classifier must NOT certify an
+  // unapproved eleventh Menu lifecycle migration as deployment-ready.
+  assert.doesNotMatch(script, /POST_GUARDS_READY_FOR_AUTH_E2E/);
   assert.match(script, /CAFEOS_LOCAL_GREENPATH_PASS/);
+  assert.match(script, /20261031190000/);
+  assert.match(script, /menu_items_manager_update/);
+  assert.match(script, /bad_subtotals/);
   assert.match(script, /trap cleanup EXIT/);
   assert.doesNotMatch(script, /--linked|supabase link|wjatnyvdygvblirggdcm|SUPABASE_ACCESS_TOKEN|service_role|sb_secret_/i);
 });
