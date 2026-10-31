@@ -58,3 +58,28 @@ test("local GoTrue E2E sources parse without running any fixtures or contacting 
   ], { encoding: "utf8", timeout: 5000 });
   assert.equal(python.status, 0, python.stderr);
 });
+
+test("GitHub Actions may only target one local Supabase project without staging credentials", async () => {
+  const python = await readFile(pythonPath, "utf8");
+  const workflow = await readFile(
+    new URL("../.github/workflows/cafeos-signed-jwt-e2e.yml", import.meta.url), "utf8"
+  );
+  for (const marker of [
+    "CAFEOS_E2E_MODE", "CI_LOCAL", "GITHUB_ACTIONS",
+    "CI_LOCAL_REQUIRES_GITHUB_ACTIONS",
+    "CI_LOCAL_PROJECT_MISMATCH",
+    "CI_LOCAL_DB_NOT_SUPABASE",
+    "http://127.0.0.1:54321",
+    "supabase_db_", "supabase_kong_"
+  ]) assert.ok(python.includes(marker), "missing bounded CI fixture check: " + marker);
+  for (const marker of [
+    "permissions:", "contents: read", "supabase/setup-cli@v1",
+    "supabase init", "supabase start", "supabase stop --no-backup",
+    "node --test tests/signed-jwt-local-e2e.test.mjs",
+    "python3 scripts/run-local-cafeos-signed-jwt-e2e.py",
+    "CAFEOS_E2E_MODE=CI_LOCAL",
+    "SUPABASE_USE_SLIM_IMAGES"
+  ]) assert.ok(workflow.includes(marker), "missing isolated CI gate: " + marker);
+  assert.doesNotMatch(workflow,
+    /wjatnyvdygvblirggdcm|supabase\\.co|supabase (?:link|db push|db dump|migration repair)|PGPASSWORD|service_role|secrets\\./i);
+});
