@@ -87,7 +87,7 @@ The CLI may resolve a `PGPASSFILE` password and pass it to the dump container as
 3. A real multi-part roles/schema/data/history backup is not yet made. Actual staging Auth, receipts, extension state and independent restore are unverified.
 4. Real second-target restore, signed-JWT tenant-isolation E2E, migration integrity guards, owner security approval, merge and deployment remain NO-GO.
 
-**Gate status (2026-10-31):** TLS-ENABLED CA POSITIVE/NEGATIVE TEST = **PASS**. SSL-OFF **REMOTE-ROUTE** REQUIRED-TLS REJECTION = **PASS** on MAIN-PC. The SSL-OFF MANAGED-LOCAL ROUTE deliberately omits TLS flags, and cannot be used to infer remote TLS failure. AGE OFF-HOST ESCROW CRYPTOGRAPHIC READBACK = **OPERATOR-REPORTED PASS**; OWNER INDEPENDENT PHYSICAL CUSTODY ATTESTATION = **PENDING**. STAGING BACKUP/COMPATIBLE RESTORE = **NOT AUTHORIZED / NOT RUN** pending approved source-capture safeguards, independent custody and independent real-data restore. PR #95 remains DRAFT. **RELEASE NO-GO.**
+**Gate status (2026-10-31):** TLS-ENABLED CA POSITIVE/NEGATIVE TEST = **PASS**. SSL-OFF **REMOTE-ROUTE** REQUIRED-TLS REJECTION = **PASS** on MAIN-PC. The SSL-OFF MANAGED-LOCAL ROUTE deliberately omits TLS flags, and cannot be used to infer remote TLS failure. AGE OFF-HOST ESCROW CRYPTOGRAPHIC READBACK = **OPERATOR-REPORTED PASS**; OWNER INDEPENDENT PHYSICAL CUSTODY ATTESTATION = **PENDING**. STAGING BACKUP = **NOT AUTHORIZED / NOT RUN**. COMPATIBLE RESTORE = **NOT AUTHORIZED / NOT RUN** pending approved source-capture safeguards, independent custody and independent real-data restore. PR #95 remains DRAFT. **RELEASE NO-GO.**
 
 ## 2026-10-31 direct source read-only evidence checkpoint
 
