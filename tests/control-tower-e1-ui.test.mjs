@@ -221,3 +221,25 @@ test("E1 local server routes existing app handlers without adding Vercel functio
     "E1 UI should remain local-only"
   );
 });
+
+test("homepage offers direct privacy-safe E1 interest without changing Analyzer or exposing merchant data", async () => {
+  const page = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
+  const feedback = await readFile(new URL("../public/feedback.html", import.meta.url), "utf8");
+  const form = await readFile(
+    new URL("../.github/ISSUE_TEMPLATE/control-tower-e1-interest.yml", import.meta.url),
+    "utf8"
+  );
+  const target = "https://github.com/ShenJun93/cafeos-analyzer/issues/new?template=control-tower-e1-interest.yml";
+  assert.ok(page.includes(target), "homepage must link directly to the existing E1 opt-in form");
+  assert.ok(feedback.includes(target), "retain existing bounded Feedback opt-in");
+  assert.match(page, /dữ liệu demo synthetic — không phải dữ liệu cửa hàng của bạn/);
+  assert.match(page, /GitHub là công khai/);
+  assert.match(page, /3–15 cửa hàng/);
+  assert.match(page, /không đăng tên, thông tin liên hệ, tên quán, file bán hàng hay thông tin khách hàng/);
+  assert.match(form, /Do not post/);
+  assert.match(form, /Opening this issue is only an inbound signal/);
+  assert.doesNotMatch(page, /<form|<input|<textarea/i,
+    "research interest must not introduce a new PII intake on the landing page");
+  assert.doesNotMatch(page, /merchant_data_permissioned|completeLoopObserved/,
+    "synthetic E1 must not be presented as merchant-data evidence");
+});
