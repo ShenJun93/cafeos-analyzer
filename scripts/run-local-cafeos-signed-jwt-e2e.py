@@ -1,9 +1,23 @@
 #!/usr/bin/env python3
 """Synthetic-only, GoTrue-issued JWT and tenant-role E2E; no staging connections."""
-import base64, io, json, re, secrets, subprocess, tarfile, time, urllib.error, urllib.parse, urllib.request, uuid
-DB='supabase_db_cafeos-e2e-isolated-20261030'
-KONG='supabase_kong_cafeos-e2e-isolated-20261030'
-BASE='http://127.0.0.1:55321'
+import base64, io, json, os, re, secrets, subprocess, tarfile, time, urllib.error, urllib.parse, urllib.request, uuid
+
+# Two explicit trust boundaries: the owner-owned disposable Compose test stack,
+# or an independently provisioned, migration-applied GitHub Actions localhost
+# Supabase stack. Never accept remote hostnames or a staging project reference.
+if os.environ.get('CAFEOS_E2E_MODE') == 'CI_LOCAL':
+    assert os.environ.get('GITHUB_ACTIONS') == 'true', 'CI_LOCAL_REQUIRES_GITHUB_ACTIONS'
+    DB=os.environ['CAFEOS_E2E_DB']
+    KONG=os.environ['CAFEOS_E2E_KONG']
+    assert re.fullmatch(r'supabase_db_[a-zA-Z0-9_-]+',DB), 'CI_LOCAL_DB_NOT_SUPABASE'
+    assert re.fullmatch(r'supabase_kong_[a-zA-Z0-9_-]+',KONG), 'CI_LOCAL_KONG_NOT_SUPABASE'
+    assert DB.removeprefix('supabase_db_') == KONG.removeprefix('supabase_kong_'), 'CI_LOCAL_PROJECT_MISMATCH'
+    BASE='http://127.0.0.1:54321'
+else:
+    assert os.environ.get('CAFEOS_E2E_MODE') in (None,''), 'UNSUPPORTED_E2E_MODE'
+    DB='supabase_db_cafeos-e2e-isolated-20261030'
+    KONG='supabase_kong_cafeos-e2e-isolated-20261030'
+    BASE='http://127.0.0.1:55321'
 case=uuid.uuid4().hex[:12]
 ids={k:str(uuid.uuid4()) for k in ('tenant_a','tenant_b','store_a','store_b','category_a','category_b','item_a','item_b')}
 actors={}
