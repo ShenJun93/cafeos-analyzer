@@ -54,7 +54,12 @@ test("POS client sends intent only and does not expose editable trusted prices o
   const orderBodySource = html.match(/const orderBody = \{[\s\S]*?\n  \};/)?.[0] ?? "";
   assert.ok(orderBodySource, "orderBody source must be present");
   assert.doesNotMatch(orderBodySource, /(?:price|subtotal|total)\s*:/i);
-  assert.doesNotMatch(html, /<input[^>]+(?:price|subtotal|total)/i);
+  // The POS workspace cannot accept trusted line prices or totals. Manager
+  // Menu (including topping catalog) may configure future server-side prices.
+  const posOnly = html.slice(html.indexOf('<section id="posWorkspace"'),
+    html.indexOf('<section id="menuWorkspace"'));
+  assert.ok(posOnly.includes('id="cart"'));
+  assert.doesNotMatch(posOnly, /<input[^>]+(?:price|subtotal|total)/i);
   assert.match(html, /unit price is server-owned/i);
   assert.match(html, /server total/i);
 });
@@ -2112,4 +2117,46 @@ test("cashier cannot edit archived category and manager cannot edit during unset
  assert.throws(()=>runInContext('startEditCategory("old")',ctx),/Manager role/);
  runInContext('currentTenantRole="manager";pendingOrderSubmission={clientOrderKey:"unsent"}',ctx);
  assert.throws(()=>runInContext('startEditCategory("old")',ctx),/Hoàn tất đơn/);
+});
+
+test("topping manager catalog is a separate nonbillable workflow, never client-owned POS price",async()=>{
+ const html=await readFile(new URL("../public/app.html",import.meta.url),"utf8");
+ for(const id of ["toppingAdminPanel","loadToppingsButton","toppingForm","toppingItem","toppingName",
+  "toppingPrice","toppingSort","toppingActive","toppingList","saveToppingButton"]) {
+  assert.ok(html.includes('id="'+id+'"'));
+ }
+ assert.match(html,/POS chưa hỗ trợ tính tiền topping/);
+ assert.match(html,/không cộng giá thủ công/);
+ const {ctx,el,runInContext}=await menuMutationHarness();
+ runInContext('menuState.items=[{id:"item-1",name:"Latte",price:30000,active:true}]',ctx);
+ runInContext('renderToppingItems()',ctx);
+ assert.equal(el("toppingItem").children.length,1);
+ runInContext('toppingLoaded=true',ctx);
+ el("toppingItem").value="item-1";
+ el("toppingName").value="Trân châu";
+ el("toppingPrice").value="5000";
+ el("toppingSort").value="0";
+ runInContext('globalThis.toppingRefreshReads=0;appFetch=async(path,options)=>{if(path==="/api/app/commerce-toppings"&&options?.method==="POST"){globalThis.savedTopping=options.body;return {topping:{id:"t1"}}}if(path==="/api/app/commerce-toppings?includeInactive=true"){globalThis.toppingRefreshReads++;return {toppings:[{id:"t1",menu_item_id:"item-1",name:"Trân châu",price:5000,sort_order:0,active:true}]}}throw Error("unexpected")}',ctx);
+ await runInContext('saveTopping({preventDefault(){}})',ctx);
+ assert.equal(ctx.toppingRefreshReads,1,"confirmed topping write triggers one fresh catalog read");
+ assert.equal(runInContext("toppingState.length",ctx),1);
+ assert.equal(runInContext("toppingLoaded",ctx),true);
+ assert.equal(ctx.savedTopping.menuItemId,"item-1");
+ assert.equal(ctx.savedTopping.price,5000);
+ assert.equal(ctx.savedTopping.sortOrder,0);
+ assert.equal(runInContext('menuWriteInFlight',ctx),false);
+});
+
+test("topping editing rejects cashiers and unconfirmed checkout; sign-out clears tenant-specific catalog",async()=>{
+ const {ctx,el,runInContext}=await menuMutationHarness();
+ runInContext('toppingState=[{id:"t1",menu_item_id:"i",name:"Cream",price:2000,active:true,sort_order:0}];toppingLoaded=true',ctx);
+ runInContext('currentTenantRole="cashier"',ctx);
+ assert.throws(()=>runInContext('editTopping("t1")',ctx),/Manager/);
+ runInContext('currentTenantRole="manager";pendingOrderSubmission={clientOrderKey:"stuck"}',ctx);
+ assert.throws(()=>runInContext('editTopping("t1")',ctx),/Manager/);
+ runInContext('pendingOrderSubmission=null',ctx);
+ runInContext('clearToppingState()',ctx);
+ assert.equal(runInContext('toppingLoaded',ctx),false);
+ assert.equal(runInContext('toppingState.length',ctx),0);
+ assert.equal(el("toppingList").children.length,0);
 });

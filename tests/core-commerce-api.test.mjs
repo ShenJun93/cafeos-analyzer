@@ -8,6 +8,7 @@ import {
 import { dispatchWorkflow, WORKFLOW_ROUTES } from "../api/app/workflow.mjs";
 import { handle as clientConfigHandle } from "../server/commerce/client-config.mjs";
 import { handle as menuHandle } from "../server/commerce/menu.mjs";
+import { handle as toppingsHandle } from "../server/commerce/toppings.mjs";
 import { handle as orderHandle } from "../server/commerce/order.mjs";
 import { handle as paymentHandle } from "../server/commerce/payment.mjs";
 import { handle as orderStatusHandle } from "../server/commerce/order-status.mjs";
@@ -1968,4 +1969,135 @@ test("Menu category PATCH rejects smuggled fields and uncertain commit evidence"
   });
   assert.equal(out.statusCode,status);
  }
+});
+
+test("topping catalog is tenant-scoped, active-only for cashier, and inactive manager-only", async () => {
+  const TOPPING_A = "14000000-0000-4000-8000-000000000001";
+  const available = {
+    id: TOPPING_A, tenant_id: TENANT_A, menu_item_id: ITEM_A,
+    name: "Trân châu", price: 5000, sort_order: 0, active: true
+  };
+  const inactive = { ...available, id: "14000000-0000-4000-8000-000000000002", active: false };
+  for (const [role, includeInactive] of [["cashier",false],["manager",true]]) {
+    const response = res();
+    await toppingsHandle(req(authHeaders, "GET",
+      "/api/app/commerce-toppings"+(includeInactive?"?includeInactive=true":"")), response, {
+      env,fetchImpl:authFetch(role,(url)=>{
+        assert.equal(url.pathname,"/rest/v1/menu_toppings");
+        assert.equal(url.searchParams.get("tenant_id"),"eq."+TENANT_A);
+        assert.equal(url.searchParams.get("active"),includeInactive?null:"eq.true");
+        return jsonResponse(includeInactive?[available,inactive]:[available]);
+      })
+    });
+    assert.equal(response.statusCode,200);
+    assert.equal(parsed(response).toppings.length,includeInactive?2:1);
+  }
+  const denied=res();
+  await toppingsHandle(req(authHeaders,"GET","/api/app/commerce-toppings?includeInactive=true"),
+    denied,{env,fetchImpl:authFetch("cashier")});
+  assert.equal(denied.statusCode,403);
+  for (const query of ["?includeInactive=false","?includeInactive=true&includeInactive=true","?tenant_id="+STORE_A]) {
+    const out=res();
+    await toppingsHandle(req(authHeaders,"GET","/api/app/commerce-toppings"+query),
+      out,{env,fetchImpl:authFetch("manager")});
+    assert.equal(out.statusCode,400);
+  }
+  for (const rows of [[{...available,tenant_id:STORE_A}],[available,available],
+    [{...available,price:"-1"}],Array.from({length:1000},()=>available),{object:true}]) {
+    const out=res();
+    await toppingsHandle(req(authHeaders,"GET","/api/app/commerce-toppings"),
+      out,{env,fetchImpl:authFetch("cashier",()=>jsonResponse(rows))});
+    assert.ok([502,503].includes(out.statusCode),"fail closed on invalid/over-limit read");
+  }
+});
+
+test("topping catalog manager CREATE and PATCH are price-snapshot-independent and exact acknowledged", async () => {
+  const TOPPING_A="14000000-0000-4000-8000-000000000001";
+  const create={menuItemId:ITEM_A,name:"Trân châu",price:"5000.25",sortOrder:2};
+  let createData;
+  const result=res();
+  await toppingsHandle(req(authHeaders,"POST","/api/app/commerce-toppings",create),result,{
+    env,fetchImpl:authFetch("manager",(url,init)=>{
+      assert.equal(url.pathname,"/rest/v1/menu_toppings");
+      assert.equal(init.method,"POST");
+      createData=JSON.parse(init.body);
+      assert.deepEqual(Object.keys(createData).sort(),
+        ["active","menu_item_id","name","price","sort_order","tenant_id"]);
+      return jsonResponse([{id:TOPPING_A,...createData}]);
+    })
+  });
+  assert.equal(result.statusCode,201);
+  assert.equal(createData.price,5000.25);
+  const patch={toppingId:TOPPING_A,name:"Trân châu trắng",price:7000,sortOrder:5,active:false};
+  let updateData;
+  const changed=res();
+  await toppingsHandle(req(authHeaders,"PATCH","/api/app/commerce-toppings",patch),changed,{
+    env,fetchImpl:authFetch("manager",(url,init)=>{
+      assert.equal(url.pathname,"/rest/v1/menu_toppings");
+      assert.equal(url.searchParams.get("id"),"eq."+TOPPING_A);
+      assert.equal(url.searchParams.get("tenant_id"),"eq."+TENANT_A);
+      assert.equal(init.method,"PATCH");
+      updateData=JSON.parse(init.body);
+      assert.deepEqual(Object.keys(updateData).sort(),["active","name","price","sort_order"]);
+      return jsonResponse([{id:TOPPING_A,tenant_id:TENANT_A,menu_item_id:ITEM_A,...updateData}]);
+    })
+  });
+  assert.equal(changed.statusCode,200);
+  assert.equal(parsed(changed).topping.active,false);
+  for(const method of ["POST","PATCH"]){
+    const out=res();
+    await toppingsHandle(req(authHeaders,method,"/api/app/commerce-toppings",
+      method==="POST"?create:patch),out,{env,fetchImpl:authFetch("cashier")});
+    assert.equal(out.statusCode,403);
+  }
+});
+
+test("topping catalog strict fields and uncertain acknowledgments fail closed",async()=>{
+  const TOPPING_A="14000000-0000-4000-8000-000000000001";
+  const valid={menuItemId:ITEM_A,name:"Cream",price:3000,sortOrder:0};
+  let writes=0;
+  const deps={env,fetchImpl:authFetch("manager",(url,init)=>{
+    if(init.method==="POST"||init.method==="PATCH")writes++;
+    return jsonResponse([]);
+  })};
+  for(const [body,code] of [
+    [{...valid,tenant_id:TENANT_A},"BODY_FIELD_FORBIDDEN"],
+    [{...valid,menuItemId:["x"]},"TOPPING_ITEM_ID_INVALID"],
+    [{...valid,name:false},"TOPPING_NAME_INVALID"],
+    [{...valid,price:"3000.001"},"TOPPING_PRICE_INVALID"],
+    [{...valid,price:1000000.01},"TOPPING_PRICE_INVALID"],
+    [{...valid,sortOrder:Infinity},"TOPPING_SORT_INVALID"],
+    [{...valid,sortOrder:3.5},"TOPPING_SORT_INVALID"]
+  ]){
+    const out=res();
+    await toppingsHandle(req(authHeaders,"POST","/api/app/commerce-toppings",body),out,deps);
+    assert.equal(out.statusCode,400);
+    assert.equal(parsed(out).error.code,code);
+  }
+  assert.equal(writes,0);
+  const patch={toppingId:TOPPING_A,name:"Cream",price:3000,sortOrder:0,active:true};
+  for(const [body,code] of [
+    [{...patch,menuItemId:ITEM_A},"BODY_FIELD_FORBIDDEN"],
+    [{...patch,active:"true"},"TOPPING_ACTIVE_INVALID"],
+    [{...patch,toppingId:"wrong"},"TOPPING_ID_INVALID"]
+  ]) {
+    const out=res();
+    await toppingsHandle(req(authHeaders,"PATCH","/api/app/commerce-toppings",body),out,deps);
+    assert.equal(out.statusCode,400);assert.equal(parsed(out).error.code,code);
+  }
+  assert.equal(writes,0);
+  const baseline={id:TOPPING_A,tenant_id:TENANT_A,menu_item_id:ITEM_A,
+    name:"Cream",price:3000,sort_order:0,active:true};
+  for(const [rows,code] of [
+    [[],404],[[{...baseline,tenant_id:STORE_A}],502],
+    [[{...baseline,price:2999}],502],
+    [[{...baseline,active:false}],502],
+    [{invalid:true},502]
+  ]) {
+    const out=res();
+    await toppingsHandle(req(authHeaders,"PATCH","/api/app/commerce-toppings",patch),out,{
+      env,fetchImpl:authFetch("manager",()=>jsonResponse(rows))
+    });
+    assert.equal(out.statusCode,code);
+  }
 });

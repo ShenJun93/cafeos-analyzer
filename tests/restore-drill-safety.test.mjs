@@ -124,6 +124,8 @@ test("greenpath reconciliation acceptance never targets staging or production", 
   assert.match(script, /CAFEOS_LOCAL_GREENPATH_PASS/);
   assert.match(script, /20261031190000/);
   assert.match(script, /20261031203000/);
+  assert.match(script, /20261031214500/);
+  assert.match(script, /menu_toppings_manager_update/);
   assert.match(script, /menu_categories_manager_update/);
   assert.match(script, /menu_items_manager_update/);
   assert.match(script, /bad_subtotals/);
