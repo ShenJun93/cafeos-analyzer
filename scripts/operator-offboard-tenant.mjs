@@ -142,9 +142,9 @@ async function countRows({ base, secretKey, table, tenantId, fetchImpl }) {
   return total;
 }
 
-async function graphCounts({ base, secretKey, tenantId, fetchImpl }) {
+async function graphCounts({ base, secretKey, tenantId, fetchImpl, tables = GRAPH_TABLES }) {
   const counts = {};
-  for (const table of GRAPH_TABLES) {
+  for (const table of tables) {
     counts[table] = await countRows({ base, secretKey, table, tenantId, fetchImpl });
   }
   return counts;
@@ -199,11 +199,14 @@ export async function offboardTenant({
 
   const started = now();
   const ref = tenantRef(targetTenantId);
+  // Emergency membership revocation must not depend on later Commerce schema
+  // availability; destructive hard-delete requires the complete known graph.
   const countsBefore = await graphCounts({
     base,
     secretKey: secret,
     tenantId: targetTenantId,
-    fetchImpl
+    fetchImpl,
+    tables: phase === "prepare" ? ["tenants", "tenant_members"] : GRAPH_TABLES
   });
   const tenantExists = countsBefore.tenants === 1;
   if (countsBefore.tenants > 1) throw new Error("Tenant preflight returned more than one row");
